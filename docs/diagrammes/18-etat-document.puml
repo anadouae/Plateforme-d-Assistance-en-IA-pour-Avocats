@@ -1,0 +1,51 @@
+@startuml sanad-etat-document
+' ============================================================
+' Sanad — Diagramme d'états : cycle de vie d'un document
+' ============================================================
+
+skinparam shadowing false
+
+title Diagramme d'états — Cycle de vie d'un document
+
+[*] --> PENDING : uploadDocument()\n[/api/documents/upload]
+
+state PENDING : status = pending
+state PROCESSING : status = processing
+state INDEXED : status = indexed
+state FAILED : status = failed
+
+PENDING --> PROCESSING : CeleryWorker\nprend la tâche\nprocess_document()
+
+PROCESSING --> INDEXED : extraction OK\n+ indexation ChromaDB OK
+PROCESSING --> FAILED : erreur OCR\nou erreur indexation
+
+INDEXED --> [*] : deleteDocument()\n[/api/documents/{id}]
+
+FAILED --> PROCESSING : retry manuel\n(admin, futur)
+
+state PROCESSING {
+  state "Extraction texte" as Extract
+  state "OCR (si image/scan)" as OCR
+  state "Indexation BGE-M3" as Index
+
+  [*] --> Extract
+  Extract --> OCR : mime = image\nou PDF scanné
+  Extract --> Index : texte natif\n(PDF/DOCX)
+  OCR --> Index : ocr_score calculé
+  Index --> [*]
+}
+
+note right of INDEXED
+  Document prêt pour :
+  - Synthèse automatique
+  - Questions IA ciblées
+  - Recherche vectorielle dossier
+end note
+
+note right of OCR
+  Si ocr_score < 70 % :
+  ocr_alert = true
+  Alerte affichée à l'utilisateur
+end note
+
+@enduml

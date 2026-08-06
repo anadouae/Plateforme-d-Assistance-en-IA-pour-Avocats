@@ -1,0 +1,96 @@
+@startuml sanad-architecture-composants
+' ============================================================
+' Sanad — Diagramme de composants
+' ============================================================
+
+skinparam componentStyle rectangle
+skinparam shadowing false
+
+title Diagramme de composants — Décomposition interne Sanad
+
+package "Frontend (Next.js 14)" {
+  component "Pages App Router" as Pages
+  component "Composants UI" as UI
+  component "State Zustand" as State
+  component "API Client" as ApiClient
+
+  note right of Pages
+    Landing/Auth, Dashboard,
+    Dossiers, Documents,
+    Assistant IA, Paramètres,
+    Admin WebVoice
+  end note
+
+  note right of UI
+    AppShell, ChatPanel SSE,
+    SynthesisPanel, DocumentUpload,
+    AIResponseCard, LanguageSwitch
+  end note
+}
+
+package "Backend (FastAPI)" {
+  component "API Routers" as Routers
+  component "Middleware" as MW
+  component "Services métier" as SvcBiz
+  component "Services IA" as SvcIA
+
+  note right of Routers
+    auth, cases, documents,
+    chat, team, admin
+  end note
+
+  note right of SvcBiz
+    document_pipeline, agent,
+    email, tokens, totp,
+    google_oauth, encryption
+  end note
+
+  note right of SvcIA
+    BGE-M3, ChromaDB, Groq,
+    web search, synthesis,
+    ollama fallback
+  end note
+}
+
+package "Workers (Celery)" {
+  component "celery_app" as Celery
+  component "process_document" as TaskDoc
+}
+
+package "Persistance" {
+  database "PostgreSQL" as PG
+  database "ChromaDB" as Chroma
+  database "MinIO" as MinIO
+  database "Redis" as Redis
+}
+
+cloud "Services externes" {
+  component "Groq API" as Groq
+  component "Tavily / DDG" as Tavily
+  component "Google OAuth" as Google
+  component "SMTP" as SMTP
+}
+
+Pages --> UI
+Pages --> State
+Pages --> ApiClient
+ApiClient --> Routers : HTTP/HTTPS
+
+Routers --> MW
+Routers --> SvcBiz
+Routers --> SvcIA
+Routers --> PG
+
+SvcBiz --> MinIO
+SvcBiz --> Celery
+Celery --> Redis
+TaskDoc --> SvcBiz
+TaskDoc --> Chroma
+
+SvcIA --> Chroma
+SvcIA --> Groq
+SvcIA --> Tavily
+SvcBiz --> SMTP
+SvcBiz --> Google
+
+@enduml

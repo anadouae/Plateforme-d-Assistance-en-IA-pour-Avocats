@@ -1,0 +1,41 @@
+@startuml sanad-uc-planning
+left to right direction
+skinparam shadowing false
+title Cas d'utilisation — Planning (Agenda / Tâches / Notes)
+
+actor "Avocat" as Av
+actor "Assistant" as As
+actor "Admin cabinet" as Ac
+
+rectangle "Planning Sanad" {
+  usecase "Créer événement\n(audience, délai, RDV)" as P1
+  usecase "Modifier / supprimer\névénement" as P2
+  usecase "Lier événement\nà un dossier" as P3
+  usecase "Créer tâche" as P4
+  usecase "Changer statut tâche\n(todo/doing/done)" as P5
+  usecase "Créer note" as P6
+  usecase "Consulter planning\ncabinet" as P7
+}
+
+Av --> P1
+Av --> P2
+Av --> P3
+Av --> P4
+Av --> P5
+Av --> P6
+Av --> P7
+
+As --> P1
+As --> P2
+As --> P3
+As --> P4
+As --> P5
+As --> P6
+As --> P7
+
+Ac --> P1
+Ac --> P7
+
+P1 ..> P3 : <<extend>>
+P4 ..> P3 : <<extend>>
+@enduml

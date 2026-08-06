@@ -1,0 +1,55 @@
+@startuml sanad-diagramme-acteurs
+title Diagramme des acteurs — Plateforme Sanad
+skinparam actorStyle awesome
+skinparam shadowing false
+skinparam backgroundColor #F5F0E8
+
+actor "Avocat" as Avocat
+actor "Assistant juridique" as Assistant
+actor "Admin cabinet" as AdminCabinet
+actor "Admin WebVoice" as AdminWV
+actor "Cabinet d'avocats\n<<organisation>>" as Cabinet
+
+actor "Google OAuth\n<<system>>" as Google
+actor "Serveur SMTP\n<<system>>" as SMTP
+actor "Ollama / LLM cloud\n<<system>>" as LLM
+actor "MinIO\n<<system>>" as MinIO
+
+rectangle "Système Sanad" as Sanad
+
+Cabinet --|> AdminCabinet
+Cabinet --|> Avocat
+Cabinet --|> Assistant
+
+Avocat --> Sanad : utilise (cœur plaidoirie)
+Assistant --> Sanad : utilise (préparation)
+AdminCabinet --> Sanad : administre cabinet
+AdminWV --> Sanad : supervise plateforme
+
+Google --> Sanad : OAuth
+SMTP --> Sanad : emails
+LLM --> Sanad : correction / synthèse
+MinIO --> Sanad : fichiers
+
+note right of Avocat
+  Dicter, corriger, modifier,
+  exporter PDF/DOC, classer,
+  dossiers, documents, planning
+end note
+
+note right of Assistant
+  Dossiers, pièces, planning,
+  consulter / exporter plaidoiries
+  PAS de dictée plaidoirie
+end note
+
+note right of AdminCabinet
+  Équipe, invitations, rôles,
+  paramètres cabinet + métier
+end note
+
+note bottom of AdminWV
+  Approuver / suspendre cabinets,
+  métriques, audit — sans contenu client
+end note
+@enduml

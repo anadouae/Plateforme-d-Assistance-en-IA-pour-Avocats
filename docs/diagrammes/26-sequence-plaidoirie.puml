@@ -1,0 +1,52 @@
+@startuml sanad-sequence-plaidoirie
+' ============================================================
+' Sanad — Séquence : Parcours plaidoirie (cœur)
+' ============================================================
+
+skinparam shadowing false
+skinparam backgroundColor #F5F0E8
+
+title Séquence — Dicter → Corriger → Modifier → Exporter / Classer
+
+actor "Avocat" as U
+participant "Frontend\n/redaction" as FE
+participant "API Dictation\n/api/dictation" as DICT
+participant "Service IA\n(Ollama / LLM)" as IA
+participant "API Documents\n/api/documents" as DOC
+participant "MinIO" as S3
+database "PostgreSQL" as DB
+
+== 1. Dictée ==
+U -> FE : Micro AR / saisie texte
+FE -> FE : Afficher texte brut
+
+== 2. Transcription & correction ==
+U -> FE : Clic « Corriger »
+FE -> DICT : POST /api/dictation/polish\n{ text }
+DICT -> IA : Corriger (sans inventer)
+IA --> DICT : texte corrigé
+DICT --> FE : { polished, provider }
+FE -> FE : Afficher texte éditable
+U -> FE : Modifier / vérifier le texte
+
+== 3. Document officiel ==
+U -> FE : Clic « Générer le document »
+FE -> DICT : POST /api/dictation/compose\n{ text, doc_type: plaidoirie }
+DICT -> IA : Structurer titre + corps
+IA --> DICT : { title, body }
+DICT --> FE : document officiel
+U -> FE : Modifier titre / corps librement
+
+== 4a. Export local ==
+U -> FE : PDF / Imprimer  ou  DOC
+FE -> FE : Générer fichier côté client\n(export-official-doc)
+
+== 4b. Classer dans un dossier ==
+U -> FE : Choisir dossier + Enregistrer
+FE -> DOC : POST /api/documents/upload\n(case_id + fichier)
+DOC -> S3 : stocker {cabinet}/{case}/fichier
+DOC -> DB : INSERT documents
+DOC --> FE : DocumentItem
+FE --> U : « Plaidoirie enregistrée »
+
+@enduml

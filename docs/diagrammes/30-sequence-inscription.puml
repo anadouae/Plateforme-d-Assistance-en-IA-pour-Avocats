@@ -1,0 +1,25 @@
+@startuml sanad-sequence-inscription
+skinparam shadowing false
+title Séquence — Inscription cabinet
+
+actor "Futur admin" as U
+participant "Frontend\n/register" as FE
+participant "API Auth" as API
+database "PostgreSQL" as DB
+participant "SMTP" as Mail
+actor "Admin WebVoice" as AW
+
+U -> FE : Infos cabinet + compte
+FE -> API : POST /api/auth/register
+API -> DB : CREATE cabinet (pending)\n+ user admin_cabinet
+API -> DB : CREATE email_token verify
+API -> Mail : Email vérification
+API --> FE : Compte créé (à vérifier)
+U -> FE : Confirmer email
+FE -> API : GET /api/auth/verify-email
+API -> DB : is_verified = true
+AW -> API : Approuver cabinet
+API -> DB : cabinet.status = active\nuser.is_active = true
+U -> FE : Se connecter → /dashboard
+
+@enduml

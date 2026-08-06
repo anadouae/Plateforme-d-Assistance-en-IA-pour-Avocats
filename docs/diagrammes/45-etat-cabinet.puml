@@ -1,0 +1,12 @@
+@startuml
+title États — Cycle de vie d'un cabinet
+[*] --> PENDING : register()
+PENDING --> ACTIVE : approve()\n(Admin WebVoice)
+ACTIVE --> SUSPENDED : suspend()
+SUSPENDED --> ACTIVE : reactivate()
+ACTIVE --> [*] : (fin logique)
+note right of PENDING
+  Membres non pleinement actifs
+  jusqu'à approbation
+end note
+@enduml

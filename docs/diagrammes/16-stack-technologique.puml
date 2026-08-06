@@ -1,0 +1,83 @@
+@startuml sanad-stack-technologique
+' ============================================================
+' Sanad — Diagramme stack technologique
+' ============================================================
+
+skinparam shadowing false
+skinparam rectangle {
+  BackgroundColor #F0FDF4
+  BorderColor #166534
+}
+
+title Stack technologique — Sanad Avocat AI Assistance
+
+together {
+  rectangle "**Couche Présentation**" as L1 {
+    card "Next.js 14\n(App Router)" as nextjs
+    card "TypeScript" as ts
+    card "Tailwind CSS" as tw
+    card "Zustand" as zu
+    card "Framer Motion" as fm
+    card "React Three Fiber" as r3f
+    card "Lucide Icons" as lucide
+  }
+}
+
+together {
+  rectangle "**Couche API / Logique**" as L2 {
+    card "FastAPI" as fastapi
+    card "Pydantic v2" as pydantic
+    card "SQLAlchemy 2" as sqlalchemy
+    card "Alembic" as alembic
+    card "Celery" as celery
+    card "python-jose\n(JWT)" as jwt
+    card "bcrypt" as bcrypt
+    card "Fernet\n(AES-256)" as fernet
+  }
+}
+
+together {
+  rectangle "**Couche Données**" as L3 {
+    card "PostgreSQL\n(Neon)" as pg
+    card "ChromaDB" as chroma
+    card "Redis" as redis
+    card "MinIO\n(S3-compatible)" as minio
+  }
+}
+
+together {
+  rectangle "**Couche Intelligence Artificielle**" as L4 {
+    card "BGE-M3\n(embeddings FR/AR)" as bge
+    card "Groq\nLlama 3.3 70B" as groq
+    card "Ollama\n(fallback local)" as ollama
+    card "Tesseract\nOCR fra+ara" as ocr
+    card "PyMuPDF" as pymupdf
+    card "Tavily /\nDuckDuckGo" as web
+    card "agent.py\n(routage)" as agent
+  }
+}
+
+together {
+  rectangle "**Couche Infrastructure**" as L5 {
+    card "Docker Compose\n(8 services)" as docker
+    card "Vercel\n(frontend prod)" as vercel
+    card "Render / Railway\n(backend prod)" as render
+    card "Sentry\n(monitoring)" as sentry
+    card "GitHub Actions\n(CI/CD)" as gha
+    card "MailHog / SMTP" as mail
+  }
+}
+
+L1 -[hidden]down- L2
+L2 -[hidden]down- L3
+L3 -[hidden]down- L4
+L4 -[hidden]down- L5
+
+note bottom of L4
+  **Principe IA**
+  ChromaDB + Web → extraits
+  Groq → rédaction finale
+  Jamais de réponse sans source
+end note
+
+@enduml

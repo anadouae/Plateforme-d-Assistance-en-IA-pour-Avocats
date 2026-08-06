@@ -1,0 +1,78 @@
+@startuml sanad-architecture-principale
+' ============================================================
+' Sanad — Architecture principale (vue claire)
+' Cœur produit : Plaidoirie (pas le chat)
+' ============================================================
+
+skinparam shadowing false
+skinparam backgroundColor #F5F0E8
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+skinparam rectangle {
+  BackgroundColor #FFFFFF
+  BorderColor #0B1F4A
+  RoundCorner 12
+}
+skinparam database {
+  BackgroundColor #E8EEF7
+  BorderColor #0B1F4A
+}
+skinparam actor {
+  BackgroundColor #D2B589
+  BorderColor #0B1F4A
+}
+
+title Sanad — Architecture principale
+
+actor "Avocat" as Avocat
+actor "Assistant\njuridique" as Assist
+actor "Admin\ncabinet" as AdminC
+
+rectangle "Navigateur Web\n(FR / AR / EN)" as Browser #0B1F4A
+
+rectangle "Frontend\nNext.js · TypeScript · Tailwind\n:3000" as Front #FFFFFF
+
+rectangle "Backend API\nFastAPI · JWT · Multi-tenant\n:8001" as API #0B1F4A
+
+rectangle "Workers Celery\n(OCR / indexation)" as Celery #FFFFFF
+
+database "PostgreSQL\nDonnées métier\n:5432" as PG
+database "MinIO\nFichiers documents\n:9000" as MinIO
+database "Redis\nCache / files\n:6379" as Redis
+database "ChromaDB\nIndex sémantique" as Chroma
+
+cloud "IA\nOllama (+ cloud fallback)\nCorrection / synthèse" as LLM
+
+Avocat --> Browser
+Assist --> Browser
+AdminC --> Browser
+
+Browser --> Front : HTTPS
+Front --> API : REST + JWT Bearer
+
+API --> PG : SQLAlchemy
+API --> MinIO : upload / download
+API --> Redis : tâches
+API --> LLM : polish / compose\n(plaidoirie)
+API --> Chroma : recherche\n(pièces / corpus)
+
+Celery --> Redis
+Celery --> MinIO
+Celery --> Chroma
+Celery --> PG
+
+note right of API
+  **Isolation multi-tenant**
+  Filtrage par cabinet_id
+  Rôles : avocat / assistant /
+  admin_cabinet / admin_webvoice
+end note
+
+note bottom of Front
+  **Cœur UI**
+  Plaidoirie · Dossiers · Documents
+  Planning · Équipe · Paramètres
+  (Chat retiré du menu principal)
+end note
+
+@enduml

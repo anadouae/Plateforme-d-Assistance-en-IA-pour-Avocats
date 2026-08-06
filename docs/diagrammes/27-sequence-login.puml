@@ -1,0 +1,23 @@
+@startuml sanad-sequence-login
+skinparam shadowing false
+title Séquence — Connexion JWT
+
+actor "Utilisateur" as U
+participant "Frontend\n/login" as FE
+participant "API Auth\n/api/auth" as API
+database "PostgreSQL" as DB
+
+U -> FE : email + mot de passe
+FE -> API : POST /api/auth/login
+API -> DB : SELECT user + cabinet
+alt Identifiants OK + compte actif
+  API -> API : Générer access_token\n+ refresh_token (JWT)
+  API --> FE : tokens + user
+  FE -> FE : localStorage + Zustand
+  FE --> U : Redirection /dashboard
+else Échec
+  API --> FE : 401 / 403
+  FE --> U : Message d'erreur
+end
+
+@enduml

@@ -1,0 +1,110 @@
+@startuml
+title MCD / Modèle entité-relation — Sanad
+skinparam linetype ortho
+
+entity "cabinets" as C {
+  * id : UUID <<PK>>
+  --
+  name
+  city
+  address
+  barreau
+  status
+  created_at
+}
+
+entity "users" as U {
+  * id : UUID <<PK>>
+  --
+  email <<unique>>
+  hashed_password
+  full_name
+  role
+  is_active
+  is_verified
+  * cabinet_id <<FK>>
+}
+
+entity "cases" as CA {
+  * id : UUID <<PK>>
+  --
+  reference <<unique>>
+  client_name
+  case_type
+  status
+  * cabinet_id <<FK>>
+  * responsible_id <<FK>>
+}
+
+entity "documents" as D {
+  * id : UUID <<PK>>
+  --
+  filename
+  original_name
+  mime_type
+  storage_path
+  extracted_text
+  status
+  * case_id <<FK>>
+  * cabinet_id <<FK>>
+  * uploaded_by <<FK>>
+}
+
+entity "agenda_events" as A {
+  * id : UUID <<PK>>
+  --
+  title
+  event_type
+  starts_at
+  case_id <<FK>>
+  * cabinet_id <<FK>>
+}
+
+entity "case_tasks" as T {
+  * id : UUID <<PK>>
+  --
+  title
+  status
+  due_at
+  case_id <<FK>>
+  * cabinet_id <<FK>>
+}
+
+entity "case_notes" as N {
+  * id : UUID <<PK>>
+  --
+  title
+  body
+  case_id <<FK>>
+  * cabinet_id <<FK>>
+}
+
+entity "email_tokens" as E {
+  * id : UUID <<PK>>
+  --
+  token_hash <<unique>>
+  token_type
+  expires_at
+  * user_id <<FK>>
+}
+
+entity "audit_logs" as L {
+  * id : UUID <<PK>>
+  --
+  action
+  user_id
+  cabinet_id
+  ip_address
+  created_at
+}
+
+C ||--o{ U
+C ||--o{ CA
+U ||--o{ CA : responsible
+CA ||--o{ D
+C ||--o{ D
+CA ||--o{ A
+CA ||--o{ T
+CA ||--o{ N
+U ||--o{ E
+@enduml

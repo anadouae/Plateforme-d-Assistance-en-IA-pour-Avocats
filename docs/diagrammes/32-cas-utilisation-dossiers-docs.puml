@@ -1,0 +1,62 @@
+@startuml sanad-uc-dossiers-docs
+left to right direction
+skinparam shadowing false
+title Cas d'utilisation — Dossiers & Documents
+
+actor "Avocat" as Av
+actor "Assistant" as As
+actor "Admin cabinet" as Ac
+
+rectangle "Dossiers" {
+  usecase "Créer dossier" as C1
+  usecase "Lister / rechercher\ndossiers" as C2
+  usecase "Modifier dossier" as C3
+  usecase "Voir détail dossier" as C4
+  usecase "Filtrer par statut" as C5
+}
+
+rectangle "Documents" {
+  usecase "Uploader pièce" as D1
+  usecase "Télécharger pièce" as D2
+  usecase "Voir texte OCR" as D3
+  usecase "Relancer extraction" as D4
+  usecase "Supprimer document" as D5
+  usecase "Synthèse document (IA)" as D6
+  usecase "Question sur document (IA)" as D7
+}
+
+Av --> C1
+Av --> C2
+Av --> C3
+Av --> C4
+Av --> C5
+Av --> D1
+Av --> D2
+Av --> D3
+Av --> D4
+Av --> D5
+Av --> D6
+Av --> D7
+
+As --> C1
+As --> C2
+As --> C4
+As --> C5
+As --> D1
+As --> D2
+As --> D3
+' Pas D5 D6 D7 pour assistant
+
+Ac --> C1
+Ac --> C2
+Ac --> C3
+Ac --> D1
+Ac --> D5
+Ac --> D6
+
+D1 ..> D3 : <<include>>
+note right of D5
+  Suppression interdite
+  pour assistant_juridique
+end note
+@enduml

@@ -1,0 +1,10 @@
+@startuml
+title États — Statut d'un dossier (Case)
+[*] --> EN_COURS : create()
+EN_COURS --> URGENT : update(status)
+URGENT --> EN_COURS : update(status)
+EN_COURS --> CLOTURE : update(status)
+URGENT --> CLOTURE : update(status)
+CLOTURE --> EN_COURS : réouverture
+CLOTURE --> [*]
+@enduml

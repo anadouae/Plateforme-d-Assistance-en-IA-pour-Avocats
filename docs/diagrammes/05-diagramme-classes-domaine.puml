@@ -1,0 +1,162 @@
+@startuml sanad-classes-domaine
+' ============================================================
+' Sanad — Diagramme de classes (modèle domaine)
+' Aligné sur backend/app/models/__init__.py
+' ============================================================
+
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam class {
+  BackgroundColor #F8FAFC
+  BorderColor #1E40AF
+  ArrowColor #1E40AF
+}
+
+title Diagramme de classes — Modèle domaine Sanad
+
+enum UserRole {
+  AVOCAT
+  ASSISTANT_JURIDIQUE
+  ADMIN_CABINET
+  ADMIN_WEBVOICE
+}
+
+enum CabinetStatus {
+  ACTIVE
+  SUSPENDED
+  PENDING
+}
+
+enum DocumentStatus {
+  PENDING
+  PROCESSING
+  INDEXED
+  FAILED
+}
+
+enum TokenType {
+  VERIFY_EMAIL
+  RESET_PASSWORD
+  TEAM_INVITE
+}
+
+class Cabinet {
+  - id : UUID
+  - name : String
+  - city : String
+  - address : Text
+  - barreau : String
+  - ice : String {optional}
+  - status : CabinetStatus
+  - created_at : DateTime
+}
+
+class User {
+  - id : UUID
+  - email : String {unique}
+  - hashed_password : String
+  - full_name : String
+  - phone : String {optional}
+  - role : UserRole
+  - is_active : Boolean
+  - is_verified : Boolean
+  - failed_login_attempts : Integer
+  - locked_until : DateTime {optional}
+  - google_id : String {optional}
+  - totp_secret : String {optional}
+  - totp_enabled : Boolean
+  - cabinet_id : UUID
+  - created_at : DateTime
+}
+
+class Case {
+  - id : UUID
+  - reference : String {unique, WV-AAAA-XXXX}
+  - client_name : String
+  - case_type : String
+  - status : String
+  - description : Text {optional}
+  - tags : String {optional}
+  - cabinet_id : UUID
+  - responsible_id : UUID
+  - opened_at : DateTime
+  - updated_at : DateTime
+}
+
+class Document {
+  - id : UUID
+  - filename : String
+  - original_name : String
+  - mime_type : String
+  - file_size : Integer
+  - storage_path : String
+  - extracted_text : Text {optional}
+  - ocr_score : Integer {optional}
+  - status : DocumentStatus
+  - case_id : UUID
+  - cabinet_id : UUID
+  - uploaded_by : UUID
+  - created_at : DateTime
+}
+
+class ChatMessage {
+  - id : UUID
+  - case_id : UUID {optional}
+  - cabinet_id : UUID
+  - user_id : UUID
+  - question : Text
+  - answer : Text
+  - source_type : String
+  - sources : Text {JSON}
+  - confidence_score : Integer
+  - created_at : DateTime
+}
+
+class AuditLog {
+  - id : UUID
+  - user_id : UUID {optional}
+  - cabinet_id : UUID {optional}
+  - action : String
+  - ip_address : String {optional}
+  - details : Text {optional}
+  - created_at : DateTime
+}
+
+class EmailToken {
+  - id : UUID
+  - user_id : UUID
+  - token_hash : String {unique}
+  - token_type : TokenType
+  - expires_at : DateTime
+  - used_at : DateTime {optional}
+  - created_at : DateTime
+}
+
+' --- Associations ---
+Cabinet "1" *-- "0..*" User : emploie >
+Cabinet "1" *-- "0..*" Case : contient >
+User "1" -- "0..*" Case : responsable >
+Case "1" *-- "0..*" Document : contient >
+Case "0..1" *-- "0..*" ChatMessage : historise >
+User "1" -- "0..*" ChatMessage : pose >
+User "1" -- "0..*" EmailToken : possède >
+User "1" -- "0..*" AuditLog : génère >
+Cabinet "1" -- "0..*" AuditLog : concerne >
+
+User ..> UserRole : utilise
+Cabinet ..> CabinetStatus : utilise
+Document ..> DocumentStatus : utilise
+EmailToken ..> TokenType : utilise
+
+note right of Cabinet
+  **Règle multi-tenant**
+  Chaque cabinet = tenant isolé.
+  Données invisibles entre cabinets.
+end note
+
+note bottom of Document
+  stockage_path → MinIO (chiffré AES-256)
+  extracted_text → indexé dans ChromaDB
+end note
+
+@enduml

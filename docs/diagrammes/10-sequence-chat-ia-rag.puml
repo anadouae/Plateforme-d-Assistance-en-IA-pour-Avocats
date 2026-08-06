@@ -1,0 +1,82 @@
+@startuml sanad-sequence-chat-ia
+' ============================================================
+' Sanad — Séquence : Chat IA avec routage multi-sources
+' Scénario D-01, D-03, D-04 / F-20 à F-27
+' ============================================================
+
+skinparam shadowing false
+
+title Diagramme de séquence — Assistant IA (routage + SSE)
+
+actor "Avocat" as U
+participant "Frontend\nChatPanel" as FE
+participant "ChatAPI" as API
+participant "AgentRouter\nagent.py" as Agent
+participant "RAGService\nChromaDB" as RAG
+participant "WebSearch\nTavily/DDG" as Web
+participant "LLMService\nGroq" as LLM
+database "PostgreSQL" as DB
+participant "AuditService" as Audit
+
+== Poser une question ==
+
+U -> FE : Saisir question\n+ contexte (case_id / document_id)
+FE -> API : POST /api/chat/stream\n{ question, case_id?, document_id? }\nAuthorization: Bearer JWT
+
+API -> API : Vérifier JWT + rôle\n(avocat ou admin_cabinet)
+API -> Agent : route(question, context)
+
+alt document_id fourni
+  Agent -> RAG : searchDocument(doc_id, question)
+  RAG --> Agent : extraits + scores
+  note right : source_type = "document"
+else case_id fourni
+  Agent -> RAG : searchCase(case_id, question)
+  RAG --> Agent : extraits documents du dossier
+  note right : source_type = "document"
+else question juridique générale
+  Agent -> RAG : searchCorpus(question)\n(DOC, CPP, CPC)
+  RAG --> Agent : articles + paragraphes
+  note right : source_type = "rag"
+
+  alt corpus insuffisant (score < seuil)
+    Agent -> Web : search(question)
+    Web --> Agent : résultats web
+    note right : source_type = "rag+web"
+  end
+end
+
+Agent -> Agent : Construire prompt\n(extraits + citations + question)
+Agent -> Agent : Calculer confidence_score
+
+alt Aucune source pertinente
+  Agent --> API : { answer: "Aucune source trouvée",\nconfidence: 0 }
+else Sources trouvées
+  API --> FE : SSE event: meta\n{ source_type, confidence, sources[] }
+
+  Agent -> LLM : generateStream(prompt)
+
+  loop tokens streaming
+    LLM --> Agent : token
+    Agent --> API : SSE event: token\n{ content: "..." }
+    API --> FE : EventSource onmessage
+    FE --> U : Affichage progressif\n+ curseur animé
+  end
+
+  opt confidence_score < 60
+    FE --> U : Alerte ambre\n"Score faible — vérifiez sources"
+  end
+
+  FE --> U : Afficher citations\n+ disclaimer juridique
+end
+
+API -> DB : INSERT ChatMessage\n(question, answer, sources, score)
+API -> Audit : log("chat.query", user,\nsource_type, confidence, duration)
+API --> FE : SSE event: done\n{ id: message_id }
+
+opt Export PDF
+  U -> FE : Cliquer "Exporter PDF"
+  FE -> FE : exportAiResponsePdf(result)\n→ fenêtre impression
+end
+
+@enduml

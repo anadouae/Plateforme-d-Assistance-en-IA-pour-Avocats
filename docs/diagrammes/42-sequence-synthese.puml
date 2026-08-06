@@ -1,0 +1,16 @@
+@startuml
+title Séquence — Synthèse document (avocat / admin)
+actor "Avocat" as U
+participant "Frontend document" as FE
+participant "API Documents" as API
+participant "LLM" as IA
+database "PostgreSQL" as DB
+
+U -> FE : Demander synthèse
+FE -> API : GET /api/documents/{id}/synthese
+API -> DB : charger extracted_text\n+ vérifier rôle ≠ assistant
+API -> IA : résumer pièce
+IA --> API : synthèse
+API --> FE : texte synthèse
+FE --> U : Affichage
+@enduml

@@ -1,0 +1,17 @@
+@startuml
+title Séquence — Connexion avec 2FA
+actor "Utilisateur" as U
+participant "Frontend" as FE
+participant "API Auth" as API
+database "PostgreSQL" as DB
+
+U -> FE : email + password
+FE -> API : POST /api/auth/login
+API -> DB : user (totp_enabled=true)
+API --> FE : { needs_2fa: true }
+U -> FE : code TOTP 6 chiffres
+FE -> API : POST /api/auth/login\n+ totp_code
+API -> API : Vérifier TOTP
+API --> FE : tokens JWT
+FE --> U : /dashboard
+@enduml

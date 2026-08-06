@@ -1,0 +1,54 @@
+@startuml
+title Diagramme de composants — Sanad
+skinparam componentStyle rectangle
+
+package "Frontend Next.js" {
+  [Pages publiques] as Pub
+  [Espace cabinet AppShell] as App
+  [Module Plaidoirie] as Red
+  [Module Dossiers] as Cases
+  [Module Documents] as Docs
+  [Module Planning] as Plan
+  [Module Équipe] as Team
+  [Admin WebVoice] as Adm
+}
+
+package "Backend FastAPI" {
+  [Auth API] as Auth
+  [Dictation API] as Dict
+  [Cases API] as CApi
+  [Documents API] as DApi
+  [Workspace API] as WApi
+  [Team API] as TApi
+  [Admin API] as AApi
+  [Celery Workers] as Cel
+}
+
+database "PostgreSQL" as PG
+database "MinIO" as MN
+database "Redis" as RD
+database "ChromaDB" as CH
+cloud "LLM / Ollama" as LLM
+
+Pub --> Auth
+App --> Auth
+Red --> Dict
+Red --> DApi
+Cases --> CApi
+Docs --> DApi
+Plan --> WApi
+Team --> TApi
+Adm --> AApi
+
+Dict --> LLM
+DApi --> MN
+DApi --> PG
+DApi --> Cel
+CApi --> PG
+WApi --> PG
+Auth --> PG
+Cel --> RD
+Cel --> MN
+Cel --> CH
+Cel --> PG
+@enduml

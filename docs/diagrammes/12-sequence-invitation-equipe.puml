@@ -1,0 +1,58 @@
+@startuml sanad-sequence-invitation
+' ============================================================
+' Sanad — Séquence : Invitation collaborateur
+' Scénario D-05 / F-06
+' ============================================================
+
+skinparam shadowing false
+
+title Diagramme de séquence — Invitation d'un collaborateur
+
+actor "Admin cabinet" as AC
+actor "Nouveau\ncollaborateur" as NC
+participant "Frontend" as FE
+participant "TeamAPI" as API
+participant "AuthService" as Auth
+database "PostgreSQL" as DB
+participant "EmailService" as Mail
+participant "AuditService" as Audit
+
+== Invitation ==
+
+AC -> FE : Équipe → Inviter\n(email, nom, rôle)
+FE -> API : POST /api/team/invite\n{ email, full_name, role }\nAuthorization: Bearer JWT
+
+API -> API : Vérifier rôle = admin_cabinet
+API -> DB : Vérifier email non existant\ndans le cabinet
+
+API -> Auth : hashPassword(temp_password)
+API -> DB : INSERT User\n(role=assistant|avocat,\nis_active=true, is_verified=false)
+DB --> API : user_id
+
+API -> DB : INSERT EmailToken\n(type=TEAM_INVITE, expire=72h)
+API -> Mail : sendTeamInvite(email, token, cabinet_name)
+Mail --> NC : Email invitation
+
+API -> Audit : log("team.invite", admin, email)
+API --> FE : { message: "Invitation envoyée" }
+FE --> AC : Confirmation
+
+== Activation par le collaborateur ==
+
+NC -> FE : Cliquer lien invitation
+FE -> API : GET lien → page set-password
+NC -> FE : Définir mot de passe
+FE -> API : POST /api/auth/activate-invite\n{ token, password }
+API -> DB : Valider EmailToken
+API -> DB : UPDATE User\nis_verified=true, password=hash
+API -> Audit : log("team.member_activated")
+API --> FE : TokenResponse
+FE --> NC : Redirection dashboard
+
+note over NC
+  Si rôle = assistant_juridique :
+  accès upload + consultation
+  PAS de chat IA ni suppression
+end note
+
+@enduml

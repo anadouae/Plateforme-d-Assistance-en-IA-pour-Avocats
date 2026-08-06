@@ -1,0 +1,68 @@
+@startuml sanad-sequence-synthese
+' ============================================================
+' Sanad — Séquence : Synthèse automatique document
+' Scénario D-02 / F-30 à F-32
+' ============================================================
+
+skinparam shadowing false
+
+title Diagramme de séquence — Synthèse documentaire
+
+actor "Avocat" as U
+participant "Frontend\nSynthesisPanel" as FE
+participant "DocumentsAPI" as API
+participant "SynthesisService" as Synth
+participant "RAGService" as RAG
+participant "LLMService\nGroq" as LLM
+database "PostgreSQL" as DB
+participant "AuditService" as Audit
+
+== Demande de synthèse ==
+
+U -> FE : Ouvrir document indexé\n+ cliquer "Synthèse"
+FE -> FE : Afficher skeleton loading
+FE -> API : GET /api/documents/{id}/synthese\nAuthorization: Bearer JWT
+
+API -> API : Vérifier JWT + cabinet_id
+API -> DB : SELECT Document\nWHERE status=INDEXED
+DB --> API : document + extracted_text
+
+alt Document non indexé
+  API --> FE : 400 "Document en cours de traitement"
+  FE --> U : Message d'attente
+else Document prêt
+  API -> Synth : synthesize(document)
+
+  Synth -> RAG : searchDocument(id, "synthèse complète")
+  RAG --> Synth : texte structuré
+
+  Synth -> LLM : generate(prompt_synthèse)\n"Extraire : parties, dates,\nmontants, clauses à risque"
+
+  note over LLM
+    Objectif performance :
+    PDF 20 pages < 30 secondes
+  end note
+
+  LLM --> Synth : JSON structuré\n{ parties[], dates[], amounts[],\nrisk_clauses[], summary }
+
+  Synth -> Synth : Construire citations\n(paragraphes sources)
+  Synth -> Synth : Ajouter disclaimer
+
+  API -> Audit : log("document.synthesis", user, doc_id)
+  API --> FE : SynthesisResult\n{ parties, dates, amounts,\nrisk_clauses, attention_points,\nsummary, sources, disclaimer }
+
+  FE --> U : Grille synthèse pro\n(parties | dates | montants)\n+ alertes clauses à risque
+end
+
+== Question libre sur le document ==
+
+U -> FE : Poser question ciblée\nsur le bail
+FE -> API : POST /api/documents/{id}/ask\n{ question }
+API -> RAG : searchDocument(id, question)
+RAG --> API : paragraphe exact
+API -> LLM : generate(prompt + extrait)
+LLM --> API : réponse avec citation
+API --> FE : AIResult\n{ answer, sources[], confidence }
+FE --> U : Réponse citant\nle paragraphe exact (D-03)
+
+@enduml

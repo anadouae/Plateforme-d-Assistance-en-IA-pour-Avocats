@@ -1,0 +1,24 @@
+@startuml sanad-sequence-upload
+skinparam shadowing false
+title Séquence — Upload document (pièce dossier)
+
+actor "Utilisateur\ncabinet" as U
+participant "Frontend" as FE
+participant "API Documents" as API
+participant "MinIO" as S3
+participant "Celery Worker" as W
+database "PostgreSQL" as DB
+
+U -> FE : Sélectionner fichier + dossier
+FE -> API : POST /api/documents/upload
+API -> API : Vérifier JWT + cabinet_id
+API -> S3 : PUT {cabinet_id}/{case_id}/{file}
+API -> DB : INSERT document\nstatus=pending
+API --> FE : Document créé
+API -> W : enqueue OCR / extraction
+W -> S3 : lire fichier
+W -> W : OCR / extract text
+W -> DB : UPDATE extracted_text\nstatus=indexed
+FE --> U : Statut mis à jour
+
+@enduml

@@ -1,0 +1,39 @@
+@startuml sanad-uc-equipe-admin
+left to right direction
+skinparam shadowing false
+title Cas d'utilisation — Équipe & Admin plateforme
+
+actor "Admin cabinet" as Ac
+actor "Admin WebVoice" as Aw
+actor "Nouveau membre" as N
+
+rectangle "Équipe cabinet" {
+  usecase "Inviter par email" as E1
+  usecase "Générer lien invitation" as E2
+  usecase "Changer rôle membre" as E3
+  usecase "Lister membres" as E4
+  usecase "Activer compte (invitation)" as E5
+}
+
+rectangle "Admin WebVoice" {
+  usecase "Lister cabinets" as A1
+  usecase "Approuver cabinet" as A2
+  usecase "Suspendre cabinet" as A3
+  usecase "Réactiver cabinet" as A4
+  usecase "Voir métriques" as A5
+  usecase "Voir audit logs" as A6
+}
+
+Ac --> E1
+Ac --> E2
+Ac --> E3
+Ac --> E4
+N --> E5
+Aw --> A1
+Aw --> A2
+Aw --> A3
+Aw --> A4
+Aw --> A5
+Aw --> A6
+E1 ..> E5 : <<include>>
+@enduml

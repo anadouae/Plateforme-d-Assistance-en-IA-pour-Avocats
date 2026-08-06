@@ -1,0 +1,15 @@
+@startuml
+title Séquence — Admin WebVoice approuve un cabinet
+actor "Admin WebVoice" as AW
+participant "Frontend /admin" as FE
+participant "API Admin" as API
+database "PostgreSQL" as DB
+
+AW -> FE : Liste cabinets pending
+FE -> API : GET /api/admin/cabinets
+API --> FE : liste
+AW -> FE : Approuver
+FE -> API : PATCH .../approve
+API -> DB : cabinet.status = active\nmembres vérifiés → is_active
+API --> FE : OK
+@enduml

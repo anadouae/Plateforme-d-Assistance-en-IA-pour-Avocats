@@ -1,0 +1,87 @@
+@startuml sanad-sequence-upload
+' ============================================================
+' Sanad — Séquence : Upload et traitement document
+' Scénario D-02 / F-11 à F-14
+' ============================================================
+
+skinparam shadowing false
+
+title Diagramme de séquence — Upload document (OCR + indexation)
+
+actor "Avocat /\nAssistant" as U
+participant "Frontend" as FE
+participant "DocumentsAPI" as API
+participant "StorageService\n(MinIO)" as MinIO
+database "PostgreSQL" as DB
+queue "Redis\n(Celery)" as Redis
+participant "CeleryWorker" as Worker
+participant "DocumentPipeline" as Pipeline
+participant "ChromaDB\n+ BGE-M3" as Chroma
+participant "AuditService" as Audit
+
+== Upload ==
+
+U -> FE : Sélectionner fichier\n(PDF/DOCX/image, max 50 Mo)
+FE -> FE : Valider type MIME + taille
+FE -> API : POST /api/documents/upload\n(multipart: file + case_id)\nAuthorization: Bearer JWT
+
+API -> API : Vérifier JWT + rôle\n+ cabinet_id du dossier
+API -> MinIO : uploadEncrypted(file)\nFernet AES-256
+MinIO --> API : storage_path
+
+API -> DB : INSERT Document\n(status=PENDING, storage_path)
+DB --> API : document_id
+
+API -> Redis : enqueue process_document(document_id)
+API -> Audit : log("document.upload", user, doc_id)
+API --> FE : 201 DocumentResponse\n{ id, status: "pending" }
+
+FE --> U : Badge "En attente"
+FE -> FE : Démarrer polling statut\n(toutes les 3s)
+
+== Traitement asynchrone (Celery) ==
+
+Redis -> Worker : process_document(document_id)
+Worker -> DB : UPDATE status = PROCESSING
+Worker -> MinIO : downloadDecrypted(storage_path)
+MinIO --> Worker : fichier brut
+
+Worker -> Pipeline : extractText(file)
+
+alt PDF natif
+  Pipeline -> Pipeline : PyMuPDF extraction
+else DOCX
+  Pipeline -> Pipeline : python-docx extraction
+else Image / PDF scanné
+  Pipeline -> Pipeline : pdf2image + Tesseract\n(fra + ara)
+  Pipeline -> Pipeline : Calculer ocr_score
+end
+
+Pipeline --> Worker : extracted_text, ocr_score
+
+Worker -> DB : UPDATE extracted_text, ocr_score
+
+alt ocr_score < 70
+  Worker -> DB : ocr_alert = true
+end
+
+Worker -> Chroma : indexDocument(text, embeddings BGE-M3)\ncollection = cabinet_id + case_id
+Chroma --> Worker : indexed
+
+alt Indexation réussie
+  Worker -> DB : UPDATE status = INDEXED
+else Erreur
+  Worker -> DB : UPDATE status = FAILED
+end
+
+== Polling frontend ==
+
+loop jusqu'à INDEXED ou FAILED
+  FE -> API : GET /api/documents/{id}
+  API -> DB : SELECT Document
+  API --> FE : { status, ocr_score, ocr_alert }
+end
+
+FE --> U : Badge "Indexé" ou "Échec"\n+ alerte OCR si < 70%
+
+@enduml

@@ -1,0 +1,14 @@
+@startuml
+title Séquence — Créer un dossier
+actor "Utilisateur" as U
+participant "Frontend /cases/new" as FE
+participant "API Cases" as API
+database "PostgreSQL" as DB
+
+U -> FE : Formulaire (client, type, statut…)
+FE -> API : POST /api/cases
+API -> API : Vérifier JWT + cabinet_id
+API -> DB : INSERT case\n(reference unique)
+API --> FE : Case créé
+FE --> U : Redirection détail / liste
+@enduml

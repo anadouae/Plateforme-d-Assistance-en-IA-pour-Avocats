@@ -1,0 +1,46 @@
+@startuml sanad-uc-assistant
+' ============================================================
+' Sanad — Cas d'utilisation : Assistant juridique
+' ============================================================
+
+skinparam shadowing false
+skinparam backgroundColor #F5F0E8
+left to right direction
+
+title Cas d'utilisation — Assistant juridique
+
+actor "Assistant\njuridique" as A
+actor "Avocat" as Avocat
+
+rectangle "Espace Assistant — Sanad" {
+  usecase "Consulter / préparer\nles dossiers" as UC1
+  usecase "Uploader & classer\nles pièces" as UC2
+  usecase "Suivre planning\n(audiences, tâches, notes)" as UC3
+  usecase "Consulter les\nplaidoiries réalisées" as UC4
+  usecase "Exporter plaidoirie\nPDF ou DOC" as UC5
+}
+
+rectangle "Réservé à l'avocat" as ZoneAvocat #FFE4E1 {
+  usecase "Dicter / produire\nla plaidoirie" as UC_AV1
+  usecase "Modifier le texte\ncorrigé" as UC_AV2
+  usecase "Synthèse IA /\nanalyse dossier" as UC_AV3
+}
+
+A --> UC1
+A --> UC2
+A --> UC3
+A --> UC4
+A --> UC5
+
+Avocat --> UC_AV1
+Avocat --> UC_AV2
+Avocat --> UC_AV3
+Avocat --> UC1
+
+note right of A
+  **Rôle assistant**
+  Préparer et organiser
+  Pas de production de plaidoirie
+end note
+
+@enduml

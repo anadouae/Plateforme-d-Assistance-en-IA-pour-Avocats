@@ -1,0 +1,107 @@
+@startuml sanad-deploiement
+' ============================================================
+' Sanad — Diagramme de déploiement
+' Dev (Docker Compose) + Cible production
+' ============================================================
+
+skinparam shadowing false
+skinparam node {
+  BackgroundColor #F8FAFC
+  BorderColor #334155
+}
+
+title Diagramme de déploiement — Sanad
+
+node "Poste développeur" as Dev {
+  artifact "Navigateur" as Browser
+}
+
+node "Docker Host\n(localhost)" as Docker {
+
+  node "frontend:3000" as FE {
+    component [Next.js dev server] as NextDev
+  }
+
+  node "backend:8001" as BE {
+    component [Uvicorn\nFastAPI] as Uvicorn
+  }
+
+  node "celery-worker" as CW {
+    component [Celery Worker\nconcurrency=2] as Worker
+  }
+
+  node "postgres:5432" as PG {
+    database "PostgreSQL 16" as Postgres
+  }
+
+  node "redis:6379" as RD {
+    database "Redis 7" as Redis
+  }
+
+  node "minio:9000" as MI {
+    database "MinIO" as MinIO
+  }
+
+  node "mailhog:8025" as MH {
+    component [MailHog UI] as MailHog
+  }
+
+  node "chromadb\n(volume)" as CH {
+    database "ChromaDB\n/data/chromadb" as Chroma
+  }
+}
+
+cloud "Services cloud" as Cloud {
+  node "Neon\n(optionnel)" as Neon {
+    database "PostgreSQL\ncloud" as NeonDB
+  }
+  node "Groq API" as Groq
+  node "Tavily API" as Tavily
+  node "Google OAuth" as Google
+}
+
+node "Production (cible Sprint 4)" as Prod {
+  node "Vercel" as Vercel {
+    component [Next.js\nbuild statique/SSR] as NextProd
+  }
+  node "Render / Railway" as Render {
+    component [FastAPI + Celery] as BackProd
+  }
+  node "Sentry" as Sentry {
+    component [Error tracking] as SentryApp
+  }
+}
+
+' --- Dev ---
+Browser --> NextDev : HTTP :3000
+Browser --> Uvicorn : HTTP :8001\n(API + SSE)
+NextDev --> Uvicorn : NEXT_PUBLIC_API_URL
+Uvicorn --> Postgres : DATABASE_URL
+Uvicorn --> Redis : CELERY_BROKER
+Worker --> Redis : consume
+Worker --> MinIO : fichiers
+Worker --> Chroma : embeddings
+Uvicorn --> Chroma : RAG queries
+Uvicorn --> Groq : LLM
+Uvicorn --> Tavily : web search
+Uvicorn --> MailHog : SMTP :1025
+Uvicorn --> Google : OAuth verify
+
+' --- Neon option ---
+Uvicorn ..> NeonDB : DATABASE_URL\n(cloud dev/prod)
+
+' --- Production ---
+Browser ..> NextProd : HTTPS
+NextProd ..> BackProd : HTTPS API
+BackProd ..> NeonDB
+BackProd ..> Groq
+BackProd ..> SentryApp : erreurs
+
+note right of Docker
+  **8 services Docker Compose**
+  frontend, backend, celery-worker,
+  postgres, redis, minio, mailhog
+  + volumes chroma_data, hf_cache
+end note
+
+@enduml

@@ -1,0 +1,74 @@
+@startuml sanad-sequence-admin
+' ============================================================
+' Sanad — Séquence : Administration WebVoice
+' F-40 à F-42
+' ============================================================
+
+skinparam shadowing false
+
+title Diagramme de séquence — Back-office Admin WebVoice
+
+actor "Admin\nWebVoice" as AW
+participant "Frontend\n/admin" as FE
+participant "AdminAPI" as API
+database "PostgreSQL" as DB
+participant "AuditService" as Audit
+
+== Connexion admin ==
+
+AW -> FE : Login admin@webvoice.ma
+FE -> API : POST /api/auth/login
+API --> FE : TokenResponse\n(role=admin_webvoice)
+FE -> FE : Redirection /admin\n(pas de dashboard cabinet)
+
+== Consulter métriques ==
+
+AW -> FE : Ouvrir dashboard admin
+FE -> API : GET /api/admin/metrics
+API -> API : Vérifier role=admin_webvoice
+API -> DB : COUNT cabinets (active, suspended)
+API -> DB : COUNT users, documents, chat_messages
+API -> DB : AVG confidence_score (today)
+API --> FE : AdminMetrics\n{ active_cabinets, total_users,\nchat_requests_today, avg_confidence }
+FE --> AW : Cartes métriques
+
+== Lister et gérer cabinets ==
+
+AW -> FE : Liste des cabinets
+FE -> API : GET /api/admin/cabinets
+API -> DB : SELECT cabinets + counts\n(users, docs, cases, chats)
+API --> FE : AdminCabinet[]
+
+AW -> FE : Approuver cabinet PENDING
+FE -> API : PATCH /api/admin/cabinets/{id}/approve
+API -> DB : UPDATE Cabinet\nstatus = ACTIVE
+API -> DB : UPDATE Users\nis_active = true
+API -> Audit : log("admin.cabinet_approved", cabinet_id)
+API --> FE : { message: "Cabinet activé" }
+FE --> AW : Statut mis à jour
+
+opt Suspendre cabinet
+  AW -> FE : Suspendre cabinet
+  FE -> API : PATCH /api/admin/cabinets/{id}/suspend
+  API -> DB : UPDATE Cabinet status=SUSPENDED
+  API -> Audit : log("admin.cabinet_suspended")
+  API --> FE : Confirmation
+end
+
+== Consulter audit logs ==
+
+AW -> FE : Onglet Audit
+FE -> API : GET /api/admin/audit-logs
+API -> DB : SELECT audit_logs\nORDER BY created_at DESC\nLIMIT 100
+API --> FE : AuditLog[]\n(action, user_id, ip, details, date)
+FE --> AW : Tableau logs
+
+note over AW, DB
+  **Règle de confidentialité**
+  L'admin WebVoice accède aux
+  métriques et logs agrégés
+  mais JAMAIS au contenu des
+  documents ou conversations.
+end note
+
+@enduml

@@ -1,0 +1,75 @@
+@startuml sanad-stack-technologique-v2
+' ============================================================
+' Sanad — Stack technologique (par couches)
+' Aligné Docker Compose + déploiement VPS
+' ============================================================
+
+skinparam shadowing false
+skinparam backgroundColor #F5F0E8
+skinparam defaultFontName Arial
+skinparam defaultFontSize 11
+skinparam package {
+  BackgroundColor #FFFFFF
+  BorderColor #0B1F4A
+  FontColor #0B1F4A
+  FontStyle bold
+  RoundCorner 10
+}
+skinparam card {
+  BackgroundColor #E8EEF7
+  BorderColor #0B1F4A
+}
+
+title Sanad — Stack technologique
+
+package "1. Présentation" as L1 {
+  card "Next.js\n(App Router)" as next
+  card "TypeScript" as ts
+  card "Tailwind CSS" as tw
+  card "Zustand\n(auth / locale)" as zu
+  card "Framer Motion" as fm
+  card "Playwright\n(maquettes)" as pw
+}
+
+package "2. API & métier" as L2 {
+  card "Python 3\nFastAPI" as fastapi
+  card "Pydantic" as pydantic
+  card "SQLAlchemy 2\n+ Alembic" as sa
+  card "JWT\n(python-jose)" as jwt
+  card "Celery" as celery
+  card "Dictation API\npolish / compose" as dict
+}
+
+package "3. Données & stockage" as L3 {
+  card "PostgreSQL 16" as pg
+  card "MinIO\n(S3)" as minio
+  card "Redis 7" as redis
+  card "ChromaDB" as chroma
+}
+
+package "4. Intelligence artificielle" as L4 {
+  card "Ollama\n(modèle local)" as ollama
+  card "LLM cloud\n(fallback)" as cloud
+  card "OCR\n(Tesseract / PDF)" as ocr
+  card "Embeddings\n(BGE-M3)" as emb
+}
+
+package "5. Infrastructure" as L5 {
+  card "Docker\nCompose" as docker
+  card "VPS Debian\n(cible prod)" as vps
+  card "MailHog\n(dev SMTP)" as mail
+  card "Git / GitHub" as git
+}
+
+L1 -[hidden]down-> L2
+L2 -[hidden]down-> L3
+L3 -[hidden]down-> L4
+L4 -[hidden]down-> L5
+
+note bottom of L2
+  **Flux cœur produit**
+  Dicter → Transcrire & corriger → Modifier
+  → Exporter PDF / DOC → Classer dossier
+end note
+
+@enduml

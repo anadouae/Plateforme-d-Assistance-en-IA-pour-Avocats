@@ -1,0 +1,31 @@
+@startuml sanad-sequence-assistant
+skinparam shadowing false
+title Séquence — Assistant : consulter / exporter une plaidoirie
+
+actor "Assistant\njuridique" as A
+participant "Frontend\n/redaction" as FE
+participant "API Cases" as Cases
+participant "API Documents" as Docs
+database "PostgreSQL" as DB
+
+A -> FE : Ouvrir Plaidoirie (mode lecture)
+FE -> Cases : GET /api/cases
+Cases -> DB : dossiers du cabinet
+Cases --> FE : liste cases
+loop pour chaque dossier
+  FE -> Docs : GET /api/documents?case_id=
+  Docs --> FE : documents
+end
+FE -> FE : Filtrer noms « plaidoirie… »
+A -> FE : Voir une plaidoirie
+FE -> Docs : GET /api/documents/{id}
+Docs --> FE : extracted_text_preview
+A -> FE : PDF / Imprimer  ou  DOC
+FE -> FE : Export côté client\n(sans modifier le fichier serveur)
+
+note right of A
+  Pas d'appel /dictation/polish
+  Pas d'upload de nouvelle plaidoirie
+end note
+
+@enduml

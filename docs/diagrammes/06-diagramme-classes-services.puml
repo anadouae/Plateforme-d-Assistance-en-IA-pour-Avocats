@@ -1,0 +1,162 @@
+@startuml sanad-classes-services
+' ============================================================
+' Sanad — Diagramme de classes (couche services)
+' ============================================================
+
+skinparam shadowing false
+
+title Diagramme de classes — Services applicatifs et IA
+
+package "API Layer" <<Rectangle>> {
+  class AuthAPI {
+    + register()
+    + login()
+    + googleLogin()
+    + setup2fa()
+    + enable2fa()
+    + refresh()
+  }
+  class CasesAPI {
+    + listCases()
+    + createCase()
+    + getCase()
+    + updateCase()
+  }
+  class DocumentsAPI {
+    + upload()
+    + getDocument()
+    + deleteDocument()
+    + getSynthesis()
+    + askDocument()
+  }
+  class ChatAPI {
+    + chat()
+    + chatStream()
+    + getHistory()
+  }
+  class AdminAPI {
+    + listCabinets()
+    + approveCabinet()
+    + suspendCabinet()
+    + getMetrics()
+    + getAuditLogs()
+  }
+}
+
+package "Services" <<Rectangle>> {
+  class AuthService {
+    - hashPassword()
+    - verifyPassword()
+    - createTokens()
+    - checkLockout()
+  }
+  class EmailService {
+    + sendVerification()
+    + sendPasswordReset()
+    + sendTeamInvite()
+  }
+  class TokenService {
+    + createToken()
+    + consumeToken()
+  }
+  class TotpService {
+    + generateSecret()
+    + verifyCode()
+    + generateQR()
+  }
+  class GoogleOAuthService {
+    + verifyIdToken()
+  }
+  class StorageService {
+    + uploadEncrypted()
+    + downloadDecrypted()
+    + delete()
+  }
+  class DocumentPipeline {
+    + extractText()
+    + runOCR()
+    + indexVectors()
+    + processAsync()
+  }
+  class AgentRouter {
+    + route(question, context)
+    - routeDocument()
+    - routeCase()
+    - routeRAG()
+    - routeWeb()
+  }
+  class RAGService {
+    + searchCorpus()
+    + searchCase()
+    + searchDocument()
+  }
+  class LLMService {
+    + generate()
+    + generateStream()
+    - fallbackOllama()
+  }
+  class WebSearchService {
+    + search()
+  }
+  class SynthesisService {
+    + synthesize()
+  }
+  class AuditService {
+    + log(action, user, details)
+  }
+}
+
+package "Infrastructure" <<Rectangle>> {
+  class PostgreSQL <<database>> {
+    users, cabinets, cases,
+    documents, audit_logs
+  }
+  class ChromaDB <<database>> {
+    embeddings corpus + docs
+  }
+  class MinIO <<database>> {
+    fichiers chiffrés
+  }
+  class Redis <<database>> {
+    broker Celery
+  }
+  class CeleryWorker <<component>> {
+    tâches async OCR/index
+  }
+}
+
+' --- Dépendances ---
+AuthAPI --> AuthService
+AuthAPI --> EmailService
+AuthAPI --> TokenService
+AuthAPI --> TotpService
+AuthAPI --> GoogleOAuthService
+AuthAPI --> AuditService
+
+CasesAPI --> PostgreSQL
+DocumentsAPI --> StorageService
+DocumentsAPI --> DocumentPipeline
+DocumentsAPI --> SynthesisService
+DocumentsAPI --> AuditService
+
+ChatAPI --> AgentRouter
+ChatAPI --> AuditService
+
+AdminAPI --> PostgreSQL
+AdminAPI --> AuditService
+
+AuthService --> PostgreSQL
+DocumentPipeline --> StorageService
+DocumentPipeline --> CeleryWorker
+DocumentPipeline --> ChromaDB
+CeleryWorker --> Redis
+
+AgentRouter --> RAGService
+AgentRouter --> WebSearchService
+AgentRouter --> LLMService
+RAGService --> ChromaDB
+StorageService --> MinIO
+LLMService --> GroqAPI : <<external>>
+WebSearchService --> TavilyAPI : <<external>>
+
+@enduml

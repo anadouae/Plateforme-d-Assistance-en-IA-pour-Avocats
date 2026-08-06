@@ -1,0 +1,59 @@
+@startuml sanad-architecture-systeme
+' ============================================================
+' Sanad — Architecture système (C4 Niveau 1)
+' ============================================================
+
+skinparam shadowing false
+skinparam rectangle {
+  BackgroundColor #EFF6FF
+  BorderColor #1E40AF
+}
+
+title Architecture système — Vue C4 (Niveau 1)
+
+actor "Avocat" as Avocat
+actor "Admin cabinet" as AdminC
+actor "Admin WebVoice" as AdminW
+
+rectangle "Système Sanad\n(Avocat AI Assistance)" as Sanad {
+  rectangle "Frontend Web\n(Next.js 14)" as Front
+  rectangle "API Backend\n(FastAPI)" as Back
+  rectangle "Workers\n(Celery)" as Workers
+  rectangle "Moteur IA\n(Agent + RAG)" as IA
+}
+
+database "PostgreSQL\n(métadonnées)" as PG
+database "ChromaDB\n(vecteurs)" as Chroma
+database "MinIO\n(fichiers chiffrés)" as MinIO
+database "Redis\n(queue)" as Redis
+
+cloud "Groq API\n(LLM)" as Groq
+cloud "Tavily / DDG\n(web)" as Web
+cloud "Google OAuth" as Google
+cloud "SMTP\n(email)" as SMTP
+
+Avocat --> Front : HTTPS\n(navigateur)
+AdminC --> Front : HTTPS
+AdminW --> Front : HTTPS
+
+Front --> Back : REST API + SSE\n(JWT Bearer)
+Back --> PG : SQLAlchemy ORM
+Back --> Redis : enqueue tasks
+Workers --> Redis : consume tasks
+Workers --> MinIO : read/write fichiers
+Workers --> Chroma : indexation BGE-M3
+Back --> IA : routage questions
+IA --> Chroma : recherche vectorielle
+IA --> Groq : génération réponses
+IA --> Web : recherche complémentaire
+Back --> Google : vérif OAuth token
+Back --> SMTP : emails transactionnels
+
+note bottom of Sanad
+  **Isolation multi-tenant**
+  Chaque cabinet = espace isolé
+  Chiffrement AES-256 (Fernet)
+  Audit logs 5 ans
+end note
+
+@enduml

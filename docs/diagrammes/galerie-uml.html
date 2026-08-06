@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sanad — Galerie UML · Douae El Assal</title>
+  <style>
+    :root {
+      --blue: #1e40af;
+      --slate: #1e293b;
+      --light: #f8fafc;
+      --border: #e2e8f0;
+      --green: #166534;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: var(--light);
+      color: var(--slate);
+      display: flex;
+      min-height: 100vh;
+    }
+    aside {
+      width: 280px;
+      background: #fff;
+      border-right: 1px solid var(--border);
+      padding: 24px 16px;
+      overflow-y: auto;
+      position: fixed;
+      height: 100vh;
+    }
+    aside h1 {
+      font-size: 1.1rem;
+      color: var(--blue);
+      margin-bottom: 4px;
+    }
+    aside .sub {
+      font-size: 0.75rem;
+      color: #64748b;
+      margin-bottom: 20px;
+    }
+    nav section {
+      margin-bottom: 16px;
+    }
+    nav h2 {
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #94a3b8;
+      margin-bottom: 6px;
+      padding-left: 8px;
+    }
+    nav a {
+      display: block;
+      padding: 7px 10px;
+      font-size: 0.82rem;
+      color: var(--slate);
+      text-decoration: none;
+      border-radius: 6px;
+      transition: background 0.15s;
+    }
+    nav a:hover, nav a.active {
+      background: #eff6ff;
+      color: var(--blue);
+    }
+    main {
+      margin-left: 280px;
+      flex: 1;
+      padding: 32px 40px;
+    }
+    .diagram-block {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      margin-bottom: 40px;
+      overflow: hidden;
+    }
+    .diagram-header {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .diagram-header h3 {
+      font-size: 1rem;
+      color: var(--blue);
+    }
+    .diagram-header .tag {
+      font-size: 0.7rem;
+      background: #f0fdf4;
+      color: var(--green);
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-weight: 600;
+    }
+    .diagram-body {
+      padding: 16px;
+      overflow-x: auto;
+      text-align: center;
+      background: #fafbfc;
+    }
+    .diagram-body img {
+      max-width: 100%;
+      height: auto;
+    }
+    .hero {
+      margin-bottom: 32px;
+    }
+    .hero h2 {
+      font-size: 1.6rem;
+      margin-bottom: 8px;
+    }
+    .hero p {
+      color: #64748b;
+      font-size: 0.9rem;
+      max-width: 700px;
+      line-height: 1.6;
+    }
+    .count {
+      display: inline-block;
+      background: var(--blue);
+      color: #fff;
+      font-size: 0.75rem;
+      padding: 2px 10px;
+      border-radius: 999px;
+      margin-left: 8px;
+      vertical-align: middle;
+    }
+    @media (max-width: 768px) {
+      aside { display: none; }
+      main { margin-left: 0; padding: 16px; }
+    }
+  </style>
+</head>
+<body>
+
+<aside>
+  <h1>Sanad UML</h1>
+  <p class="sub">Douae El Assal · WebVoice · ENSATE<br>Phase Conception · Juillet 2026</p>
+  <nav id="nav"></nav>
+</aside>
+
+<main>
+  <div class="hero">
+    <h2>Diagrammes UML Sanad <span class="count">19</span></h2>
+    <p>
+      Galerie complète des diagrammes de conception de la plateforme
+      <strong>Avocat AI Assistance</strong>. Générés en PlantUML, conformes UML 2.x,
+      alignés sur le cahier des charges et le code source.
+    </p>
+  </div>
+  <div id="diagrams"></div>
+</main>
+
+<script>
+const diagrams = [
+  { id: "acteurs", tag: "Acteurs", title: "01 — Diagramme des acteurs", file: "sanad-diagramme-acteurs.png", cat: "Structure" },
+  { id: "uc-global", tag: "Cas d'utilisation", title: "02 — Cas d'utilisation globaux", file: "sanad-cas-utilisation-global.png", cat: "Structure" },
+  { id: "uc-auth", tag: "Cas d'utilisation", title: "03 — Cas d'utilisation Authentification", file: "sanad-cas-utilisation-auth.png", cat: "Structure" },
+  { id: "uc-ia", tag: "Cas d'utilisation", title: "04 — Cas d'utilisation IA", file: "sanad-cas-utilisation-ia.png", cat: "Structure" },
+  { id: "classes-domaine", tag: "Classes", title: "05 — Diagramme de classes (domaine)", file: "sanad-classes-domaine.png", cat: "Structure" },
+  { id: "classes-services", tag: "Classes", title: "06 — Diagramme de classes (services)", file: "sanad-classes-services.png", cat: "Structure" },
+  { id: "seq-inscription", tag: "Séquence", title: "07 — Séquence Inscription cabinet", file: "sanad-sequence-inscription.png", cat: "Comportement" },
+  { id: "seq-auth", tag: "Séquence", title: "08 — Séquence Authentification (JWT + 2FA + OAuth)", file: "sanad-sequence-auth.png", cat: "Comportement" },
+  { id: "seq-upload", tag: "Séquence", title: "09 — Séquence Upload document (OCR + indexation)", file: "sanad-sequence-upload.png", cat: "Comportement" },
+  { id: "seq-chat", tag: "Séquence", title: "10 — Séquence Chat IA (routage + SSE)", file: "sanad-sequence-chat-ia.png", cat: "Comportement" },
+  { id: "seq-synthese", tag: "Séquence", title: "11 — Séquence Synthèse documentaire", file: "sanad-sequence-synthese.png", cat: "Comportement" },
+  { id: "seq-invitation", tag: "Séquence", title: "12 — Séquence Invitation équipe", file: "sanad-sequence-invitation.png", cat: "Comportement" },
+  { id: "seq-admin", tag: "Séquence", title: "13 — Séquence Admin WebVoice", file: "sanad-sequence-admin.png", cat: "Comportement" },
+  { id: "arch-systeme", tag: "Architecture", title: "14 — Architecture système (C4 N1)", file: "sanad-architecture-systeme.png", cat: "Architecture" },
+  { id: "arch-composants", tag: "Composants", title: "15 — Diagramme de composants", file: "sanad-architecture-composants.png", cat: "Architecture" },
+  { id: "stack", tag: "Stack", title: "16 — Stack technologique", file: "sanad-stack-technologique.png", cat: "Architecture" },
+  { id: "deploiement", tag: "Déploiement", title: "17 — Diagramme de déploiement", file: "sanad-deploiement.png", cat: "Architecture" },
+  { id: "etat-doc", tag: "États", title: "18 — États — Cycle de vie document", file: "sanad-etat-document.png", cat: "Comportement" },
+  { id: "activite-ia", tag: "Activité", title: "19 — Activité — Pipeline IA", file: "sanad-activite-pipeline-ia.png", cat: "Comportement" },
+];
+
+const cats = ["Structure", "Comportement", "Architecture"];
+const nav = document.getElementById("nav");
+cats.forEach(cat => {
+  const sec = document.createElement("section");
+  sec.innerHTML = `<h2>${cat}</h2>`;
+  diagrams.filter(d => d.cat === cat).forEach(d => {
+    const a = document.createElement("a");
+    a.href = `#${d.id}`;
+    a.textContent = d.title.replace(/^\d+ — /, "");
+    sec.appendChild(a);
+  });
+  nav.appendChild(sec);
+});
+
+const container = document.getElementById("diagrams");
+diagrams.forEach(d => {
+  const block = document.createElement("div");
+  block.className = "diagram-block";
+  block.id = d.id;
+  block.innerHTML = `
+    <div class="diagram-header">
+      <h3>${d.title}</h3>
+      <span class="tag">${d.tag}</span>
+    </div>
+    <div class="diagram-body">
+      <img src="png/${d.file}" alt="${d.title}" loading="lazy" />
+    </div>`;
+  container.appendChild(block);
+});
+
+const links = document.querySelectorAll("nav a");
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      links.forEach(l => l.classList.toggle("active", l.getAttribute("href") === "#" + e.target.id));
+    }
+  });
+}, { threshold: 0.3 });
+document.querySelectorAll(".diagram-block").forEach(b => observer.observe(b));
+</script>
+</body>
+</html>

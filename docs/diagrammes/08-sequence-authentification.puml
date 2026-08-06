@@ -1,0 +1,89 @@
+@startuml sanad-sequence-auth
+' ============================================================
+' Sanad — Séquence : Authentification (JWT + 2FA + OAuth)
+' ============================================================
+
+skinparam shadowing false
+
+title Diagramme de séquence — Authentification
+
+actor "Utilisateur" as U
+participant "Frontend" as FE
+participant "AuthAPI" as API
+participant "AuthService" as Auth
+participant "TotpService" as TOTP
+participant "GoogleOAuth" as Google
+database "PostgreSQL" as DB
+participant "AuditService" as Audit
+
+== Connexion classique (JWT) ==
+
+U -> FE : Saisir email + mot de passe
+FE -> API : POST /api/auth/login\n{ email, password }
+
+API -> DB : SELECT User WHERE email=?
+DB --> API : user
+
+alt Compte verrouillé (locked_until > now)
+  API --> FE : 403 "Compte verrouillé"
+else Identifiants incorrects
+  API -> DB : failed_login_attempts++
+  alt failed_login_attempts >= 5
+    API -> DB : locked_until = now + 15min
+  end
+  API -> Audit : log("auth.login_failed")
+  API --> FE : 401 "Identifiants incorrects"
+else Identifiants corrects
+  API -> DB : Vérifier is_verified, is_active
+  API -> DB : Vérifier Cabinet.status\n(ACTIVE requis)
+
+  opt totp_enabled = true
+    alt totp_code absent
+      API --> FE : 403 "2FA_REQUIRED"
+      FE --> U : Afficher champ code 2FA
+      U -> FE : Saisir code TOTP
+      FE -> API : POST /login { email, password, totp_code }
+    end
+    API -> TOTP : verify(secret, code)
+    alt code invalide
+      API -> Audit : log("auth.2fa_failed")
+      API --> FE : 401 "Code 2FA invalide"
+    end
+  end
+
+  API -> DB : failed_login_attempts = 0
+  API -> Auth : createAccessToken() + createRefreshToken()
+  API -> Audit : log("auth.login_success")
+  API --> FE : TokenResponse\n{ access_token, refresh_token, user }
+  FE -> FE : Stocker JWT (localStorage)
+  FE --> U : Redirection dashboard
+end
+
+== Connexion Google OAuth ==
+
+U -> FE : Cliquer "Continuer avec Google"
+FE -> Google : Google Identity Services\n(obtenir id_token)
+Google --> FE : id_token
+FE -> API : POST /api/auth/google\n{ id_token }
+API -> Google : verifyIdToken(id_token)
+Google --> API : { email, google_id, name }
+API -> DB : SELECT User WHERE email=?
+alt Compte inexistant
+  API --> FE : 404 "Inscrivez votre cabinet d'abord"
+else Compte valide
+  API -> DB : UPDATE google_id
+  API -> Auth : createTokens()
+  API -> Audit : log("auth.google_login")
+  API --> FE : TokenResponse
+  FE --> U : Redirection dashboard
+end
+
+== Refresh token ==
+
+FE -> API : POST /api/auth/refresh\n{ refresh_token }
+API -> Auth : decodeToken(refresh_token)
+API -> DB : Vérifier user actif
+API -> Auth : createAccessToken() + createRefreshToken()
+API --> FE : Nouveaux tokens
+
+@enduml

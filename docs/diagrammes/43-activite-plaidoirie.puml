@@ -1,0 +1,24 @@
+@startuml
+title Activité — Parcours plaidoirie avocat
+start
+:Ouvrir /redaction;
+:Dicter ou saisir le texte;
+if (Corriger ?) then (oui)
+  :Appel API polish;
+  :Afficher texte corrigé;
+  :Avocat modifie le texte;
+endif
+:Générer document (compose);
+:Avocat vérifie / modifie\ntitre et corps;
+fork
+  :Exporter PDF / Imprimer;
+fork again
+  :Télécharger DOC;
+fork again
+  if (Classer ?) then (oui)
+    :Choisir dossier;
+    :Upload document MinIO + DB;
+  endif
+end fork
+stop
+@enduml

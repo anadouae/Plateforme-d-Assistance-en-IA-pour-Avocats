@@ -1,0 +1,288 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #F5F0E8;
+  --foreground: #0B1F4A;
+  --sanad-navy: #0B1F4A;
+  --sanad-ivory: #FDFFFF;
+  --sanad-gold: #D2B589;
+  --sanad-stone: #E8E4E0;
+  --sanad-cream: #F5F0E8;
+  --sanad-logo: url("/logo-sanad.png");
+  --hero-speed: 3.5s;
+  --font-inter: Georgia, "Times New Roman", serif;
+  --font-peignot: Georgia, "Times New Roman", serif;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: Georgia, "Times New Roman", serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, .font-display, .font-serif {
+  font-family: Georgia, "Times New Roman", serif;
+  letter-spacing: 0.01em;
+}
+
+[dir="rtl"] .hero-parallax-overlay {
+  background: linear-gradient(
+    -105deg,
+    rgba(11, 31, 74, 0.94) 0%,
+    rgba(11, 31, 74, 0.78) 45%,
+    rgba(11, 31, 74, 0.25) 70%,
+    transparent 100%
+  );
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  .perspective-1000 {
+    perspective: 1000px;
+  }
+}
+
+/* ─── Sanad design system ─── */
+
+.glass-badge {
+  @apply rounded-full border border-sanad-gold/40 bg-sanad-navy/30 px-4 py-1.5 text-xs font-medium text-sanad-gold backdrop-blur-md;
+}
+
+.glass-btn {
+  @apply rounded-xl border border-sanad-gold/30 bg-sanad-ivory/5 backdrop-blur-md transition-all duration-300;
+}
+
+.glass-card-light {
+  @apply rounded-2xl border border-sanad-stone bg-sanad-ivory/80 shadow-luxe backdrop-blur-md transition-shadow duration-300 hover:shadow-gold;
+}
+
+.glass-card-dark {
+  @apply rounded-2xl border border-sanad-gold/25 bg-sanad-navy/90 text-sanad-ivory shadow-2xl backdrop-blur-xl;
+}
+
+.btn-3d {
+  transform-style: preserve-3d;
+  transition: transform 0.2s ease, box-shadow 0.3s ease;
+}
+
+.btn-3d:active {
+  transform: translateY(2px) scale(0.98);
+}
+
+.hero-gradient-overlay {
+  background: linear-gradient(
+    105deg,
+    rgba(34, 45, 82, 0.94) 0%,
+    rgba(34, 45, 82, 0.78) 40%,
+    rgba(34, 45, 82, 0.35) 70%,
+    transparent 100%
+  );
+}
+
+@keyframes ai-blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+.ai-cursor {
+  animation: ai-blink 1s step-end infinite;
+}
+
+.hero-grid-overlay {
+  background-image:
+    linear-gradient(rgba(210, 181, 137, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(210, 181, 137, 0.04) 1px, transparent 1px);
+  background-size: 60px 60px;
+}
+
+.sanad-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  pointer-events: none;
+  animation: orb-float 8s ease-in-out infinite;
+}
+
+.sanad-orb-1 {
+  width: 400px;
+  height: 400px;
+  background: rgba(34, 45, 82, 0.35);
+  top: -10%;
+  left: -5%;
+}
+
+.sanad-orb-2 {
+  width: 350px;
+  height: 350px;
+  background: rgba(210, 181, 137, 0.2);
+  bottom: 10%;
+  right: -5%;
+  animation-delay: -3s;
+}
+
+.sanad-orb-3 {
+  width: 250px;
+  height: 250px;
+  background: rgba(34, 45, 82, 0.25);
+  top: 40%;
+  left: 50%;
+  animation-delay: -5s;
+}
+
+.sanad-section-glow {
+  animation: pulse-glow 4s ease-in-out infinite;
+}
+
+/* Soft gold halo around logo — palette #D2B589 */
+.sanad-logo-glow {
+  isolation: isolate;
+}
+
+.sanad-logo-glow::before {
+  content: "";
+  position: absolute;
+  inset: -30% -18%;
+  border-radius: 999px;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(210, 181, 137, 0.55) 0%,
+    rgba(210, 181, 137, 0.22) 42%,
+    transparent 72%
+  );
+  filter: blur(10px);
+  z-index: 0;
+  pointer-events: none;
+  animation: logo-glow-pulse 3.2s ease-in-out infinite;
+}
+
+.sanad-logo-glow img {
+  filter: drop-shadow(0 0 10px rgba(210, 181, 137, 0.65))
+    drop-shadow(0 0 22px rgba(210, 181, 137, 0.35));
+}
+
+@keyframes logo-glow-pulse {
+  0%,
+  100% {
+    opacity: 0.7;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+.hero-parallax-section {
+  position: relative;
+  height: 100vh;
+  min-height: 650px;
+  width: 100%;
+  background-color: #0B1F4A;
+  overflow: hidden;
+}
+
+.hero-parallax-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+
+.hero-parallax-overlay > div {
+  pointer-events: auto;
+}
+
+.auth-hero-side {
+  background: linear-gradient(135deg, #0B1F4A 0%, #06122E 50%, #14306B 100%);
+}
+
+.auth-card-enter {
+  animation: auth-card-in 0.55s ease-out both;
+}
+
+@keyframes auth-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.auth-fade-in {
+  animation: auth-fade-in 0.7s ease-out both;
+}
+
+.auth-fade-in-delay {
+  animation: auth-fade-in 0.7s ease-out 0.15s both;
+}
+
+.auth-fade-in-delay-2 {
+  animation: auth-fade-in 0.7s ease-out 0.3s both;
+}
+
+@keyframes auth-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes orb-float {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(20px, -15px) scale(1.05); }
+  66% { transform: translate(-15px, 10px) scale(0.95); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sanad-orb,
+  .sanad-section-glow {
+    animation: none;
+  }
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+/* App shell luxe accents */
+.app-sidebar-active {
+  @apply bg-sanad-gold/15 text-sanad-navy border-l-2 border-sanad-gold;
+}
+
+.luxe-divider {
+  @apply h-px bg-gradient-to-r from-transparent via-sanad-gold/40 to-transparent;
+}
+
+.shadow-luxe {
+  box-shadow: 0 10px 40px -18px rgba(11, 31, 74, 0.28);
+}
+
+/* Smooth interactive surfaces */
+@layer components {
+  .sanad-interactive {
+    @apply transition-all duration-300 ease-out;
+  }
+  .sanad-interactive:hover {
+    @apply -translate-y-0.5;
+  }
+}

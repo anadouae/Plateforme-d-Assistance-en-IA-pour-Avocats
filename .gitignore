@@ -1,0 +1,53 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+backend/.env
+frontend/.env
+frontend/.env.local
+frontend/.env*.local
+
+# Python
+*.pyc
+__pycache__/
+*.pyo
+.pytest_cache/
+.mypy_cache/
+backend/venv/
+venv/
+.venv/
+
+# Node / Next
+node_modules/
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+.npm
+*.tsbuildinfo
+
+# App data
+backend/data/chromadb/
+backend/uploads/
+backend/data/
+
+# IDE / OS
+.qodo/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.swp
+*.log
+
+# Recover / temp scratch
+.recover_*
+*.tmp
+~$*
+
+# Docker volumes / local overrides (keep compose files)
+docker-compose.override.yml
+
+# Windows reserved junk
+backend/NUL
+NUL
+

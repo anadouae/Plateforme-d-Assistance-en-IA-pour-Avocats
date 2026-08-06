@@ -1,0 +1,18 @@
+import { Suspense } from "react";
+import { LoginForm } from "./login-form";
+
+function LoginFallback() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-sanad-cream">
+      <p className="text-sanad-muted">Chargement...</p>
+    </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginFallback />}>
+      <LoginForm />
+    </Suspense>
+  );
+}

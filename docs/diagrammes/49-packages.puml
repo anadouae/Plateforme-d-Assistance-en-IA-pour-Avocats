@@ -1,0 +1,39 @@
+@startuml
+title Diagramme de packages — Organisation code Sanad
+
+package "frontend" {
+  package "app" {
+    [public pages]
+    [cabinet pages]
+    [admin pages]
+  }
+  package "components"
+  package "lib/api"
+  package "store"
+  package "hooks"
+}
+
+package "backend" {
+  package "api" {
+    [auth]
+    [dictation]
+    [cases]
+    [documents]
+    [workspace]
+    [team]
+    [admin]
+  }
+  package "models"
+  package "services" {
+    [extraction OCR]
+    [IA / LLM]
+    [storage MinIO]
+  }
+  package "workers Celery"
+}
+
+frontend --> backend : HTTP/JWT
+backend.models --> PostgreSQL
+backend.services --> MinIO
+backend.services --> Ollama
+@enduml

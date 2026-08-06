@@ -1,0 +1,143 @@
+@startuml sanad-cas-utilisation-global
+' ============================================================
+' Sanad — Diagramme de cas d'utilisation (vue globale)
+' ============================================================
+
+left to right direction
+skinparam packageStyle rectangle
+skinparam shadowing false
+
+title Cas d'utilisation globaux — Sanad
+
+actor "Avocat" as A
+actor "Assistant\njuridique" as AS
+actor "Admin\ncabinet" as AC
+actor "Admin\nWebVoice" as AW
+
+rectangle "Plateforme Sanad" {
+
+  package "Authentification" {
+    usecase "S'inscrire\n(créer cabinet)" as UC01
+    usecase "Se connecter\n(JWT)" as UC02
+    usecase "Vérifier email" as UC03
+    usecase "Réinitialiser\nmot de passe" as UC04
+    usecase "Activer 2FA" as UC05
+    usecase "Connexion\nGoogle OAuth" as UC06
+  }
+
+  package "Gestion dossiers" {
+    usecase "Créer un dossier" as UC10
+    usecase "Consulter dossiers" as UC11
+    usecase "Modifier un dossier" as UC12
+    usecase "Rechercher / filtrer\ndossiers" as UC13
+    usecase "Consulter timeline\nd'activité" as UC14
+  }
+
+  package "Gestion documents" {
+    usecase "Uploader document\n(PDF/DOCX/image)" as UC20
+    usecase "Consulter documents" as UC21
+    usecase "Supprimer document" as UC22
+    usecase "Suivre statut\ntraitement (OCR)" as UC23
+  }
+
+  package "Intelligence artificielle" {
+    usecase "Poser question\n(assistant IA)" as UC30
+    usecase "Obtenir synthèse\ndocumentaire" as UC31
+    usecase "Analyser document\n(questions libres)" as UC32
+    usecase "Exporter réponse\nen PDF" as UC33
+    usecase "Consulter historique\nconversations" as UC34
+  }
+
+  package "Administration cabinet" {
+    usecase "Inviter\ncollaborateur" as UC40
+    usecase "Gérer rôles\néquipe" as UC41
+    usecase "Configurer\nparamètres cabinet" as UC42
+    usecase "Changer mot\nde passe" as UC43
+  }
+
+  package "Administration plateforme" {
+    usecase "Activer /\nsuspendre cabinet" as UC50
+    usecase "Consulter\nmétriques" as UC51
+    usecase "Consulter logs\nd'audit" as UC52
+  }
+
+  package "Transversal" {
+    usecase "Changer langue\n(FR/AR/EN)" as UC60
+    usecase "Journaliser action\n(audit)" as UC61
+  }
+}
+
+' --- Relations acteurs ---
+AC --> UC01
+AC --> UC02
+AC --> UC05
+AC --> UC06
+AC --> UC10
+AC --> UC11
+AC --> UC12
+AC --> UC13
+AC --> UC14
+AC --> UC20
+AC --> UC21
+AC --> UC22
+AC --> UC23
+AC --> UC30
+AC --> UC31
+AC --> UC32
+AC --> UC33
+AC --> UC34
+AC --> UC40
+AC --> UC41
+AC --> UC42
+AC --> UC43
+AC --> UC60
+
+A --> UC02
+A --> UC05
+A --> UC06
+A --> UC10
+A --> UC11
+A --> UC12
+A --> UC13
+A --> UC14
+A --> UC20
+A --> UC21
+A --> UC22
+A --> UC23
+A --> UC30
+A --> UC31
+A --> UC32
+A --> UC33
+A --> UC34
+A --> UC43
+A --> UC60
+
+AS --> UC02
+AS --> UC11
+AS --> UC20
+AS --> UC21
+AS --> UC23
+AS --> UC43
+AS --> UC60
+
+AW --> UC50
+AW --> UC51
+AW --> UC52
+
+' --- Include / Extend ---
+UC02 ..> UC61 : <<include>>
+UC30 ..> UC61 : <<include>>
+UC20 ..> UC61 : <<include>>
+UC01 ..> UC03 : <<include>>
+UC02 <.. UC05 : <<extend>>\n[si 2FA activée]
+UC02 <.. UC06 : <<extend>>
+UC30 ..> UC33 : <<extend>>
+UC20 ..> UC23 : <<include>>
+
+note bottom of UC30
+  Routage automatique :
+  Document → Dossier →
+  Corpus RAG → Web
+end note
+
+@enduml

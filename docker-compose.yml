@@ -1,0 +1,249 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: sanad
+      POSTGRES_PASSWORD: sanad_secret
+      POSTGRES_DB: sanad
+    ports:
+      # Port hôte hors plages Hyper-V (55383–55482 exclus sur cette machine)
+      - "15432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sanad"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: sanad_minio
+      MINIO_ROOT_PASSWORD: sanad_minio_secret
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      retries: 3
+
+  mailhog:
+    image: mailhog/mailhog:latest
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+      - ./backend/models:/models:ro
+    healthcheck:
+      # Image ollama n'inclut pas toujours curl
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+
+  ollama-init:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_started
+    volumes:
+      - ./backend/models:/models:ro
+      - ollama_data:/root/.ollama
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "Waiting for Ollama..."
+        until curl -sf http://ollama:11434/api/tags >/dev/null 2>&1; do sleep 2; done
+        echo "Pulling mistral (synthèse documents)..."
+        ollama pull mistral
+        echo "Pulling base model llama3.1:8b..."
+        ollama pull llama3.1:8b
+        echo "Creating sanad-legal..."
+        cd /models && ollama create sanad-legal -f Modelfile
+        echo "models ready"
+        ollama list
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    restart: "no"
+
+  backend:
+    build: ./backend
+    ports:
+      - "8001:8000"
+    environment:
+      # Postgres Docker = défaut VPS/dev (ignore Neon du .env hôte)
+      DATABASE_URL: postgresql://sanad:sanad_secret@postgres:5432/sanad
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      CORS_ORIGINS: http://localhost:3000,http://127.0.0.1:3000
+      FRONTEND_URL: http://localhost:3000
+      SECRET_KEY: ${SECRET_KEY:-dev-secret-key-change-in-production}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-hCeRRvr67dcQN5XmoTWEJ_ccj889oCLztQnEP0xRqok=}
+      USE_MINIO: "true"
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: sanad_minio
+      MINIO_SECRET_KEY: sanad_minio_secret
+      MINIO_BUCKET: sanad-documents
+      MINIO_SECURE: "false"
+      SMTP_HOST: mailhog
+      SMTP_PORT: 1025
+      SMTP_FROM: Sanad <noreply@sanad.ma>
+      CHROMA_PERSIST_DIR: /app/data/chromadb
+      EMBEDDING_MODEL: BAAI/bge-m3
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-false}
+      WHISPER_ENABLED: ${WHISPER_ENABLED:-true}
+      WHISPER_MODEL: ${WHISPER_MODEL:-small}
+      WHISPER_DEVICE: ${WHISPER_DEVICE:-cpu}
+      WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-int8}
+      WEB_SEARCH_PROVIDER: ${WEB_SEARCH_PROVIDER:-duckduckgo}
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+      LLM_PROVIDER: ${LLM_PROVIDER:-auto}
+      LLM_ALLOW_CLOUD_FALLBACK: ${LLM_ALLOW_CLOUD_FALLBACK:-true}
+      LLM_USE_FREE_ROUTER: ${LLM_USE_FREE_ROUTER:-true}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      KIMI_API_KEY: ${KIMI_API_KEY:-}
+      KIMI_BASE_URL: ${KIMI_BASE_URL:-https://api.moonshot.ai/v1}
+      KIMI_MODEL: ${KIMI_MODEL:-kimi-k2.6}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      MISTRAL_BASE_URL: ${MISTRAL_BASE_URL:-https://api.mistral.ai/v1}
+      MISTRAL_MODEL: ${MISTRAL_MODEL:-mistral-small-latest}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      TOGETHER_API_KEY: ${TOGETHER_API_KEY:-}
+      TOGETHER_MODEL: ${TOGETHER_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
+      SAMBANOVA_API_KEY: ${SAMBANOVA_API_KEY:-}
+      SAMBANOVA_MODEL: ${SAMBANOVA_MODEL:-Meta-Llama-3.3-70B-Instruct}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-sanad-legal}
+      OLLAMA_SYNTHESIS_MODEL: ${OLLAMA_SYNTHESIS_MODEL:-mistral}
+      LLM_CHAT_USE_OLLAMA: ${LLM_CHAT_USE_OLLAMA:-false}
+      LLM_USE_GROQ_FOR_WEB: ${LLM_USE_GROQ_FOR_WEB:-true}
+      LLM_USE_GROQ_FOR_CHAT: ${LLM_USE_GROQ_FOR_CHAT:-true}
+      OLLAMA_NUM_PREDICT: ${OLLAMA_NUM_PREDICT:-512}
+      OLLAMA_CHAT_TIMEOUT: ${OLLAMA_CHAT_TIMEOUT:-300}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      # Cloudflare Turnstile (CAPTCHA login) — laisser vide en local
+      TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
+      TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
+      HF_HOME: /root/.cache/huggingface
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      ollama:
+        condition: service_started
+    volumes:
+      - ./backend:/app
+      - chroma_data:/app/data/chromadb
+      - hf_cache:/root/.cache/huggingface
+    # Sans --reload : WatchFiles plante en boucle sur volumes Windows (I/O error)
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
+
+  celery-worker:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql://sanad:sanad_secret@postgres:5432/sanad
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-hCeRRvr67dcQN5XmoTWEJ_ccj889oCLztQnEP0xRqok=}
+      USE_MINIO: "true"
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: sanad_minio
+      MINIO_SECRET_KEY: sanad_minio_secret
+      MINIO_BUCKET: sanad-documents
+      CHROMA_PERSIST_DIR: /app/data/chromadb
+      EMBEDDING_MODEL: BAAI/bge-m3
+      OCR_QUALITY_THRESHOLD: "70"
+      WHISPER_ENABLED: ${WHISPER_ENABLED:-true}
+      WHISPER_MODEL: ${WHISPER_MODEL:-small}
+      WHISPER_DEVICE: ${WHISPER_DEVICE:-cpu}
+      WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-int8}
+      WEB_SEARCH_PROVIDER: ${WEB_SEARCH_PROVIDER:-duckduckgo}
+      TAVILY_API_KEY: ${TAVILY_API_KEY:-}
+      LLM_PROVIDER: ${LLM_PROVIDER:-auto}
+      LLM_ALLOW_CLOUD_FALLBACK: ${LLM_ALLOW_CLOUD_FALLBACK:-true}
+      LLM_USE_FREE_ROUTER: ${LLM_USE_FREE_ROUTER:-true}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      KIMI_API_KEY: ${KIMI_API_KEY:-}
+      KIMI_BASE_URL: ${KIMI_BASE_URL:-https://api.moonshot.ai/v1}
+      KIMI_MODEL: ${KIMI_MODEL:-kimi-k2.6}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      MISTRAL_BASE_URL: ${MISTRAL_BASE_URL:-https://api.mistral.ai/v1}
+      MISTRAL_MODEL: ${MISTRAL_MODEL:-mistral-small-latest}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      TOGETHER_API_KEY: ${TOGETHER_API_KEY:-}
+      TOGETHER_MODEL: ${TOGETHER_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
+      SAMBANOVA_API_KEY: ${SAMBANOVA_API_KEY:-}
+      SAMBANOVA_MODEL: ${SAMBANOVA_MODEL:-Meta-Llama-3.3-70B-Instruct}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-sanad-legal}
+      OLLAMA_SYNTHESIS_MODEL: ${OLLAMA_SYNTHESIS_MODEL:-mistral}
+      LLM_CHAT_USE_OLLAMA: ${LLM_CHAT_USE_OLLAMA:-false}
+      LLM_USE_GROQ_FOR_WEB: ${LLM_USE_GROQ_FOR_WEB:-true}
+      LLM_USE_GROQ_FOR_CHAT: ${LLM_USE_GROQ_FOR_CHAT:-true}
+      OLLAMA_NUM_PREDICT: ${OLLAMA_NUM_PREDICT:-512}
+      OLLAMA_CHAT_TIMEOUT: ${OLLAMA_CHAT_TIMEOUT:-300}
+      HF_HOME: /root/.cache/huggingface
+    depends_on:
+      - postgres
+      - redis
+      - minio
+      - backend
+      - ollama
+    volumes:
+      - ./backend:/app
+      - chroma_data:/app/data/chromadb
+      - hf_cache:/root/.cache/huggingface
+    command: celery -A app.services.celery_app worker --loglevel=info --concurrency=2
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8001
+      NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+volumes:
+  postgres_data:
+  minio_data:
+  chroma_data:
+  hf_cache:
+  ollama_data:

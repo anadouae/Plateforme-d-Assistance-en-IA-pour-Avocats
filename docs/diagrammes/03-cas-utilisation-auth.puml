@@ -1,0 +1,81 @@
+@startuml sanad-cas-utilisation-auth
+' ============================================================
+' Sanad — Cas d'utilisation : Authentification & sécurité
+' ============================================================
+
+left to right direction
+skinparam shadowing false
+
+title Cas d'utilisation — Authentification et sécurité
+
+actor "Utilisateur" as U
+actor "Google OAuth\n<<system>>" as G
+actor "Serveur SMTP\n<<system>>" as M
+
+rectangle "Module Auth Sanad" {
+
+  usecase "Inscription cabinet" as UC1
+  usecase "Valider données\ninscription" as UC1a
+  usecase "Créer tenant\n(cabinet isolé)" as UC1b
+  usecase "Envoyer email\nvérification" as UC1c
+
+  usecase "Vérifier email\n(activation compte)" as UC2
+
+  usecase "Connexion JWT" as UC3
+  usecase "Vérifier identifiants\n(bcrypt)" as UC3a
+  usecase "Vérifier statut\ncabinet" as UC3b
+  usecase "Générer tokens\n(access + refresh)" as UC3c
+  usecase "Bloquer après\n5 échecs" as UC3d
+
+  usecase "Saisir code 2FA\n(TOTP)" as UC4
+  usecase "Configurer 2FA\n(QR code)" as UC5
+  usecase "Désactiver 2FA" as UC6
+
+  usecase "Connexion Google" as UC7
+  usecase "Vérifier ID token" as UC7a
+
+  usecase "Mot de passe oublié" as UC8
+  usecase "Réinitialiser MDP" as UC9
+  usecase "Rafraîchir token\n(refresh)" as UC10
+  usecase "Déconnexion" as UC11
+  usecase "Journaliser\n(auth.audit)" as UC12
+}
+
+U --> UC1
+U --> UC2
+U --> UC3
+U --> UC4
+U --> UC5
+U --> UC6
+U --> UC7
+U --> UC8
+U --> UC9
+U --> UC10
+U --> UC11
+
+G --> UC7a
+M --> UC1c
+M --> UC8
+
+UC1 ..> UC1a : <<include>>
+UC1 ..> UC1b : <<include>>
+UC1 ..> UC1c : <<include>>
+UC1c ..> UC12 : <<include>>
+
+UC3 ..> UC3a : <<include>>
+UC3 ..> UC3b : <<include>>
+UC3 ..> UC3c : <<include>>
+UC3 ..> UC12 : <<include>>
+UC3 <.. UC4 : <<extend>>\n[totp_enabled=true]
+UC3 <.. UC3d : <<extend>>\n[5 échecs]
+
+UC7 ..> UC7a : <<include>>
+UC7 ..> UC3c : <<include>>
+
+UC5 ..> UC4 : <<include>>
+UC6 ..> UC4 : <<include>>
+
+UC8 ..> UC12 : <<include>>
+UC9 ..> UC12 : <<include>>
+
+@enduml

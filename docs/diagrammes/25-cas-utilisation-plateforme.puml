@@ -1,0 +1,195 @@
+@startuml sanad-uc-plateforme-complet
+left to right direction
+skinparam shadowing false
+skinparam backgroundColor #F5F0E8
+skinparam packageStyle rectangle
+
+title Cas d'utilisation GLOBAUX — Plateforme Sanad (complet)
+
+actor "Avocat" as Av
+actor "Assistant\njuridique" as As
+actor "Admin\ncabinet" as Ac
+actor "Admin\nWebVoice" as Aw
+actor "Google\n<<system>>" as G
+actor "SMTP\n<<system>>" as S
+actor "LLM / Ollama\n<<system>>" as L
+
+rectangle "Sanad" {
+
+  package "1. Authentification" {
+    usecase "S'inscrire (créer cabinet)" as UC01
+    usecase "Vérifier email" as UC02
+    usecase "Se connecter (JWT)" as UC03
+    usecase "Connexion Google" as UC04
+    usecase "Activer / utiliser 2FA" as UC05
+    usecase "Mot de passe oublié" as UC06
+    usecase "Réinitialiser mot de passe" as UC07
+    usecase "Activer compte invitation" as UC08
+    usecase "Se déconnecter" as UC09
+  }
+
+  package "2. Plaidoirie (cœur)" {
+    usecase "Dicter (micro AR / saisie)" as UC10
+    usecase "Corriger texte (IA)" as UC11
+    usecase "Générer document officiel" as UC12
+    usecase "Modifier titre / corps" as UC13
+    usecase "Exporter PDF / Imprimer" as UC14
+    usecase "Télécharger DOC" as UC15
+    usecase "Classer dans un dossier" as UC16
+    usecase "Consulter plaidoiries archivées" as UC17
+  }
+
+  package "3. Dossiers" {
+    usecase "Créer dossier" as UC20
+    usecase "Lister / rechercher dossiers" as UC21
+    usecase "Filtrer par statut" as UC22
+    usecase "Voir détail dossier" as UC23
+    usecase "Modifier dossier" as UC24
+    usecase "Voir activité dossier" as UC25
+  }
+
+  package "4. Documents" {
+    usecase "Uploader pièce" as UC30
+    usecase "Consulter liste documents" as UC31
+    usecase "Voir texte extrait (OCR)" as UC32
+    usecase "Télécharger fichier" as UC33
+    usecase "Relancer extraction" as UC34
+    usecase "Supprimer document" as UC35
+    usecase "Obtenir synthèse (IA)" as UC36
+  }
+
+  package "5. Planning" {
+    usecase "Gérer événements agenda" as UC40
+    usecase "Gérer tâches" as UC41
+    usecase "Gérer notes" as UC42
+    usecase "Lier au dossier" as UC43
+  }
+
+  package "6. Équipe & paramètres" {
+    usecase "Inviter collaborateur" as UC50
+    usecase "Changer rôle membre" as UC51
+    usecase "Configurer cabinet" as UC52
+    usecase "Changer mot de passe" as UC53
+    usecase "Configurer 2FA compte" as UC54
+  }
+
+  package "7. Admin plateforme" {
+    usecase "Approuver cabinet" as UC60
+    usecase "Suspendre / réactiver" as UC61
+    usecase "Consulter métriques" as UC62
+    usecase "Consulter audit logs" as UC63
+  }
+
+  package "8. Transversal" {
+    usecase "Changer langue FR/AR/EN" as UC70
+    usecase "Journaliser action (audit)" as UC71
+  }
+}
+
+' Avocat
+Av --> UC03
+Av --> UC05
+Av --> UC09
+Av --> UC10
+Av --> UC11
+Av --> UC12
+Av --> UC13
+Av --> UC14
+Av --> UC15
+Av --> UC16
+Av --> UC20
+Av --> UC21
+Av --> UC22
+Av --> UC23
+Av --> UC24
+Av --> UC25
+Av --> UC30
+Av --> UC31
+Av --> UC32
+Av --> UC33
+Av --> UC34
+Av --> UC35
+Av --> UC36
+Av --> UC40
+Av --> UC41
+Av --> UC42
+Av --> UC43
+Av --> UC53
+Av --> UC54
+Av --> UC70
+
+' Assistant
+As --> UC03
+As --> UC09
+As --> UC17
+As --> UC14
+As --> UC15
+As --> UC20
+As --> UC21
+As --> UC22
+As --> UC23
+As --> UC30
+As --> UC31
+As --> UC32
+As --> UC33
+As --> UC40
+As --> UC41
+As --> UC42
+As --> UC43
+As --> UC53
+As --> UC70
+
+' Admin cabinet
+Ac --> UC01
+Ac --> UC02
+Ac --> UC03
+Ac --> UC10
+Ac --> UC11
+Ac --> UC12
+Ac --> UC13
+Ac --> UC14
+Ac --> UC15
+Ac --> UC16
+Ac --> UC20
+Ac --> UC30
+Ac --> UC35
+Ac --> UC36
+Ac --> UC50
+Ac --> UC51
+Ac --> UC52
+Ac --> UC53
+Ac --> UC54
+Ac --> UC70
+
+' WebVoice
+Aw --> UC03
+Aw --> UC60
+Aw --> UC61
+Aw --> UC62
+Aw --> UC63
+
+' Systèmes
+G --> UC04
+S --> UC02
+S --> UC06
+S --> UC50
+L --> UC11
+L --> UC12
+L --> UC36
+
+' Includes
+UC01 ..> UC02 : <<include>>
+UC10 ..> UC11 : <<include>>
+UC11 ..> UC12 : <<include>>
+UC12 ..> UC13 : <<include>>
+UC03 <.. UC05 : <<extend>>
+UC03 <.. UC04 : <<extend>>
+UC40 ..> UC43 : <<extend>>
+UC30 ..> UC71 : <<include>>
+UC16 ..> UC30 : <<include>>
+
+note bottom of UC17
+  Assistant : lecture + export
+  Pas de dictée / pas de compose
+end note
+@enduml

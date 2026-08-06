@@ -1,0 +1,15 @@
+@startuml
+title Activité — Inscription & activation cabinet
+start
+:Remplir formulaire /register;
+:Créer cabinet (pending)\n+ admin_cabinet;
+:Envoyer email vérification;
+:Confirmer email;
+if (WebVoice approuve ?) then (oui)
+  :Cabinet active;\n:Compte is_active;
+  :Connexion dashboard;
+else (non / attente)
+  :Cabinet reste pending;
+endif
+stop
+@enduml

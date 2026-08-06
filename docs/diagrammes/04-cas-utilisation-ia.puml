@@ -1,0 +1,94 @@
+@startuml sanad-cas-utilisation-ia
+' ============================================================
+' Sanad — Cas d'utilisation : Assistant IA & analyse documentaire
+' ============================================================
+
+left to right direction
+skinparam shadowing false
+
+title Cas d'utilisation — Intelligence artificielle
+
+actor "Avocat" as A
+actor "Groq API" as G
+actor "ChromaDB" as C
+actor "Web Search" as W
+
+rectangle "Module IA Sanad" {
+
+  usecase "Poser question\nassistant IA" as UC1
+  usecase "Router la question\n(agent.py)" as UC2
+
+  usecase "Recherche document\nspécifique" as UC2a
+  usecase "Recherche vecteurs\ndossier" as UC2b
+  usecase "Recherche corpus\njuridique (RAG)" as UC2c
+  usecase "Recherche web\ncomplémentaire" as UC2d
+
+  usecase "Récupérer extraits\n+ citations" as UC3
+  usecase "Rédiger réponse\n(Groq Llama 3.3)" as UC4
+  usecase "Calculer score\nde confiance" as UC5
+  usecase "Streamer réponse\n(SSE)" as UC6
+  usecase "Afficher disclaimer\njuridique" as UC7
+  usecase "Alerter confiance\n< 60 %" as UC8
+
+  usecase "Synthèse automatique\ndocument" as UC10
+  usecase "Extraire parties" as UC10a
+  usecase "Extraire dates /\nmontants" as UC10b
+  usecase "Identifier clauses\nà risque" as UC10c
+
+  usecase "Question libre\nsur document" as UC11
+  usecase "Citer paragraphe\nsource" as UC11a
+
+  usecase "Exporter réponse\nPDF" as UC12
+  usecase "Consulter historique\nchat" as UC13
+  usecase "Fallback Ollama\n(si Groq down)" as UC14
+  usecase "Journaliser requête IA" as UC15
+}
+
+A --> UC1
+A --> UC10
+A --> UC11
+A --> UC12
+A --> UC13
+
+G --> UC4
+C --> UC3
+W --> UC3
+
+UC1 ..> UC2 : <<include>>
+UC2 ..> UC2a : <<extend>>\n[document_id fourni]
+UC2 ..> UC2b : <<extend>>\n[case_id fourni]
+UC2 ..> UC2c : <<extend>>\n[question juridique]
+UC2 ..> UC2d : <<extend>>\n[corpus insuffisant]
+
+UC2a ..> UC3 : <<include>>
+UC2b ..> UC3 : <<include>>
+UC2c ..> UC3 : <<include>>
+UC2d ..> UC3 : <<include>>
+
+UC3 ..> UC4 : <<include>>
+UC4 ..> UC5 : <<include>>
+UC4 ..> UC6 : <<include>>
+UC4 ..> UC7 : <<include>>
+UC5 <.. UC8 : <<extend>>\n[score < 60]
+UC4 <.. UC14 : <<extend>>\n[Groq indisponible]
+UC1 ..> UC15 : <<include>>
+
+UC10 ..> UC10a : <<include>>
+UC10 ..> UC10b : <<include>>
+UC10 ..> UC10c : <<include>>
+UC10 ..> UC3 : <<include>>
+UC10 ..> UC4 : <<include>>
+
+UC11 ..> UC11a : <<include>>
+UC11 ..> UC2a : <<include>>
+
+UC1 <.. UC12 : <<extend>>
+
+note right of UC2
+  Principe directeur :
+  L'IA ne répond JAMAIS
+  de mémoire. Elle cherche
+  d'abord, puis rédige.
+end note
+
+@enduml

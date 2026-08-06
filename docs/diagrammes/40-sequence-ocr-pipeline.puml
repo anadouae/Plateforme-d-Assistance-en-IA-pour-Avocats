@@ -1,0 +1,20 @@
+@startuml
+title Séquence — Pipeline OCR / indexation (après upload)
+participant "API Documents" as API
+participant "Redis" as R
+participant "Celery Worker" as W
+participant "MinIO" as S3
+participant "OCR / Extract" as OCR
+participant "ChromaDB" as CH
+database "PostgreSQL" as DB
+
+API -> DB : document status=pending
+API -> R : enqueue process_document(id)
+W -> R : consume
+W -> DB : status=processing
+W -> S3 : lire fichier
+W -> OCR : extraire texte
+OCR --> W : text + ocr_score
+W -> DB : extracted_text,\nstatus=indexed
+W -> CH : index embeddings\n(case_{cabinet}_{case})
+@enduml

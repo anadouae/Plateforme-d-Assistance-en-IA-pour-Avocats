@@ -1,0 +1,23 @@
+@startuml sanad-sequence-invitation
+skinparam shadowing false
+title Séquence — Invitation membre équipe
+
+actor "Admin cabinet" as A
+participant "Frontend\n/team" as FE
+participant "API Team" as API
+database "PostgreSQL" as DB
+participant "SMTP" as Mail
+actor "Nouveau membre" as M
+
+A -> FE : email + rôle (avocat / assistant)
+FE -> API : POST /api/team/invite
+API -> DB : CREATE user (inactif)\n+ email_token (team_invite)
+API -> Mail : Envoyer lien /activate?token=
+API --> FE : Invitation créée
+Mail --> M : Email d'invitation
+M -> FE : Ouvrir /activate
+FE -> API : Définir mot de passe
+API -> DB : Activer user
+API --> FE : OK → /login
+
+@enduml

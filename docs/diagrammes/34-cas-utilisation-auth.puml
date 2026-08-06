@@ -1,0 +1,46 @@
+@startuml sanad-uc-auth-complet
+left to right direction
+skinparam shadowing false
+title Cas d'utilisation — Authentification & comptes
+
+actor "Visiteur" as V
+actor "Membre cabinet" as M
+actor "Admin cabinet" as Ac
+actor "Google" as G
+actor "SMTP" as S
+
+rectangle "Auth Sanad" {
+  usecase "S'inscrire" as U1
+  usecase "Vérifier email" as U2
+  usecase "Se connecter email/mdp" as U3
+  usecase "Se connecter Google" as U4
+  usecase "Saisir code 2FA" as U5
+  usecase "Demander reset mdp" as U6
+  usecase "Définir nouveau mdp" as U7
+  usecase "Activer invitation" as U8
+  usecase "Refresh token JWT" as U9
+  usecase "Se déconnecter" as U10
+  usecase "Configurer TOTP" as U11
+}
+
+V --> U1
+V --> U3
+V --> U4
+V --> U6
+Ac --> U1
+M --> U3
+M --> U5
+M --> U7
+M --> U8
+M --> U9
+M --> U10
+M --> U11
+G --> U4
+S --> U2
+S --> U6
+S --> U8
+
+U1 ..> U2 : <<include>>
+U3 <.. U5 : <<extend>>
+U6 ..> U7 : <<include>>
+@enduml

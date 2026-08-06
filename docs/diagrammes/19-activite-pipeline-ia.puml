@@ -1,0 +1,53 @@
+@startuml sanad-activite-pipeline-ia
+' ============================================================
+' Sanad — Diagramme d'activité : Pipeline IA complet
+' ============================================================
+
+skinparam shadowing false
+
+title Diagramme d'activité — Pipeline IA Sanad
+
+start
+
+:Utilisateur pose une question;
+
+:Vérifier authentification JWT\n+ rôle (avocat/admin_cabinet);
+
+if (document_id fourni ?) then (oui)
+  :Recherche vectorielle\ndans le document;
+  :source_type = "document";
+elseif (case_id fourni ?) then (oui)
+  :Recherche vectorielle\ndans les docs du dossier;
+  :source_type = "document";
+else (non)
+  :Recherche corpus juridique\n(DOC, CPP, CPC) via ChromaDB;
+  :source_type = "rag";
+  if (Score RAG < seuil ?) then (oui)
+    :Recherche web\n(Tavily / DuckDuckGo);
+    :source_type = "rag+web";
+  endif
+endif
+
+if (Sources trouvées ?) then (oui)
+  :Construire prompt\navec extraits + citations;
+  :Calculer score de confiance;
+  if (Groq disponible ?) then (oui)
+    :Générer réponse\n(Groq Llama 3.3 70B);
+  else (non)
+    :Fallback Ollama\n(mode dégradé local);
+  endif
+  :Streamer réponse SSE\nvers le frontend;
+  if (confidence < 60 % ?) then (oui)
+    :Afficher alerte\n"Score faible";
+  endif
+  :Ajouter disclaimer juridique;
+  :Sauvegarder ChatMessage\nen base;
+  :Journaliser dans audit_logs;
+else (non)
+  :Répondre "Aucune source pertinente trouvée";
+  :confidence = 0;
+endif
+
+stop
+
+@enduml

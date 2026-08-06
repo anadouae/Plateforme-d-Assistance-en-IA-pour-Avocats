@@ -1,0 +1,13 @@
+@startuml
+title Séquence — Créer un événement planning
+actor "Utilisateur" as U
+participant "Frontend /agenda" as FE
+participant "API Workspace" as API
+database "PostgreSQL" as DB
+
+U -> FE : Titre, type, dates, dossier?
+FE -> API : POST /api/workspace/agenda
+API -> DB : INSERT agenda_events\n(cabinet_id, case_id?)
+API --> FE : événement créé
+FE --> U : Affiché dans planning
+@enduml

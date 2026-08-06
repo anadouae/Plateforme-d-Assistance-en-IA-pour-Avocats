@@ -1,0 +1,44 @@
+@startuml sanad-deploiement-docker
+' ============================================================
+' Sanad — Déploiement Docker Compose (dev) → VPS
+' ============================================================
+
+skinparam shadowing false
+skinparam backgroundColor #F5F0E8
+skinparam node {
+  BackgroundColor #FFFFFF
+  BorderColor #0B1F4A
+  RoundCorner 8
+}
+
+title Déploiement — Docker Compose / VPS Debian
+
+node "Poste / VPS Linux Debian" {
+  node "Docker Compose" {
+    component "frontend\n:3000" as FE
+    component "backend\n:8001" as BE
+    component "celery-worker" as CW
+    database "postgres\n:5432" as PG
+    database "redis\n:6379" as RD
+    database "minio\n:9000" as MN
+    component "ollama\n:11434" as OL
+  }
+}
+
+actor "Utilisateur\ncabinet" as U
+U --> FE : navigateur
+FE --> BE
+BE --> PG
+BE --> RD
+BE --> MN
+BE --> OL
+CW --> RD
+CW --> MN
+CW --> PG
+
+note bottom
+  Dev : localhost
+  Prod cible : VPS Debian (entreprise WebVoice)
+end note
+
+@enduml

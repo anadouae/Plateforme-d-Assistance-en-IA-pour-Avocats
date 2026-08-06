@@ -1,0 +1,24 @@
+@startuml
+title Matrice des droits (vue synthétique)
+skinparam shadowing false
+
+rectangle "Fonctionnalité" as F
+rectangle "Avocat" as AV #0B1F4A
+rectangle "Assistant" as AS #FFFFFF
+rectangle "Admin cabinet" as AC #1a3a2a
+
+note as N1
+  | Fonction | Avocat | Assistant | Admin cab. |
+  | Dicter plaidoirie | Oui | Non | Oui |
+  | Corriger / modifier | Oui | Non | Oui |
+  | Export PDF/DOC | Oui | Oui | Oui |
+  | Classer plaidoirie | Oui | Non | Oui |
+  | Gérer dossiers | Oui | Oui | Oui |
+  | Upload pièces | Oui | Oui | Oui |
+  | Supprimer document | Oui | Non | Oui |
+  | Synthèse IA | Oui | Non | Oui |
+  | Planning | Oui | Oui | Oui |
+  | Inviter équipe | Non | Non | Oui |
+  | Approuver cabinets | Non | Non | Non (WebVoice) |
+end note
+@enduml

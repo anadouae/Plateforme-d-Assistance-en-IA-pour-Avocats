@@ -1,0 +1,65 @@
+@startuml sanad-sequence-inscription
+' ============================================================
+' Sanad — Séquence : Inscription cabinet
+' Scénario D-05 / F-01
+' ============================================================
+
+skinparam shadowing false
+skinparam sequenceMessageAlign center
+
+title Diagramme de séquence — Inscription d'un cabinet
+
+actor "Admin cabinet\n(futur)" as U
+participant "Frontend\nNext.js" as FE
+participant "AuthAPI\nFastAPI" as API
+participant "AuthService" as Auth
+database "PostgreSQL" as DB
+participant "EmailService\nSMTP" as Mail
+participant "AuditService" as Audit
+
+== Inscription ==
+
+U -> FE : Remplir formulaire\n(nom cabinet, barreau, email, MDP)
+FE -> FE : Valider robustesse MDP\n(8+ chars, maj, chiffre, symbole)
+FE -> API : POST /api/auth/register\n(RegisterRequest)
+
+API -> Auth : hashPassword(mdp)
+Auth --> API : hashed_password
+
+API -> DB : INSERT Cabinet\n(status=PENDING)
+DB --> API : cabinet_id
+
+API -> DB : INSERT User\n(role=ADMIN_CABINET,\nis_active=false, is_verified=false)
+DB --> API : user_id
+
+API -> DB : INSERT EmailToken\n(type=VERIFY_EMAIL, expire=24h)
+DB --> API : token
+
+API -> Mail : sendVerificationEmail(email, token)
+Mail --> API : OK
+
+API -> Audit : log("auth.register", user)
+Audit -> DB : INSERT audit_log
+
+API --> FE : 201 { message: "Vérifiez votre email" }
+FE --> U : Page "Vérifiez votre email"
+
+== Vérification email ==
+
+U -> FE : Cliquer lien email\n/api/auth/verify-email?token=...
+FE -> API : GET /api/auth/verify-email?token=...
+API -> DB : SELECT EmailToken\nWHERE hash=token AND not expired
+DB --> API : token valide
+API -> DB : UPDATE User\nis_verified=true
+API -> DB : UPDATE EmailToken\nused_at=now()
+API -> Audit : log("auth.email_verified")
+API --> FE : { message: "Email vérifié" }
+FE --> U : Redirection login
+
+note over DB
+  Le cabinet reste PENDING
+  jusqu'à activation par
+  Admin WebVoice
+end note
+
+@enduml

@@ -1,0 +1,51 @@
+@startuml sanad-uc-plaidoirie
+' ============================================================
+' Sanad — Cas d'utilisation : Plaidoirie (cœur)
+' ============================================================
+
+skinparam shadowing false
+skinparam backgroundColor #F5F0E8
+skinparam actorStyle awesome
+left to right direction
+
+title Cas d'utilisation — Plaidoirie (cœur Sanad)
+
+actor "Avocat" as Avocat
+actor "Assistant\njuridique" as Assist
+actor "Admin\ncabinet" as Admin
+
+rectangle "Sanad — Module Plaidoirie" {
+  usecase "Dicter la plaidoirie\n(micro AR / saisie)" as UC1
+  usecase "Transcrire & corriger\nle texte (IA)" as UC2
+  usecase "Modifier / vérifier\nle document" as UC3
+  usecase "Exporter PDF\nou DOC" as UC4
+  usecase "Classer dans\nun dossier" as UC5
+  usecase "Consulter les\nplaidoiries archivées" as UC6
+}
+
+Avocat --> UC1
+Avocat --> UC2
+Avocat --> UC3
+Avocat --> UC4
+Avocat --> UC5
+
+Admin --> UC1
+Admin --> UC2
+Admin --> UC3
+Admin --> UC4
+Admin --> UC5
+
+Assist --> UC6
+Assist --> UC4
+
+UC1 ..> UC2 : <<include>>
+UC2 ..> UC3 : <<include>>
+UC3 ..> UC4 : <<extend>>
+UC3 ..> UC5 : <<extend>>
+
+note bottom of UC6
+  L'assistant ne dicte pas.
+  Il consulte et peut exporter.
+end note
+
+@enduml
