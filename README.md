@@ -100,3 +100,28 @@ Config `.env` : `LLM_PROVIDER=ollama`, `OLLAMA_MODEL=sanad-legal`, `LLM_ALLOW_CL
 Voir `backend/models/README.md`.
 
 Voir `DEPLOY.md` pour le guide de déploiement production.
+
+## Base de données (important)
+
+Sanad utilise **PostgreSQL** (service Docker `postgres`).  
+Il n’y a **pas** de SQLite en production.
+
+Un ancien fichier local `backend/sanad.db` pouvait apparaître en test hors Docker — il est **obsolète** et n’est **pas** publié (ce n’est pas la base réelle).
+
+## Images Docker
+
+Les **Dockerfiles** + `docker-compose.yml` sont dans ce dépôt.  
+Pour reconstruire les images localement :
+
+```bash
+docker compose build
+docker compose up -d
+```
+
+Images applicatives construites :
+- `backend` (FastAPI)
+- `frontend` (Next.js)
+- `celery-worker`
+
+Images officielles tirées automatiquement : `postgres:16-alpine`, `redis:7-alpine`, `minio/minio`, `mailhog/mailhog`, `ollama/ollama`.
+
