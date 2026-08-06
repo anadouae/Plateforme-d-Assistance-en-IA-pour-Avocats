@@ -51,3 +51,10 @@ docker-compose.override.yml
 backend/NUL
 NUL
 
+
+# Local DB
+*.db
+backend/sanad.db
+backend/_tmp_*.py
+backend/**/*.recovered
+
