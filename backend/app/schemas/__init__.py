@@ -119,6 +119,11 @@ class CaseCreate(BaseModel):
     status: str = "En cours"
     description: Optional[str] = None
     tags: Optional[list[str]] = None
+    responsible_id: Optional[str] = Field(None, max_length=36)
+    first_hearing_at: Optional[str] = Field(
+        None,
+        description="Date première audience (YYYY-MM-DD), stockée dans tags/description si besoin",
+    )
 
 
 class CaseUpdate(BaseModel):
@@ -156,6 +161,9 @@ class DocumentResponse(BaseModel):
     case_id: str
     case_reference: Optional[str] = None
     created_at: datetime
+    # "audio" | "file" — déduit de l'extension / MIME (pas de colonne dédiée)
+    kind: str = "file"
+    error_message: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -328,6 +336,8 @@ class TeamMemberResponse(BaseModel):
 
 
 class TeamInviteRequest(BaseModel):
+    """Deprecated — conservé pour compat, préférer join-code."""
+
     email: EmailStr
     full_name: str = Field(..., min_length=2, max_length=255)
     role: str = Field(..., pattern="^(avocat|assistant_juridique|admin_cabinet)$")
@@ -344,6 +354,47 @@ class TeamInviteResponse(BaseModel):
 class TeamUpdateRequest(BaseModel):
     role: Optional[str] = Field(None, pattern="^(avocat|assistant_juridique|admin_cabinet)$")
     is_active: Optional[bool] = None
+
+
+class JoinCodeResponse(BaseModel):
+    join_code: str
+    regenerated_at: Optional[datetime] = None
+
+
+class JoinCodeValidateRequest(BaseModel):
+    code: str = Field(..., min_length=4, max_length=32)
+
+
+class JoinCodeValidateResponse(BaseModel):
+    valid: bool
+
+
+class JoinRequestCreate(BaseModel):
+    code: str = Field(..., min_length=4, max_length=32)
+    full_name: str = Field(..., min_length=2, max_length=255)
+    email: EmailStr
+    password: str = Field(..., min_length=12, max_length=72)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, v: str) -> str:
+        return v.strip().lower()
+
+
+class MembershipRequestResponse(BaseModel):
+    id: str
+    full_name: str
+    email: str
+    status: str
+    requested_at: datetime
+    resolved_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class MembershipApproveRequest(BaseModel):
+    role: str = Field(..., pattern="^(avocat|assistant_juridique|admin_cabinet)$")
 
 
 class CabinetSettingsResponse(BaseModel):

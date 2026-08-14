@@ -1,19 +1,43 @@
-import secrets
-import string
+"""Équipe cabinet — code d'invitation + approbation (منسّق = admin_cabinet)."""
+
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, log_audit, require_roles
+from app.api.deps import log_audit, require_roles
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.rate_limit import check_rate_limit
 from app.core.security import hash_password
-from app.models import TokenType, User, UserRole
-from app.services.email import send_team_invite_email
-from app.services.tokens import create_token, invite_hours
-from app.schemas import MessageResponse, TeamInviteRequest, TeamInviteResponse, TeamMemberResponse, TeamUpdateRequest
+from app.models import (
+    Cabinet,
+    CabinetStatus,
+    MembershipRequest,
+    MembershipRequestStatus,
+    User,
+    UserRole,
+)
+from app.schemas import (
+    JoinCodeResponse,
+    JoinCodeValidateRequest,
+    JoinCodeValidateResponse,
+    JoinRequestCreate,
+    MembershipApproveRequest,
+    MembershipRequestResponse,
+    MessageResponse,
+    TeamMemberResponse,
+    TeamUpdateRequest,
+)
+from app.services.join_code import assign_unique_join_code, normalize_join_code
 
 router = APIRouter(prefix="/api/team", tags=["team"])
+
+ROLE_MAP = {
+    "avocat": UserRole.AVOCAT,
+    "assistant_juridique": UserRole.ASSISTANT,
+    "admin_cabinet": UserRole.ADMIN_CABINET,
+}
 
 
 def _member_response(user: User) -> TeamMemberResponse:
@@ -26,6 +50,12 @@ def _member_response(user: User) -> TeamMemberResponse:
         is_verified=user.is_verified,
         created_at=user.created_at,
     )
+
+
+def _ensure_join_code(db: Session, cabinet: Cabinet) -> str:
+    if cabinet.join_code:
+        return cabinet.join_code
+    return assign_unique_join_code(db, cabinet, cabinet.name)
 
 
 @router.get("", response_model=list[TeamMemberResponse])
@@ -42,82 +72,255 @@ def list_team(
     return [_member_response(m) for m in members]
 
 
-@router.post("/invite", response_model=TeamInviteResponse, status_code=status.HTTP_201_CREATED)
-def invite_member(
-    data: TeamInviteRequest,
+@router.get("/join-code", response_model=JoinCodeResponse)
+def get_join_code(
+    user: User = Depends(require_roles(UserRole.ADMIN_CABINET)),
+    db: Session = Depends(get_db),
+):
+    cabinet = db.query(Cabinet).filter(Cabinet.id == user.cabinet_id).first()
+    if not cabinet:
+        raise HTTPException(status_code=404, detail="Cabinet introuvable")
+    code = _ensure_join_code(db, cabinet)
+    db.commit()
+    return JoinCodeResponse(
+        join_code=code,
+        regenerated_at=cabinet.join_code_regenerated_at,
+    )
+
+
+@router.post("/join-code/regenerate", response_model=JoinCodeResponse)
+def regenerate_join_code(
     request: Request,
     user: User = Depends(require_roles(UserRole.ADMIN_CABINET)),
     db: Session = Depends(get_db),
 ):
-    email = data.email.lower().strip()
-    existing = db.query(User).filter(User.email == email).first()
-
-    role_map = {
-        "avocat": UserRole.AVOCAT,
-        "assistant_juridique": UserRole.ASSISTANT,
-        "admin_cabinet": UserRole.ADMIN_CABINET,
-    }
-
-    if existing:
-        if existing.cabinet_id != user.cabinet_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cet email est déjà utilisé par un autre cabinet.",
-            )
-        if existing.is_active and existing.is_verified:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Ce collaborateur est déjà actif. Utilisez « Réactiver » si besoin.",
-            )
-        existing.full_name = data.full_name
-        existing.role = role_map[data.role]
-        existing.is_active = False
-        existing.is_verified = False
-        new_user = existing
-        db.flush()
-        raw_token = create_token(db, new_user, TokenType.RESET_PASSWORD, invite_hours())
-    else:
-        temp_password = "".join(secrets.choice(string.ascii_letters + string.digits) for _ in range(16))
-        new_user = User(
-            email=email,
-            hashed_password=hash_password(temp_password),
-            full_name=data.full_name,
-            role=role_map[data.role],
-            is_active=False,
-            is_verified=False,
-            cabinet_id=user.cabinet_id,
-        )
-        db.add(new_user)
-        db.flush()
-        raw_token = create_token(db, new_user, TokenType.RESET_PASSWORD, invite_hours())
-
-    cabinet = user.cabinet
-    log_audit(db, "team.invite", user=user, request=request, details=email)
+    cabinet = db.query(Cabinet).filter(Cabinet.id == user.cabinet_id).first()
+    if not cabinet:
+        raise HTTPException(status_code=404, detail="Cabinet introuvable")
+    code = assign_unique_join_code(db, cabinet, cabinet.name)
+    log_audit(db, "team.join_code_regenerate", user=user, request=request, details=code)
     db.commit()
-
-    email_sent = send_team_invite_email(
-        email,
-        raw_token,
-        cabinet.name if cabinet else "Sanad",
-        user.full_name,
+    return JoinCodeResponse(
+        join_code=code,
+        regenerated_at=cabinet.join_code_regenerated_at,
     )
 
-    invite_url = f"{settings.FRONTEND_URL.rstrip('/')}/activate?token={raw_token}"
-    is_dev_mail = settings.SMTP_HOST in ("mailhog", "localhost") or settings.SMTP_PORT == 1025
-    dev_mail = "http://localhost:8025" if is_dev_mail else None
 
-    if email_sent:
-        msg = f"Invitation envoyée à {email}."
-    else:
-        msg = f"Invitation créée pour {email}. L'email n'a pas pu être envoyé — partagez le lien manuellement."
+@router.post("/join/validate", response_model=JoinCodeValidateResponse)
+def validate_join_code(
+    data: JoinCodeValidateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Ne révèle jamais le nom du cabinet (anti-énumération)."""
+    check_rate_limit(
+        request,
+        key="team.join_validate",
+        limit=settings.JOIN_VALIDATE_RATE_LIMIT,
+        window_sec=60,
+    )
+    code = normalize_join_code(data.code)
+    if len(code) < 6:
+        return JoinCodeValidateResponse(valid=False)
+    cab = (
+        db.query(Cabinet.id)
+        .filter(
+            Cabinet.join_code == code,
+            Cabinet.status == CabinetStatus.ACTIVE,
+        )
+        .first()
+    )
+    return JoinCodeValidateResponse(valid=cab is not None)
 
-    return TeamInviteResponse(
-        message=msg,
-        invite_url=invite_url,
+
+@router.post("/join/request", response_model=MessageResponse, status_code=status.HTTP_201_CREATED)
+async def submit_join_request(
+    data: JoinRequestCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    from app.services.hibp import is_password_breached
+
+    check_rate_limit(
+        request,
+        key="team.join_request",
+        limit=settings.JOIN_REQUEST_RATE_LIMIT,
+        window_sec=60,
+    )
+    code = normalize_join_code(data.code)
+    cabinet = (
+        db.query(Cabinet)
+        .filter(Cabinet.join_code == code, Cabinet.status == CabinetStatus.ACTIVE)
+        .first()
+    )
+    # Réponse générique si code invalide
+    if not cabinet:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="رمز غير صالح.",
+        )
+
+    email = data.email.lower().strip()
+    existing_user = db.query(User).filter(User.email == email).first()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="تعذر إتمام الطلب. تحقق من بياناتك أو اتصل بالمنسّق.",
+        )
+
+    pending = (
+        db.query(MembershipRequest)
+        .filter(
+            MembershipRequest.email == email,
+            MembershipRequest.status == MembershipRequestStatus.PENDING.value,
+        )
+        .first()
+    )
+    if pending:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="لديك بالفعل طلب قيد المراجعة.",
+        )
+
+    if await is_password_breached(data.password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="كلمة المرور غير آمنة. اختر كلمة أخرى.",
+        )
+
+    req = MembershipRequest(
+        cabinet_id=cabinet.id,
+        full_name=data.full_name.strip(),
         email=email,
-        email_sent=email_sent,
-        dev_mail_url=dev_mail,
+        hashed_password=hash_password(data.password),
+        status=MembershipRequestStatus.PENDING,
     )
+    db.add(req)
+    log_audit(
+        db,
+        "team.join_request",
+        user=None,
+        request=request,
+        details=f"{email} → cabinet {cabinet.id}",
+    )
+    db.commit()
+    return MessageResponse(message="طلبك قيد المراجعة")
+
+
+@router.get("/requests", response_model=list[MembershipRequestResponse])
+def list_join_requests(
+    user: User = Depends(require_roles(UserRole.ADMIN_CABINET)),
+    db: Session = Depends(get_db),
+):
+    rows = (
+        db.query(MembershipRequest)
+        .filter(
+            MembershipRequest.cabinet_id == user.cabinet_id,
+            MembershipRequest.status == MembershipRequestStatus.PENDING.value,
+        )
+        .order_by(MembershipRequest.requested_at.desc())
+        .all()
+    )
+    return [
+        MembershipRequestResponse(
+            id=r.id,
+            full_name=r.full_name,
+            email=r.email,
+            status=r.status.value,
+            requested_at=r.requested_at,
+            resolved_at=r.resolved_at,
+        )
+        for r in rows
+    ]
+
+
+@router.post("/requests/{request_id}/approve", response_model=TeamMemberResponse)
+def approve_join_request(
+    request_id: str,
+    data: MembershipApproveRequest,
+    request: Request,
+    user: User = Depends(require_roles(UserRole.ADMIN_CABINET)),
+    db: Session = Depends(get_db),
+):
+    req = (
+        db.query(MembershipRequest)
+        .filter(
+            MembershipRequest.id == request_id,
+            MembershipRequest.cabinet_id == user.cabinet_id,
+            MembershipRequest.status == MembershipRequestStatus.PENDING.value,
+        )
+        .first()
+    )
+    if not req:
+        raise HTTPException(status_code=404, detail="الطلب غير موجود")
+
+    if db.query(User).filter(User.email == req.email).first():
+        req.status = MembershipRequestStatus.REJECTED
+        req.resolved_at = datetime.now(timezone.utc)
+        req.resolved_by = user.id
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="هذا البريد مستخدم بالفعل.",
+        )
+
+    role = ROLE_MAP[data.role]
+    new_user = User(
+        email=req.email,
+        hashed_password=req.hashed_password,
+        full_name=req.full_name,
+        role=role,
+        is_active=True,
+        is_verified=True,
+        cabinet_id=user.cabinet_id,
+    )
+    db.add(new_user)
+    req.status = MembershipRequestStatus.APPROVED
+    req.resolved_at = datetime.now(timezone.utc)
+    req.resolved_by = user.id
+    log_audit(
+        db,
+        "team.join_approve",
+        user=user,
+        request=request,
+        details=f"{req.email} → {data.role}",
+    )
+    db.commit()
+    db.refresh(new_user)
+    return _member_response(new_user)
+
+
+@router.post("/requests/{request_id}/reject", response_model=MessageResponse)
+def reject_join_request(
+    request_id: str,
+    request: Request,
+    user: User = Depends(require_roles(UserRole.ADMIN_CABINET)),
+    db: Session = Depends(get_db),
+):
+    req = (
+        db.query(MembershipRequest)
+        .filter(
+            MembershipRequest.id == request_id,
+            MembershipRequest.cabinet_id == user.cabinet_id,
+            MembershipRequest.status == MembershipRequestStatus.PENDING.value,
+        )
+        .first()
+    )
+    if not req:
+        raise HTTPException(status_code=404, detail="الطلب غير موجود")
+
+    req.status = MembershipRequestStatus.REJECTED
+    req.resolved_at = datetime.now(timezone.utc)
+    req.resolved_by = user.id
+    log_audit(
+        db,
+        "team.join_reject",
+        user=user,
+        request=request,
+        details=req.email,
+    )
+    db.commit()
+    return MessageResponse(message="تم رفض الطلب")
 
 
 @router.patch("/{member_id}", response_model=TeamMemberResponse)
@@ -143,12 +346,7 @@ def update_member(
         )
 
     if data.role:
-        role_map = {
-            "avocat": UserRole.AVOCAT,
-            "assistant_juridique": UserRole.ASSISTANT,
-            "admin_cabinet": UserRole.ADMIN_CABINET,
-        }
-        member.role = role_map[data.role]
+        member.role = ROLE_MAP[data.role]
 
     if data.is_active is not None:
         member.is_active = data.is_active

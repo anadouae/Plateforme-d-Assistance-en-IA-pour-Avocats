@@ -5,9 +5,9 @@ import { cn } from "@/lib/utils";
 import { useLocaleStore } from "@/store/locale";
 
 interface SanadLogoProps {
-  size?: "sm" | "md" | "lg" | "xl" | "hero";
+  size?: "sm" | "md" | "lg" | "xl" | "hero" | "dock";
   className?: string;
-  /** Soft gold aura around the logo (palette sanad-gold #D2B589). */
+  /** Soft gold aura around the logo. */
   glow?: boolean;
   /** Affiche le nom سند / Sanad à côté du monogramme. */
   withWordmark?: boolean;
@@ -15,6 +15,7 @@ interface SanadLogoProps {
 }
 
 const sizeClasses = {
+  dock: "h-[52px] w-[52px]",
   sm: "h-8 w-8",
   md: "h-10 w-10",
   lg: "h-14 w-14",
@@ -23,6 +24,7 @@ const sizeClasses = {
 };
 
 const sizeDims = {
+  dock: { w: 104, h: 104 },
   sm: { w: 64, h: 64 },
   md: { w: 80, h: 80 },
   lg: { w: 112, h: 112 },
@@ -31,6 +33,7 @@ const sizeDims = {
 };
 
 const wordmarkSize = {
+  dock: "text-lg",
   sm: "text-lg",
   md: "text-xl",
   lg: "text-2xl",
@@ -38,11 +41,13 @@ const wordmarkSize = {
   hero: "text-4xl",
 };
 
-/** Garde le logo actuel + wordmark سند (arabe d’abord). */
+/** Cube or transparent — asset unique partout. */
+const LOGO_SRC = "/logo-sanad-cube.png?v=cube-1";
+
 export function SanadLogo({
   size = "md",
   className,
-  glow = true,
+  glow = false,
   withWordmark = true,
   dark = false,
 }: SanadLogoProps) {
@@ -53,25 +58,32 @@ export function SanadLogo({
   return (
     <span
       className={cn(
-        "relative inline-flex items-center gap-2.5",
+        "relative inline-flex items-center gap-2.5 bg-transparent",
         glow && "sanad-logo-glow",
         className,
       )}
     >
       <Image
-        src="/logo-sanad.png"
+        src={LOGO_SRC}
         alt={label}
         width={dim.w}
         height={dim.h}
-        className={cn("relative z-[1] object-contain", sizeClasses[size])}
-        priority={size === "hero"}
+        className={cn(
+          "relative z-[1] bg-transparent object-contain mix-blend-normal",
+          sizeClasses[size],
+        )}
+        style={{ backgroundColor: "transparent" }}
+        priority={size === "hero" || size === "lg" || size === "md" || size === "dock"}
+        unoptimized
       />
       {withWordmark && (
         <span
           className={cn(
-            "font-display font-semibold tracking-tight",
+            "font-display font-semibold tracking-tight drop-shadow-sm",
             wordmarkSize[size],
-            dark ? "text-white" : "text-sanad-navy",
+            dark
+              ? "text-white [text-shadow:0_1px_8px_rgba(0,0,0,0.55)]"
+              : "text-[#0E1526]",
             locale === "ar" && "font-arabic",
           )}
         >

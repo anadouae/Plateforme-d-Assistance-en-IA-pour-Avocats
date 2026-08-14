@@ -1,15 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
-import { FilePlus2, LayoutGrid, Trash2, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useEffect, useId, useMemo, useState } from "react";
+import { FileEdit, FileText, LayoutTemplate, Trash2, X } from "lucide-react";
 import type { CabinetPlaidoirieTemplate } from "@/lib/api";
 import type { PlaidoirieTemplate } from "@/lib/plaidoirie-templates";
+import { useLocaleStore, useTranslations } from "@/store/locale";
 import { cn } from "@/lib/utils";
-
-type Mode = "choose" | "browse";
 
 type Props = {
   systemTemplates: PlaidoirieTemplate[];
@@ -18,8 +14,21 @@ type Props = {
   onDeleteCustom: (id: string) => void;
 };
 
+type Step = "choose" | "browse";
+
+type CardItem = {
+  kind: "system" | "custom";
+  id: string;
+  title: string;
+  subtitle: string;
+  body: string;
+};
+
 /**
- * Étape 1 : choisir un départ → navigation vers l’espace dictée.
+ * Parcours d’origine :
+ * 1) النماذج / الصفحة الفارغة
+ * 2) grille + aperçu au survol + modal → متابعة
+ * Design Sanad (parchment / ink / gold) uniquement.
  */
 export function TemplatePicker({
   systemTemplates,
@@ -27,201 +36,257 @@ export function TemplatePicker({
   onSelect,
   onDeleteCustom,
 }: Props) {
-  const [mode, setMode] = useState<Mode>("choose");
+  const locale = useLocaleStore((s) => s.locale);
+  const t = useTranslations();
+  const isAr = locale === "ar";
+  const [step, setStep] = useState<Step>("choose");
   const [previewId, setPreviewId] = useState<string | null>(null);
-  const [hoverId, setHoverId] = useState<string | null>(null);
+  const [modalId, setModalId] = useState<string | null>(null);
+  const titleId = useId();
 
-  const allCards = useMemo(() => {
-    const sys = systemTemplates.map((t) => ({
-      kind: "system" as const,
-      id: t.id,
-      label: t.labelAr,
-      sub: t.labelFr,
-      domain: t.domain,
-      body: t.body,
-      jurisdiction: t.jurisdiction,
-    }));
-    const custom = customTemplates.map((t) => ({
+  const cards = useMemo<CardItem[]>(() => {
+    const custom = customTemplates.map((tpl) => ({
       kind: "custom" as const,
-      id: t.id,
-      label: t.name,
-      sub: "نموذج المكتب",
-      domain: t.base_type || "حر",
-      body: t.body,
-      jurisdiction: "Cabinet",
+      id: tpl.id,
+      title: tpl.name,
+      subtitle: isAr ? "نموذج المكتب" : "Modèle du cabinet",
+      body: tpl.body,
     }));
-    return [...custom, ...sys];
-  }, [systemTemplates, customTemplates]);
+    const system = systemTemplates
+      .filter((tpl) => tpl.id !== "libre")
+      .map((tpl) => ({
+        kind: "system" as const,
+        id: tpl.id,
+        title: isAr ? tpl.labelAr : tpl.labelFr,
+        subtitle: isAr
+          ? `${tpl.domain} · ${tpl.jurisdiction}`
+          : `${tpl.domain} · ${tpl.labelFr}`,
+        body: tpl.body,
+      }));
+    return [...custom, ...system];
+  }, [customTemplates, systemTemplates, isAr]);
 
-  const openCard = allCards.find((c) => c.id === previewId);
-  const hoverCard = allCards.find((c) => c.id === hoverId);
+  const modalCard = cards.find((c) => c.id === modalId) ?? null;
 
-  function confirmPick(id: string) {
-    setPreviewId(null);
-    onSelect(id);
-  }
+  useEffect(() => {
+    if (!modalId) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setModalId(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [modalId]);
 
   return (
-    <Card className="border-sanad-gold/25">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-base" dir="rtl">
-          اختر نقطة البداية
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid gap-3 sm:grid-cols-2">
+    <div className="space-y-6" dir={isAr ? "rtl" : "ltr"}>
+      <div>
+        <h1 className="section-title">{t.nav.redaction}</h1>
+        <p className="section-sub">
+          {step === "choose"
+            ? isAr
+              ? "اختر نموذجاً جاهزاً أو ابدأ من صفحة فارغة."
+              : "Choisissez un modèle prêt ou partez d’une page vierge."
+            : isAr
+              ? "مرّر على البطاقة لمعاينة المحتوى، ثم انقر للمتابعة."
+              : "Survolez une carte pour l’aperçu, puis cliquez pour continuer."}
+        </p>
+      </div>
+
+      {step === "choose" ? (
+        <div className="grid gap-4 sm:grid-cols-2">
           <button
             type="button"
-            onClick={() => confirmPick("libre")}
-            className={cn(
-              "flex flex-col items-start gap-2 rounded-2xl border px-4 py-5 text-start transition",
-              "hover:-translate-y-0.5 hover:border-sanad-gold hover:shadow-md",
-              "border-sanad-border bg-white",
-            )}
+            onClick={() => setStep("browse")}
+            className="card group flex min-h-[200px] flex-col items-start gap-4 p-7 text-start transition hover:-translate-y-0.5 hover:border-[var(--gold)]/35"
           >
-            <span className="flex items-center gap-2 text-sm font-semibold text-sanad-navy">
-              <FilePlus2 className="h-5 w-5 text-sanad-gold" />
-              صفحة فارغة
+            <span className="grid h-12 w-12 place-items-center rounded-[14px] bg-[rgba(184,148,74,0.14)] text-[var(--gold-deep)]">
+              <LayoutTemplate className="h-6 w-6" />
+            </span>
+            <div>
+              <p className="font-[family-name:var(--font-display)] text-2xl text-[var(--ink)]">
+                {isAr ? "النماذج" : "Les modèles"}
+              </p>
+              <p className="mt-2 text-sm leading-relaxed text-[var(--ink-soft)]">
+                {isAr
+                  ? "تصفّح النماذج الجاهزة مع معاينة عند التمرير."
+                  : "Parcourez les modèles prêts avec aperçu au survol."}
+              </p>
+            </div>
+            <span className="mt-auto text-sm font-semibold text-[var(--gold-deep)]">
+              {isAr ? "فتح المكتبة ←" : "Ouvrir la bibliothèque →"}
             </span>
           </button>
 
           <button
             type="button"
-            onClick={() => setMode("browse")}
-            className={cn(
-              "flex flex-col items-start gap-2 rounded-2xl border px-4 py-5 text-start transition",
-              "hover:-translate-y-0.5 hover:shadow-md",
-              mode === "browse"
-                ? "border-sanad-gold bg-sanad-gold/10 shadow-sm"
-                : "border-sanad-border bg-white",
-            )}
+            onClick={() => onSelect("libre")}
+            className="card group flex min-h-[200px] flex-col items-start gap-4 p-7 text-start transition hover:-translate-y-0.5 hover:border-[var(--gold)]/35"
           >
-            <span className="flex items-center gap-2 text-sm font-semibold text-sanad-navy">
-              <LayoutGrid className="h-5 w-5 text-sanad-gold" />
-              النماذج
+            <span className="grid h-12 w-12 place-items-center rounded-[14px] bg-[rgba(26,43,74,0.08)] text-[var(--ink)]">
+              <FileEdit className="h-6 w-6" />
+            </span>
+            <div>
+              <p className="font-[family-name:var(--font-display)] text-2xl text-[var(--ink)]">
+                {isAr ? "الصفحة الفارغة" : "Page vierge"}
+              </p>
+              <p className="mt-2 text-sm leading-relaxed text-[var(--ink-soft)]">
+                {isAr
+                  ? "ابدأ من الصفر — إملاء، ملف أو كتابة مباشرة."
+                  : "Partez d’une feuille blanche — dictée, fichier ou saisie."}
+              </p>
+            </div>
+            <span className="mt-auto text-sm font-semibold text-[var(--ink)]">
+              {isAr ? "البدء الآن ←" : "Commencer maintenant →"}
             </span>
           </button>
         </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm font-semibold text-[var(--ink)]">
+              {isAr ? "مكتبة النماذج" : "Bibliothèque de modèles"}
+            </p>
+            <button
+              type="button"
+              className="btn-ghost !py-2 !text-sm"
+              onClick={() => {
+                setStep("choose");
+                setPreviewId(null);
+              }}
+            >
+              {isAr ? "← رجوع" : "← Retour"}
+            </button>
+          </div>
 
-        {mode === "browse" && (
-          <div className="relative">
-            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-              {allCards.map((card) => (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {cards.map((tpl) => {
+              const active = previewId === tpl.id;
+              return (
                 <div
-                  key={`${card.kind}-${card.id}`}
+                  key={tpl.id}
                   className="relative"
-                  onMouseEnter={() => setHoverId(card.id)}
-                  onMouseLeave={() => setHoverId((id) => (id === card.id ? null : id))}
+                  onMouseEnter={() => setPreviewId(tpl.id)}
+                  onMouseLeave={() => setPreviewId(null)}
                 >
                   <button
                     type="button"
-                    onClick={() => setPreviewId(card.id)}
+                    onFocus={() => setPreviewId(tpl.id)}
+                    onBlur={() => setPreviewId(null)}
+                    onClick={() => setModalId(tpl.id)}
                     className={cn(
-                      "flex w-full flex-col gap-1 rounded-xl border px-3 py-3 text-start transition",
-                      "border-sanad-border bg-white hover:border-sanad-gold hover:bg-sanad-gold/5",
+                      "card relative w-full overflow-hidden p-5 text-start transition",
+                      "hover:-translate-y-0.5 hover:border-[var(--gold)]/40",
+                      active &&
+                        "border-[var(--gold)]/45 shadow-[0_16px_40px_rgba(26,43,74,0.1)]",
                     )}
                   >
-                    <span className="text-sm font-semibold text-sanad-navy" dir="rtl">
-                      {card.label}
-                    </span>
-                    <span className="text-[10px] text-slate-500">
-                      {card.sub} · {card.domain}
-                    </span>
+                    <div className="flex items-start gap-3">
+                      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[12px] bg-[rgba(184,148,74,0.14)] text-[var(--gold-deep)]">
+                        <FileText className="h-5 w-5" />
+                      </span>
+                      <div className="min-w-0 pe-8">
+                        <p className="font-[family-name:var(--font-display)] text-lg text-[var(--ink)]">
+                          {tpl.title}
+                        </p>
+                        <p className="mt-1 line-clamp-2 text-xs text-[var(--ink-mute)]">
+                          {tpl.subtitle}
+                        </p>
+                      </div>
+                    </div>
+
+                    {active ? (
+                      <div className="pointer-events-none absolute inset-x-3 bottom-3 top-[4.5rem] overflow-hidden rounded-[14px] border border-[rgba(26,43,74,0.08)] bg-[rgba(255,252,246,0.96)] p-3 shadow-lg">
+                        <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-[var(--gold-deep)]">
+                          {isAr ? "معاينة" : "Aperçu"}
+                        </p>
+                        <pre className="max-h-[140px] overflow-hidden whitespace-pre-wrap font-sans text-[11px] leading-relaxed text-[var(--ink-soft)]">
+                          {tpl.body.slice(0, 420)}
+                          {tpl.body.length > 420 ? "…" : ""}
+                        </pre>
+                      </div>
+                    ) : null}
                   </button>
-                  {card.kind === "custom" && (
+
+                  {tpl.kind === "custom" ? (
                     <button
                       type="button"
-                      className="absolute end-1 top-1 rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
-                      title="حذف"
+                      className="absolute end-3 top-3 grid h-8 w-8 place-items-center rounded-full text-[var(--ink-mute)] hover:bg-[rgba(180,60,60,0.1)] hover:text-[var(--danger,#b43c3c)]"
+                      aria-label={isAr ? "حذف" : "Supprimer"}
                       onClick={(e) => {
                         e.stopPropagation();
-                        onDeleteCustom(card.id);
+                        onDeleteCustom(tpl.id);
                       }}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
-                  )}
-
-                  <AnimatePresence>
-                    {hoverId === card.id && hoverCard && previewId !== card.id && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 6, scale: 0.98 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: 4 }}
-                        className="pointer-events-none absolute start-0 top-full z-20 mt-2 w-[min(320px,80vw)] overflow-hidden rounded-xl border border-sanad-gold/40 bg-white p-3 shadow-2xl"
-                      >
-                        <pre
-                          dir="rtl"
-                          className="max-h-40 overflow-hidden whitespace-pre-wrap font-arabic text-[11px] leading-relaxed text-sanad-navy"
-                        >
-                          {hoverCard.body.slice(0, 420)}
-                          {hoverCard.body.length > 420 ? "…" : ""}
-                        </pre>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                  ) : null}
                 </div>
-              ))}
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {modalCard ? (
+        <div
+          className="modal-overlay open"
+          role="presentation"
+          onClick={() => setModalId(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={titleId}
+            className="modal-card"
+            style={{ maxWidth: 520 }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="modal-head">
+              <div>
+                <p className="modal-sub" style={{ marginBottom: 4 }}>
+                  {isAr ? "تأكيد النموذج" : "Confirmer le modèle"}
+                </p>
+                <h2 id={titleId} className="modal-title">
+                  {modalCard.title}
+                </h2>
+              </div>
+              <button
+                type="button"
+                className="modal-close"
+                onClick={() => setModalId(null)}
+                aria-label={isAr ? "إغلاق" : "Fermer"}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="modal-sub">{modalCard.subtitle}</p>
+            <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-[16px] border border-[rgba(26,43,74,0.08)] bg-[rgba(248,244,236,0.7)] p-4 font-sans text-xs leading-relaxed text-[var(--ink-soft)]">
+              {modalCard.body.slice(0, 900)}
+              {modalCard.body.length > 900 ? "…" : ""}
+            </pre>
+            <div className="modal-foot">
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() => setModalId(null)}
+              >
+                {isAr ? "إلغاء" : "Annuler"}
+              </button>
+              <button
+                type="button"
+                className="btn-create"
+                onClick={() => {
+                  const id = modalCard.id;
+                  setModalId(null);
+                  onSelect(id);
+                }}
+              >
+                {isAr ? "متابعة" : "Continuer"}
+              </button>
             </div>
           </div>
-        )}
-
-        <AnimatePresence>
-          {openCard && (
-            <>
-              <motion.div
-                className="fixed inset-0 z-40 bg-sanad-navy/30 backdrop-blur-[2px]"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                onClick={() => setPreviewId(null)}
-              />
-              <motion.div
-                role="dialog"
-                aria-modal
-                initial={{ opacity: 0, y: 24, scale: 0.96 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 12, scale: 0.98 }}
-                className="fixed inset-4 z-50 m-auto flex max-h-[min(880px,92vh)] max-w-3xl flex-col overflow-hidden rounded-2xl border border-sanad-border bg-white shadow-2xl md:inset-8"
-              >
-                <div className="flex items-start justify-between gap-3 border-b border-sanad-stone px-4 py-3">
-                  <div dir="rtl" className="min-w-0 text-right">
-                    <p className="truncate font-semibold text-sanad-navy">{openCard.label}</p>
-                    <p className="text-xs text-slate-500">
-                      {openCard.sub} · {openCard.jurisdiction}
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="ghost"
-                    className="h-8 w-8 shrink-0 p-0"
-                    onClick={() => setPreviewId(null)}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-                <div className="min-h-0 flex-1 overflow-auto px-4 py-3">
-                  <pre
-                    dir="rtl"
-                    className="whitespace-pre-wrap font-arabic text-sm leading-8 text-sanad-navy"
-                  >
-                    {openCard.body}
-                  </pre>
-                </div>
-                <div className="flex flex-wrap justify-end gap-2 border-t border-sanad-stone px-4 py-3">
-                  <Button type="button" variant="ghost" onClick={() => setPreviewId(null)}>
-                    إغلاق
-                  </Button>
-                  <Button type="button" onClick={() => confirmPick(openCard.id)}>
-                    متابعة
-                  </Button>
-                </div>
-              </motion.div>
-            </>
-          )}
-        </AnimatePresence>
-      </CardContent>
-    </Card>
+        </div>
+      ) : null}
+    </div>
   );
 }

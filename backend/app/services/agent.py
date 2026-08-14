@@ -768,40 +768,68 @@ def generate_synthesis(document_name: str, text: str, language: str = "ar") -> d
                         "en": "جودة الاستخراج متوسطة — تحقق من PDF أو أعد الاستخراج.",
                     }.get(locale, "جودة الاستخراج متوسطة — تحقق من PDF أو أعد الاستخراج.")
                 ] + attention
+            # Regex uniquement pour combler des listes vides — jamais pour remplacer le summary LLM
+            parties = list(llm_data.get("parties") or []) or extract_parties(text)
+            dates = list(llm_data.get("key_dates") or []) or extract_dates(text)
+            amounts = list(llm_data.get("amounts") or []) or extract_amounts(text)
+            risks = list(llm_data.get("risk_clauses") or [])
+            if not risks and not scrambled:
+                risks = extract_risk_clauses(text)
             return {
-                "parties": llm_data["parties"],
-                "key_dates": llm_data["key_dates"],
-                "amounts": llm_data["amounts"],
-                "risk_clauses": llm_data["risk_clauses"],
+                "parties": parties[:40],
+                "key_dates": dates[:40],
+                "amounts": amounts[:40],
+                "risk_clauses": risks[:40],
                 "attention_points": attention,
                 "summary": summary,
                 "sources": [Citation(label=document_name, excerpt=preview[:300])],
                 "disclaimer": disclaimer,
             }
 
-    parties = extract_parties(text)
-    dates = extract_dates(text)
-    amounts = extract_amounts(text)
-    risks = extract_risk_clauses(text) if not scrambled else []
+    # Secours LLM prose (pas de template programmé)
     summary = generate_synthesis_text(document_name, text, language=locale)
-    if not summary or (scrambled and summary[:60] in text[:400]):
-        _fallback = {
-            "fr": (
-                "## Objet du document\n"
-                "- Synthèse indisponible : texte extrait insuffisant ou illisible.\n\n"
-                "## Points d'attention\n"
-                "- Ré-extrayez le document puis relancez la synthèse.\n"
-                "- Aucune information juridique n’a été inventée."
-            ),
-            "ar": (
-                "## موضوع الوثيقة\n"
-                "- تعذر إعداد تلخيص موثوق: النص المستخرج غير كافٍ أو غير واضح.\n\n"
-                "## نقاط الانتباه\n"
-                "- أعد استخراج النص ثم أعد التلخيص.\n"
-                "- لم تُختلق أي معلومة قانونية."
-            ),
+    if summary and not (scrambled and summary[:60] in text[:400]):
+        attention = []
+        if scrambled:
+            attention.append(
+                {
+                    "fr": "Qualité d'extraction moyenne — vérifier le PDF / ré-extraire.",
+                    "ar": "جودة الاستخراج متوسطة — تحقق من PDF أو أعد الاستخراج.",
+                    "en": "جودة الاستخراج متوسطة — تحقق من PDF أو أعد الاستخراج.",
+                }.get(locale, "جودة الاستخراج متوسطة — تحقق من PDF أو أعد الاستخراج.")
+            )
+        return {
+            "parties": extract_parties(text),
+            "key_dates": extract_dates(text),
+            "amounts": extract_amounts(text),
+            "risk_clauses": [] if scrambled else extract_risk_clauses(text),
+            "attention_points": attention,
+            "summary": summary,
+            "sources": [Citation(label=document_name, excerpt=preview[:300])],
+            "disclaimer": disclaimer,
         }
-        summary = _fallback.get(locale, _fallback["ar"])
+
+    # Dernier recours uniquement si aucun LLM n'a répondu
+    _fallback = {
+        "fr": (
+            "## Synthèse indisponible\n\n"
+            "Les modèles IA n'ont pas pu produire de synthèse pour cette pièce "
+            "(texte trop pauvre, OCR illisible, ou providers indisponibles).\n\n"
+            "## Que faire\n"
+            "- Ré-extrayez le document puis relancez la synthèse.\n"
+            "- Vérifiez que le backend LLM (Mistral / Groq / Ollama) est joignable.\n"
+            "- Aucune information juridique n'a été inventée."
+        ),
+        "ar": (
+            "## تعذر التلخيص\n\n"
+            "تعذر على نماذج الذكاء الاصطناعي إعداد تلخيص لهذه القطعة "
+            "(نص ضعيف، OCR غير واضح، أو مزود غير متاح).\n\n"
+            "## ماذا تفعل\n"
+            "- أعد استخراج النص ثم أعد التلخيص.\n"
+            "- تحقق من اتصال نماذج LLM.\n"
+            "- لم تُختلق أي معلومة قانونية."
+        ),
+    }
     attention = []
     if scrambled:
         attention.append(
@@ -811,16 +839,14 @@ def generate_synthesis(document_name: str, text: str, language: str = "ar") -> d
                 "en": "نص عربي مشوش — أعد الاستخراج ثم التلخيص.",
             }.get(locale, "نص عربي مشوش — أعد الاستخراج ثم التلخيص.")
         )
-    if risks:
-        attention.append(f"{len(risks)} clause(s) à risque potentiel détectée(s)")
 
     return {
-        "parties": parties,
-        "key_dates": dates,
-        "amounts": amounts,
-        "risk_clauses": risks,
+        "parties": extract_parties(text),
+        "key_dates": extract_dates(text),
+        "amounts": extract_amounts(text),
+        "risk_clauses": [] if scrambled else extract_risk_clauses(text),
         "attention_points": attention,
-        "summary": summary,
+        "summary": _fallback.get(locale, _fallback["ar"]),
         "sources": [Citation(label=document_name, excerpt=preview[:300])],
         "disclaimer": disclaimer,
     }

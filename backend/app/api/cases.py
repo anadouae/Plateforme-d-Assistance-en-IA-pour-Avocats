@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, log_audit
+from app.api.deps import get_current_user, log_audit, require_not_assistant
 from app.core.database import get_db
 from app.models import Case, Document, User, UserRole
 from app.schemas import CaseAnalysisResponse, CaseCreate, CaseResponse, CaseUpdate
@@ -54,15 +54,43 @@ def create_case(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    responsible_id = user.id
+    if data.responsible_id:
+        assignee = (
+            db.query(User)
+            .filter(
+                User.id == data.responsible_id,
+                User.cabinet_id == user.cabinet_id,
+                User.is_active.is_(True),
+                User.role.in_([UserRole.AVOCAT, UserRole.ADMIN_CABINET]),
+            )
+            .first()
+        )
+        if not assignee:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Responsable invalide pour ce cabinet",
+            )
+        responsible_id = assignee.id
+
+    tags = list(data.tags or [])
+    description = data.description
+    if data.first_hearing_at:
+        hearing = data.first_hearing_at.strip()
+        if hearing:
+            tags.append(f"audience:{hearing}")
+            note = f"Première audience : {hearing}"
+            description = f"{description}\n{note}".strip() if description else note
+
     case = Case(
         reference=_generate_reference(db),
         client_name=data.client_name,
         case_type=data.case_type,
         status=data.status,
-        description=data.description,
-        tags=",".join(data.tags) if data.tags else None,
+        description=description,
+        tags=",".join(tags) if tags else None,
         cabinet_id=user.cabinet_id,
-        responsible_id=user.id,
+        responsible_id=responsible_id,
     )
     db.add(case)
     log_audit(db, "case.create", user=user, request=request, details=case.reference)
@@ -92,15 +120,9 @@ def analyse_case(
     case_id: str,
     request: Request,
     lang: str | None = None,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_not_assistant),
     db: Session = Depends(get_db),
 ):
-    if user.role == UserRole.ASSISTANT:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Vous n'avez pas l'autorisation d'accéder à l'analyse IA.",
-        )
-
     case = (
         db.query(Case)
         .filter(Case.id == case_id, Case.cabinet_id == user.cabinet_id)
@@ -183,15 +205,9 @@ def update_case(
 def delete_case(
     case_id: str,
     request: Request,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_not_assistant),
     db: Session = Depends(get_db),
 ):
-    if user.role == UserRole.ASSISTANT:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Les assistants ne peuvent pas supprimer un dossier.",
-        )
-
     case = (
         db.query(Case)
         .filter(Case.id == case_id, Case.cabinet_id == user.cabinet_id)

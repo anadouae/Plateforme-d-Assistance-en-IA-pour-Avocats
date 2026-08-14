@@ -120,7 +120,7 @@ def _call_groq(prompt: str, system: str = SYSTEM_PROMPT) -> str | None:
                 "temperature": 0.55,
                 "max_tokens": 4096,
             },
-            timeout=45.0,
+            timeout=float(settings.LLM_HTTP_TIMEOUT_SEC or 30),
         )
         response.raise_for_status()
         return response.json()["choices"][0]["message"]["content"].strip()
@@ -152,7 +152,7 @@ def _call_kimi(prompt: str, system: str = SYSTEM_PROMPT) -> str | None:
                 "temperature": 0.55,
                 "max_tokens": 6144,
             },
-            timeout=90.0,
+            timeout=float(settings.LLM_HTTP_TIMEOUT_SEC or 30),
         )
         response.raise_for_status()
         return response.json()["choices"][0]["message"]["content"].strip()
@@ -461,13 +461,29 @@ def generate_synthesis_text(
     document_text: str,
     language: str | None = None,
 ) -> str | None:
+    """Secours prose intelligente (sans JSON) — cloud-first."""
     locale = normalize_locale(language)
+    body = _sample_document_text(document_text or "", max_chars=16000)
+    prose_system = {
+        "fr": (
+            "Tu es Sanad-Legal (niveau Claude). "
+            "Rédige une synthèse intelligente Markdown pour un avocat : "
+            "adapte les titres au type réel du document (contrat, jugement, lettre…). "
+            "280–500 mots. N'invente rien. Français uniquement. "
+            "Termine par une section « Suite utile »."
+        ),
+        "ar": (
+            "أنت Sanad-Legal بمستوى Claude. "
+            "اكتب تلخيصاً ذكياً Markdown للمحامي مكيّفاً مع نوع الوثيقة. "
+            "280–500 كلمة. لا تختلق. بالعربية. اختم بـ «ما يُستحسن فعله»."
+        ),
+    }.get(locale, get_synthesis_prompt(locale))
     prompt = (
         f"DOCUMENT : {document_name}\n\n"
-        f"TEXTE :\n{document_text[:6000]}\n\n"
-        "Rédige la synthèse structurée."
+        f"TEXTE :\n{body}\n\n"
+        "Rédige la synthèse intelligente (Markdown libre, pas de JSON)."
     )
-    return generate_with_prompt(prompt, get_synthesis_prompt(locale))
+    return _llm_synthesis_chat(prompt, prose_system)
 
 
 def generate_document_answer_sync(
@@ -503,17 +519,52 @@ def generate_document_answer_sync(
     return raw.strip() if raw else None
 
 
+def _sample_document_text(text: str, max_chars: int = 28000) -> str:
+    """Échantillonne début / milieu / fin pour les longs documents."""
+    cleaned = (text or "").strip()
+    if len(cleaned) <= max_chars:
+        return cleaned
+    head = int(max_chars * 0.42)
+    mid = int(max_chars * 0.28)
+    tail = max_chars - head - mid
+    center = len(cleaned) // 2
+    mid_start = max(0, center - mid // 2)
+    return (
+        cleaned[:head]
+        + "\n\n[…]\n\n"
+        + cleaned[mid_start : mid_start + mid]
+        + "\n\n[…]\n\n"
+        + cleaned[-tail:]
+    )
+
+
+def _llm_synthesis_chat(prompt: str, system: str) -> str | None:
+    """Cloud-first (routeur) pour une synthèse digne d'un cabinet."""
+    provider = _normalize_chat_provider(_provider())
+    raw = _call_chat_cloud(prompt, system, provider_override=provider)
+    if not raw and settings.GROQ_API_KEY:
+        raw = _call_groq(prompt, system)
+    if not raw and settings.KIMI_API_KEY:
+        raw = _call_kimi(prompt, system)
+    if not raw:
+        raw = _call_ollama(prompt, system)
+    return raw.strip() if raw else None
+
+
 def generate_synthesis_structured(
     document_name: str,
     document_text: str,
     language: str | None = None,
 ) -> dict | None:
-    """Synthèse structurée — Ollama/Mistral local d'abord, puis cloud, puis fallback."""
+    """Synthèse intelligente LLM (tout type de pièce) — JSON riche, pas de squelette vide."""
     from app.services.extraction import is_scrambled_arabic, safe_repair_arabic_text
     from app.services.ollama_summarize import summarize_long
 
     locale = normalize_locale(language)
     cleaned = safe_repair_arabic_text(document_text or "")
+    if len(cleaned.strip()) < 20:
+        return None
+
     scramble_hint = ""
     if is_scrambled_arabic(cleaned):
         scramble_hint = (
@@ -523,56 +574,109 @@ def generate_synthesis_structured(
             "Si le sens est trop douteux, indique-le dans attention_points.\n"
         )
 
-    # 1) Mistral (cloud puis Ollama) — prioritaire, dans la langue demandée
-    local_summary, _, _ = summarize_long(cleaned, language=locale)
-    if local_summary:
-        # Rejeter un résumé qui n'est que du collage OCR / trop générique
-        trimmed = local_summary.strip()
-        if len(trimmed) >= 80 and trimmed[:80] not in cleaned[:800]:
+    # 1) Pour les longs textes : notes map-reduce (pas un résumé final figé)
+    working_notes = ""
+    if len(cleaned) > 9000:
+        notes, _, _ = summarize_long(cleaned, language=locale)
+        if notes and len(notes.strip()) >= 60:
+            working_notes = notes.strip()
+
+    body = _sample_document_text(cleaned, max_chars=24000)
+    if working_notes:
+        prompt = (
+            f"DOCUMENT : {document_name}\n\n"
+            f"NOTES ISSUES DU DOCUMENT (map-reduce, à croiser) :\n{working_notes[:12000]}\n\n"
+            f"EXTRAITS DU TEXTE SOURCE :\n{body[:14000]}\n\n"
+            f"{scramble_hint}"
+            "Produis le JSON de synthèse INTELLIGENTE demandé. "
+            "Le summary doit être une vraie analyse de cabinet, adaptée au type de pièce, "
+            "pas un template vide. Listes = uniquement ce qui figure dans le texte/notes."
+        )
+    else:
+        prompt = (
+            f"DOCUMENT : {document_name}\n\n"
+            f"TEXTE COMPLET / ÉCHANTILLON REPRÉSENTATIF :\n{body}\n\n"
+            f"{scramble_hint}"
+            "Produis le JSON de synthèse INTELLIGENTE demandé. "
+            "Comprends d'abord le type de document, puis rédige un summary utile à l'avocat. "
+            "N'invente rien."
+        )
+
+    system = get_synthesis_prompt(locale)
+    raw = _llm_synthesis_chat(prompt, system)
+    data = parse_llm_json(raw) if raw else None
+
+    # 2) Si le JSON échoue mais qu'on a du prose LLM → seconde passe stricte JSON
+    if not data and raw and len(raw.strip()) > 120:
+        repair_prompt = (
+            "Convertis STRICTEMENT le texte suivant en JSON valide avec les clés "
+            "document_type, parties, key_dates, amounts, risk_clauses, attention_points, summary. "
+            "Ne perds pas le fond intelligent du résumé.\n\n"
+            f"TEXTE:\n{raw[:8000]}"
+        )
+        repaired = _llm_synthesis_chat(repair_prompt, system)
+        data = parse_llm_json(repaired) if repaired else None
+
+    # 3) Dernier recours : demander un summary Markdown intelligent (sans JSON)
+    if not data:
+        prose_system = {
+            "fr": (
+                "Tu es Sanad-Legal. Rédige une synthèse intelligente Markdown "
+                "pour un avocat (280–500 mots), adaptée au type réel du document. "
+                "N'invente rien. Français uniquement."
+            ),
+            "ar": (
+                "أنت Sanad-Legal. اكتب تلخيصاً ذكياً Markdown للمحامي (280–500 كلمة) "
+                "مكيّفاً مع نوع الوثيقة. لا تختلق. بالعربية فقط."
+            ),
+        }.get(locale, "Write an intelligent legal Markdown synthesis. Do not invent.")
+        prose = _llm_synthesis_chat(
+            f"DOCUMENT : {document_name}\n\nTEXTE :\n{body[:16000]}\n\n"
+            f"{scramble_hint}Rédige la synthèse.",
+            prose_system,
+        )
+        if prose and len(prose.strip()) >= 120 and prose.strip()[:80] not in cleaned[:800]:
             return {
+                "document_type": "",
                 "parties": [],
                 "key_dates": [],
                 "amounts": [],
                 "risk_clauses": [],
                 "attention_points": [],
-                "summary": local_summary,
+                "summary": prose.strip(),
             }
-
-    prompt = (
-        f"DOCUMENT : {document_name}\n\n"
-        f"TEXTE :\n{cleaned[:12000]}\n\n"
-        f"{scramble_hint}"
-        "Produis le JSON demandé. summary professionnel, concis, sans invention."
-    )
-    system = get_synthesis_prompt(locale)
-    provider = _normalize_chat_provider(_provider())
-    raw = _call_chat_cloud(prompt, system, provider_override=provider)
-    if not raw and settings.GROQ_API_KEY:
-        raw = _call_groq(prompt, system)
-    if not raw and settings.KIMI_API_KEY:
-        raw = _call_kimi(prompt, system)
-    if not raw:
-        raw = _call_ollama(prompt, system)
-    data = parse_llm_json(raw)
-    if not data:
         return None
 
     def _as_list(key: str) -> list[str]:
         val = data.get(key, [])
         if not isinstance(val, list):
             return [str(val)] if val else []
-        return [str(item).strip() for item in val if str(item).strip()]
+        return [str(item).strip() for item in val if str(item).strip()][:40]
 
     summary = str(data.get("summary", "")).strip()
     if not summary:
         return None
+    # Rejeter un collage OCR brut
+    if len(summary) > 100 and summary[:90] in cleaned[:900]:
+        return None
+
+    doc_type = str(data.get("document_type") or "").strip()
+    attention = _as_list("attention_points")
+    if doc_type:
+        type_label = {
+            "fr": f"Type de pièce : {doc_type}",
+            "ar": f"نوع الوثيقة : {doc_type}",
+            "en": f"Document type: {doc_type}",
+        }.get(locale, f"نوع الوثيقة : {doc_type}")
+        attention = [type_label] + attention
 
     return {
+        "document_type": doc_type,
         "parties": _as_list("parties"),
         "key_dates": _as_list("key_dates"),
         "amounts": _as_list("amounts"),
         "risk_clauses": _as_list("risk_clauses"),
-        "attention_points": _as_list("attention_points"),
+        "attention_points": attention[:20],
         "summary": summary,
     }
 
@@ -640,7 +744,7 @@ def generate_stream_chunks(
         try:
             import httpx
 
-            with httpx.Client(timeout=60.0) as client:
+            with httpx.Client(timeout=float(settings.LLM_HTTP_TIMEOUT_SEC or 30)) as client:
                 with client.stream(
                     "POST",
                     GROQ_API_URL,

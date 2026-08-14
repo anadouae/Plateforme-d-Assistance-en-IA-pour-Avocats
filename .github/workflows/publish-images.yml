@@ -1,0 +1,77 @@
+name: Publish Sanad Docker images
+
+# Publie frontend / backend / celery sur GitHub Container Registry (GHCR).
+# Pas de secret Docker Hub requis : utilise GITHUB_TOKEN.
+#
+# Après merge sur main (ou Actions → Run workflow) :
+#   docker pull ghcr.io/anadouae/sanad-backend:latest
+#   docker pull ghcr.io/anadouae/sanad-celery:latest
+#   docker pull ghcr.io/anadouae/sanad-frontend:latest
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - ".github/workflows/publish-images.yml"
+
+env:
+  REGISTRY: ghcr.io
+  OWNER: anadouae
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image tags
+        id: meta
+        run: |
+          SHA_SHORT="${GITHUB_SHA::7}"
+          DATE_TAG="$(date -u +%Y-%m-%d)"
+          echo "sha=${SHA_SHORT}" >> "$GITHUB_OUTPUT"
+          echo "date=${DATE_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push backend (+ celery = même image)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/sanad-backend:latest
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/sanad-backend:${{ steps.meta.outputs.sha }}
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/sanad-backend:${{ steps.meta.outputs.date }}
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/sanad-celery:latest
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/sanad-celery:${{ steps.meta.outputs.sha }}
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/sanad-celery:${{ steps.meta.outputs.date }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/sanad-frontend:latest
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/sanad-frontend:${{ steps.meta.outputs.sha }}
+            ${{ env.REGISTRY }}/${{ env.OWNER }}/sanad-frontend:${{ steps.meta.outputs.date }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

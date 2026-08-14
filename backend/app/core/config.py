@@ -12,11 +12,12 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql://sanad:sanad_secret@localhost:5432/sanad"
     CORS_ORIGINS: str = "http://localhost:3000,http://localhost:3001,http://localhost:3002"
     FRONTEND_URL: str = "http://localhost:3000"
-    MAX_LOGIN_ATTEMPTS: int = 5
-    LOCKOUT_MINUTES: int = 15
+    MAX_LOGIN_ATTEMPTS: int = 8
+    LOCKOUT_MINUTES: int = 10
+    # Prod : 5 login / minute / IP (bruteforce). En DEBUG, rate_limit ×8.
     LOGIN_RATE_LIMIT: int = 5
-    LOGIN_RATE_WINDOW_SEC: int = 900
-    CAPTCHA_AFTER_FAILURES: int = 3
+    LOGIN_RATE_WINDOW_SEC: int = 60
+    CAPTCHA_AFTER_FAILURES: int = 5
     # Cloudflare Turnstile (vide = désactivé en dev)
     TURNSTILE_SECRET_KEY: str = ""
     TURNSTILE_SITE_KEY: str = ""
@@ -24,6 +25,12 @@ class Settings(BaseSettings):
     REFRESH_COOKIE_NAME: str = "sanad_refresh"
     UPLOAD_DIR: str = "./uploads"
     MAX_UPLOAD_SIZE_MB: int = 50
+    # Uploads documents+audio / utilisateur authentifié
+    UPLOAD_RATE_LIMIT: int = 20
+    UPLOAD_RATE_WINDOW_SEC: int = 60
+    # Codes cabinet (ATLAS-XXXX)
+    JOIN_VALIDATE_RATE_LIMIT: int = 10
+    JOIN_REQUEST_RATE_LIMIT: int = 10
     ENCRYPTION_KEY: str = ""
     GROQ_API_KEY: str = ""
     # Cerveau chat prod : groq | kimi | auto | ollama (fallback local)
@@ -36,11 +43,24 @@ class Settings(BaseSettings):
     OLLAMA_NUM_PREDICT: int = 256
     # CPU / premier chargement Mistral
     OLLAMA_CHAT_TIMEOUT: float = 600.0
+    # Timeout court par tentative cloud / free-router (fallback rapide)
+    LLM_HTTP_TIMEOUT_SEC: float = 30.0
     # Speech-to-text local (faster-whisper) — cœur plaidoirie VPS
     WHISPER_ENABLED: bool = True
     WHISPER_MODEL: str = "small"  # tiny|base|small|medium|large-v3 — small = rapide CPU
     WHISPER_DEVICE: str = "cpu"
     WHISPER_COMPUTE_TYPE: str = "int8"
+    # Transcription audio-pièce (jusqu'à 50 Mo) — 10 min max
+    WHISPER_TIMEOUT_SEC: float = 600.0
+    # Dictée : polish/compose uniquement via Ollama local (confidentialité)
+    DICTATION_LOCAL_ONLY: bool = False
+    # MinIO / OCR
+    MINIO_TIMEOUT_SEC: float = 30.0
+    OCR_TIMEOUT_SEC: float = 300.0
+    # Celery hard limits (secondes)
+    CELERY_TASK_SOFT_TIME_LIMIT: int = 900
+    CELERY_TASK_TIME_LIMIT: int = 960
+    CELERY_MAX_RETRIES: int = 3
     # False = pipeline cloud (Groq/Kimi) — recommandé prod
     LLM_CHAT_USE_OLLAMA: bool = False
     # Cloud-first : le LLM cloud rédige toujours (pas coller des extraits bruts)
@@ -107,6 +127,13 @@ class Settings(BaseSettings):
 
     # OAuth / 2FA
     GOOGLE_CLIENT_ID: str = ""
+
+    # Logs / erreurs (optionnel — tier gratuit Sentry)
+    LOG_JSON: bool = True
+    LOG_LEVEL: str = "INFO"
+    SENTRY_DSN: str = ""
+    BACKUP_DIR: str = "./backups"
+    BACKUP_RETENTION_DAYS: int = 7
 
     class Config:
         env_file = ".env"

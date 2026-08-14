@@ -4,9 +4,10 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, log_audit
+from app.api.deps import get_current_user, log_audit, require_not_assistant
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.rate_limit import check_rate_limit
 from app.models import Case, Document, DocumentStatus, User, UserRole
 from app.schemas import (
     AIResponse,
@@ -21,8 +22,10 @@ from app.services.language import get_disclaimer, normalize_locale, resolve_resp
 from app.services.extraction import (
     ALLOWED_EXTENSIONS,
     ALLOWED_MIMES,
+    document_kind,
     find_relevant_excerpt,
     get_extension,
+    is_audio_document,
     is_scrambled_arabic,
     safe_repair_arabic_text,
 )
@@ -48,6 +51,7 @@ def _doc_response(doc: Document, case: Case | None = None) -> DocumentResponse:
         and doc.ocr_score < settings.OCR_QUALITY_THRESHOLD
         and doc.status == DocumentStatus.INDEXED
     )
+    kind = document_kind(doc.original_name, doc.mime_type)
     return DocumentResponse(
         id=doc.id,
         original_name=doc.original_name,
@@ -59,6 +63,8 @@ def _doc_response(doc: Document, case: Case | None = None) -> DocumentResponse:
         case_id=doc.case_id,
         case_reference=case.reference if case else None,
         created_at=doc.created_at,
+        kind=kind,
+        error_message=doc.error_message,
     )
 
 
@@ -73,12 +79,11 @@ def _get_document_for_user(db: Session, doc_id: str, user: User) -> Document:
     return doc
 
 
-@router.get("", response_model=list[DocumentResponse])
-def list_documents(
-    case_id: str | None = None,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
+def _list_documents_impl(
+    case_id: str | None,
+    user: User,
+    db: Session,
+) -> list:
     query = db.query(Document).filter(Document.cabinet_id == user.cabinet_id)
     if case_id:
         query = query.filter(Document.case_id == case_id)
@@ -90,6 +95,16 @@ def list_documents(
     return result
 
 
+@router.get("", response_model=list[DocumentResponse])
+@router.get("/", response_model=list[DocumentResponse], include_in_schema=False)
+def list_documents(
+    case_id: str | None = None,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return _list_documents_impl(case_id, user, db)
+
+
 @router.post("/upload", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
 async def upload_document(
     request: Request,
@@ -98,6 +113,13 @@ async def upload_document(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    check_rate_limit(
+        request,
+        key="documents.upload",
+        limit=settings.UPLOAD_RATE_LIMIT,
+        window_sec=settings.UPLOAD_RATE_WINDOW_SEC,
+        subject=user.id,
+    )
     case = (
         db.query(Case)
         .filter(Case.id == case_id, Case.cabinet_id == user.cabinet_id)
@@ -113,7 +135,7 @@ async def upload_document(
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Type de fichier non autorisé. Formats acceptés : PDF, DOCX, images.",
+            detail="Type de fichier non autorisé. Formats : PDF, DOCX, images, audio (webm, wav, mp3, m4a, ogg, mp4).",
         )
 
     content = await file.read()
@@ -130,8 +152,26 @@ async def upload_document(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=sniff_error)
 
     mime = file.content_type or "application/octet-stream"
-    if mime not in ALLOWED_MIMES and not mime.startswith("image/"):
+    audio = is_audio_document(file.filename, mime)
+    if (
+        mime not in ALLOWED_MIMES
+        and not mime.startswith("image/")
+        and not (audio and (mime.startswith("audio/") or mime in {"video/webm", "video/mp4", "application/octet-stream"}))
+    ):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Type MIME non autorisé")
+
+    # Normaliser le MIME audio si le navigateur envoie octet-stream
+    if audio and mime == "application/octet-stream":
+        mime = {
+            ".webm": "audio/webm",
+            ".wav": "audio/wav",
+            ".mp3": "audio/mpeg",
+            ".mpeg": "audio/mpeg",
+            ".mpga": "audio/mpeg",
+            ".m4a": "audio/mp4",
+            ".mp4": "audio/mp4",
+            ".ogg": "audio/ogg",
+        }.get(ext, "audio/webm")
 
     storage_path = save_file(content, user.cabinet_id, case_id, ext)
 
@@ -143,6 +183,7 @@ async def upload_document(
         storage_path=storage_path,
         extracted_text=None,
         ocr_score=None,
+        error_message=None,
         status=DocumentStatus.PENDING,
         case_id=case_id,
         cabinet_id=user.cabinet_id,
@@ -223,7 +264,7 @@ def reextract_document(
     process_document_record(doc, content, db)
     db.refresh(doc)
     # Réparer l'ordre arabe après extraction pipeline
-    fixed = repair_arabic_extracted_text(doc.extracted_text or "")
+    fixed = safe_repair_arabic_text(doc.extracted_text or "")
     if fixed and fixed != (doc.extracted_text or ""):
         doc.extracted_text = fixed
         db.commit()
@@ -261,15 +302,9 @@ def download_document(
 def synthesize_document(
     doc_id: str,
     lang: str | None = None,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_not_assistant),
     db: Session = Depends(get_db),
 ):
-    if user.role == UserRole.ASSISTANT:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Vous n'avez pas l'autorisation d'accéder à cette ressource.",
-        )
-
     doc = _get_document_for_user(db, doc_id, user)
     from app.services.agent import generate_synthesis
 
@@ -278,8 +313,14 @@ def synthesize_document(
     if text and text != (doc.extracted_text or ""):
         doc.extracted_text = text
         db.commit()
-    # Texte arabe brouillé + jamais vraiment OCRisé (score 100 = couche PDF) → OCR forcé
-    if text and is_scrambled_arabic(text) and (doc.ocr_score is None or doc.ocr_score >= 90):
+    # Texte arabe brouillé + jamais vraiment OCRisé (score 100 = couche PDF) → OCR forcé.
+    # Skip auto-reprocess pour l'audio (ocr_score toujours None) : l'utilisateur peut ré-extraire.
+    if (
+        text
+        and is_scrambled_arabic(text)
+        and (doc.ocr_score is None or doc.ocr_score >= 90)
+        and not is_audio_document(doc.original_name, doc.mime_type)
+    ):
         from app.services.document_pipeline import process_document_record
 
         content = read_file(doc.storage_path)
@@ -306,15 +347,9 @@ def ask_document(
     doc_id: str,
     data: DocumentAskRequest,
     request: Request,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_not_assistant),
     db: Session = Depends(get_db),
 ):
-    if user.role == UserRole.ASSISTANT:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Vous n'avez pas l'autorisation d'accéder à cette ressource.",
-        )
-
     doc = _get_document_for_user(db, doc_id, user)
     text = doc.extracted_text or ""
     excerpt = find_relevant_excerpt(text, data.question)
@@ -348,15 +383,9 @@ def ask_document(
 def delete_document(
     doc_id: str,
     request: Request,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_not_assistant),
     db: Session = Depends(get_db),
 ):
-    if user.role == UserRole.ASSISTANT:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Vous n'avez pas l'autorisation de supprimer ce document.",
-        )
-
     doc = _get_document_for_user(db, doc_id, user)
     log_audit(db, "document.delete", user=user, request=request, details=doc.original_name)
     delete_document_index(doc.cabinet_id, doc.case_id, doc.id)

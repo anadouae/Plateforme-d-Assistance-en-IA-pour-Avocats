@@ -3,22 +3,22 @@
 import { useCallback, useRef, useState } from "react";
 import { api } from "@/lib/api";
 
-/** Produit Maroc : transcription arabe uniquement. */
-export type WhisperLang = "ar";
+/** Whisper : arabe ou français. */
+export type WhisperLang = "ar" | "fr";
 
-/** Segment auto : longue plaidoirie → texte progressif (sinon rien jusqu'au Stop). */
-const SEGMENT_MS = 55_000;
+/** Segment court : texte Whisper progressif (~3 s). Le live instantané vient de Chrome. */
+const SEGMENT_MS = 3_000;
 const TRANSCRIBE_TIMEOUT_MS = 600_000;
 
 /**
- * Dictée Whisper (arabe) : micro + segments périodiques + fichier audio.
+ * Dictée Whisper (AR/FR) : micro + segments périodiques + fichier audio.
  */
-export function useWhisperDictation(_initialLang: WhisperLang = "ar") {
+export function useWhisperDictation(initialLang: WhisperLang = "ar") {
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [provider, setProvider] = useState("");
-  const [language, setLanguage] = useState<WhisperLang>("ar");
+  const [language, setLanguageState] = useState<WhisperLang>(initialLang);
   const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
   const [livePartial, setLivePartial] = useState("");
 
@@ -27,12 +27,16 @@ export function useWhisperDictation(_initialLang: WhisperLang = "ar") {
   const streamRef = useRef<MediaStream | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const mimeRef = useRef("audio/webm");
-  const languageRef = useRef<WhisperLang>("ar");
+  const languageRef = useRef<WhisperLang>(initialLang);
   const segmentTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const onSegmentTextRef = useRef<((text: string) => void) | null>(null);
   const recordingRef = useRef(false);
   const livePartialRef = useRef("");
-  languageRef.current = "ar";
+
+  const setLanguage = useCallback((lang: WhisperLang) => {
+    languageRef.current = lang;
+    setLanguageState(lang);
+  }, []);
 
   const stopTracks = () => {
     if (segmentTimerRef.current) {
@@ -56,7 +60,9 @@ export function useWhisperDictation(_initialLang: WhisperLang = "ar") {
       return "audio/webm;codecs=opus";
     }
     if (MediaRecorder.isTypeSupported("audio/webm")) return "audio/webm";
+    // iOS Safari
     if (MediaRecorder.isTypeSupported("audio/mp4")) return "audio/mp4";
+    if (MediaRecorder.isTypeSupported("audio/aac")) return "audio/aac";
     return "";
   };
 
@@ -91,7 +97,6 @@ export function useWhisperDictation(_initialLang: WhisperLang = "ar") {
       }
     });
 
-    // Relancer immédiatement l'enregistrement sur le même flux
     if (recordingRef.current && stream.active) {
       const mime = mimeRef.current;
       const next = mime
@@ -107,11 +112,12 @@ export function useWhisperDictation(_initialLang: WhisperLang = "ar") {
 
     if (!blob.size || blob.size < 2000) return;
 
-    setTranscribing(true);
+    // Ne pas basculer `transcribing` ici : ça bloquait le bouton « Arrêter »
+    // et donnait l’impression que rien n’était écrit pendant la dictée.
     try {
       const res = await transcribeBlob(blob, "segment.webm");
       const text = res.text?.trim() || "";
-      if (text) {
+      if (text && recordingRef.current) {
         setProvider(res.provider);
         livePartialRef.current = livePartialRef.current
           ? `${livePartialRef.current} ${text}`
@@ -121,8 +127,6 @@ export function useWhisperDictation(_initialLang: WhisperLang = "ar") {
       }
     } catch {
       /* segment failed — continue recording */
-    } finally {
-      if (recordingRef.current) setTranscribing(false);
     }
   }, [transcribeBlob]);
 
@@ -134,7 +138,7 @@ export function useWhisperDictation(_initialLang: WhisperLang = "ar") {
       setLivePartial("");
       onSegmentTextRef.current = onSegmentText || null;
       if (!navigator.mediaDevices?.getUserMedia) {
-        setError("Micro non disponible.");
+        setError("Micro non disponible sur cet appareil.");
         return false;
       }
       try {
@@ -180,7 +184,7 @@ export function useWhisperDictation(_initialLang: WhisperLang = "ar") {
 
         return true;
       } catch {
-        setError("Micro bloqué — autorisez l'accès dans le navigateur.");
+        setError("Micro bloqué — autorisez l'accès (navigateur / réglages téléphone).");
         stopTracks();
         return false;
       }
@@ -256,9 +260,7 @@ export function useWhisperDictation(_initialLang: WhisperLang = "ar") {
     } catch (e) {
       setTranscribing(false);
       if (prior) return { text: prior, provider: provider || "whisper" };
-      setError(
-        e instanceof Error ? e.message : "Transcription indisponible.",
-      );
+      setError(e instanceof Error ? e.message : "Transcription indisponible.");
       return null;
     }
   }, [provider, transcribeBlob]);

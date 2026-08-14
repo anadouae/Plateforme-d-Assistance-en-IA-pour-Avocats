@@ -22,6 +22,7 @@ interface SynthesisPanelProps {
   documentName: string;
   canAnalyze: boolean;
   hasText: boolean;
+  kind?: "audio" | "file" | string;
   className?: string;
 }
 
@@ -38,7 +39,9 @@ const LABELS: Record<
     loadingHint: string;
     insufficient: string;
     insufficientHint: string;
+    insufficientHintAudio: string;
     pending: string;
+    pendingAudio: string;
     refresh: string;
     error: string;
   }
@@ -48,13 +51,15 @@ const LABELS: Record<
     dates: "Dates clés",
     amounts: "Montants",
     risks: "Clauses à risque",
-    executive: "Résumé structuré",
+    executive: "Synthèse intelligente",
     sources: "Source documentaire",
-    loading: "Génération de la synthèse…",
-    loadingHint: "",
+    loading: "Analyse intelligente du document…",
+    loadingHint: "Le modèle lit la pièce et rédige une synthèse de cabinet.",
     insufficient: "Texte insuffisant pour une synthèse",
     insufficientHint: "Vérifiez la qualité du scan ou ré-extrayez le texte.",
+    insufficientHintAudio: "Vérifiez le fichier audio ou relancez la transcription.",
     pending: "En attente du texte extrait…",
+    pendingAudio: "En attente de la transcription…",
     refresh: "Actualiser",
     error: "Impossible de générer la synthèse. Réessayez.",
   },
@@ -63,13 +68,15 @@ const LABELS: Record<
     dates: "التواريخ الرئيسية",
     amounts: "المبالغ",
     risks: "بنود المخاطر",
-    executive: "ملخص منظم",
+    executive: "تلخيص ذكي",
     sources: "مصدر الوثيقة",
-    loading: "جاري إنشاء التلخيص…",
-    loadingHint: "",
+    loading: "جاري التحليل الذكي للوثيقة…",
+    loadingHint: "يقرأ النموذج القطعة ويُعد تلخيصاً للمكتب.",
     insufficient: "النص غير كافٍ للتلخيص",
     insufficientHint: "تحقق من جودة المسح أو أعد الاستخراج.",
+    insufficientHintAudio: "تحقق من الملف الصوتي أو أعد التفريغ.",
     pending: "في انتظار النص المستخرج…",
+    pendingAudio: "في انتظار التفريغ الصوتي…",
     refresh: "تحديث",
     error: "تعذر إنشاء التلخيص. حاول مجدداً.",
   },
@@ -157,6 +164,7 @@ export function SynthesisPanel({
   documentName,
   canAnalyze,
   hasText,
+  kind = "file",
   className,
 }: SynthesisPanelProps) {
   const appLocale = useLocaleStore((s) => s.locale);
@@ -167,6 +175,7 @@ export function SynthesisPanel({
   const requestId = useRef(0);
   const cacheRef = useRef(cache);
   cacheRef.current = cache;
+  const isAudio = kind === "audio";
 
   useEffect(() => {
     setLang(appLocale);
@@ -210,7 +219,11 @@ export function SynthesisPanel({
   }, [canAnalyze, hasText, lang, documentId, load]);
 
   if (!canAnalyze) {
-    return <p className="text-sm text-slate-500">{labels.pending}</p>;
+    return (
+      <p className="text-sm text-slate-500">
+        {isAudio ? labels.pendingAudio : labels.pending}
+      </p>
+    );
   }
 
   if (!hasText) {
@@ -220,7 +233,9 @@ export function SynthesisPanel({
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
             <p className="font-medium">{labels.insufficient}</p>
-            <p className="mt-1 text-amber-800/80">{labels.insufficientHint}</p>
+            <p className="mt-1 text-amber-800/80">
+              {isAudio ? labels.insufficientHintAudio : labels.insufficientHint}
+            </p>
           </div>
         </div>
       </div>
@@ -262,6 +277,9 @@ export function SynthesisPanel({
               <Loader2 className="h-4 w-4 animate-spin" />
               {labels.loading}
             </div>
+            {labels.loadingHint ? (
+              <p className="text-xs text-slate-500">{labels.loadingHint}</p>
+            ) : null}
           </div>
           <SynthesisSkeleton />
         </div>

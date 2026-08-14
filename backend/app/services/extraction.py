@@ -9,13 +9,43 @@ from PIL import Image
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_EXTENSIONS = {".pdf", ".docx", ".png", ".jpg", ".jpeg", ".tiff", ".tif"}
+ALLOWED_EXTENSIONS = {
+    ".pdf",
+    ".docx",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".tiff",
+    ".tif",
+    ".webm",
+    ".wav",
+    ".mp3",
+    ".m4a",
+    ".ogg",
+    ".mp4",
+    ".mpeg",
+    ".mpga",
+}
+AUDIO_EXTENSIONS = {".webm", ".wav", ".mp3", ".m4a", ".ogg", ".mp4", ".mpeg", ".mpga"}
 ALLOWED_MIMES = {
     "application/pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "image/png",
     "image/jpeg",
     "image/tiff",
+    "audio/webm",
+    "audio/wav",
+    "audio/x-wav",
+    "audio/wave",
+    "audio/mpeg",
+    "audio/mp3",
+    "audio/mp4",
+    "audio/x-m4a",
+    "audio/m4a",
+    "audio/ogg",
+    "audio/aac",
+    "video/webm",  # MediaRecorder / certains navigateurs
+    "video/mp4",
 }
 
 OCR_LANG = "fra+ara"
@@ -38,6 +68,24 @@ _AR_TRAILERS_WHEN_REVERSED = {
 
 def get_extension(filename: str) -> str:
     return Path(filename).suffix.lower()
+
+
+def is_audio_document(filename: str, mime_type: str = "") -> bool:
+    """Pièce audio archivée (extension dictée Whisper) — distinct de PDF/image."""
+    ext = get_extension(filename or "")
+    if ext in AUDIO_EXTENSIONS:
+        return True
+    mt = (mime_type or "").lower().strip()
+    if mt.startswith("audio/"):
+        return True
+    # Certains navigateurs envoient video/webm|mp4 pour de l'audio encapsulé
+    if mt in {"video/webm", "video/mp4"} and ext in AUDIO_EXTENSIONS:
+        return True
+    return False
+
+
+def document_kind(filename: str, mime_type: str = "") -> str:
+    return "audio" if is_audio_document(filename, mime_type) else "file"
 
 
 def arabic_char_ratio(text: str) -> float:
@@ -247,6 +295,17 @@ def _ocr_image(image: Image.Image) -> tuple[str, int]:
     return best_text, score
 
 
+def _ocr_image_timed(image: Image.Image) -> tuple[str, int]:
+    from app.core.config import settings
+    from app.core.timeouts import run_with_timeout
+
+    return run_with_timeout(
+        lambda: _ocr_image(image),
+        float(settings.OCR_TIMEOUT_SEC or 300),
+        label="ocr_image",
+    )
+
+
 def _ocr_pdf_pymupdf(content: bytes, *, arabic: bool = True) -> tuple[str, int | None]:
     """OCR intégré PyMuPDF (souvent meilleur que la couche texte BIDI cassée)."""
     try:
@@ -275,7 +334,10 @@ def _ocr_pdf_pymupdf(content: bytes, *, arabic: bool = True) -> tuple[str, int |
 
 
 def _ocr_pdf_scanned(content: bytes) -> tuple[str, int | None]:
-    try:
+    from app.core.config import settings
+    from app.core.timeouts import run_with_timeout
+
+    def _run() -> tuple[str, int | None]:
         from pdf2image import convert_from_bytes
 
         images = convert_from_bytes(content, dpi=280, first_page=1, last_page=MAX_PDF_OCR_PAGES)
@@ -289,10 +351,21 @@ def _ocr_pdf_scanned(content: bytes) -> tuple[str, int | None]:
         if not parts:
             return "", 0
         combined = safe_repair_arabic_text("\n\n".join(parts))
-        avg_score = sum(scores) // len(scores)
-        return combined, avg_score
+        avg = int(sum(scores) / len(scores)) if scores else 0
+        return combined, avg
+
+    try:
+        return run_with_timeout(
+            _run,
+            float(settings.OCR_TIMEOUT_SEC or 300),
+            label="ocr_pdf_scanned",
+        )
     except Exception as exc:
-        logger.warning("PDF OCR failed: %s", exc)
+        from app.core.timeouts import OperationTimeout
+
+        if isinstance(exc, OperationTimeout):
+            raise
+        logger.warning("OCR PDF scanned failed: %s", exc)
         return "", 0
 
 
@@ -365,13 +438,44 @@ def extract_from_docx(content: bytes) -> tuple[str, int | None]:
 def extract_from_image(content: bytes) -> tuple[str, int | None]:
     try:
         image = Image.open(BytesIO(content))
-        return _ocr_image(image)
+        return _ocr_image_timed(image)
     except Exception:
         return "", 35
 
 
+def extract_from_audio(content: bytes, filename: str) -> tuple[str, int | None]:
+    """
+    Transcription Whisper (même moteur que la dictée).
+    Retourne (texte, ocr_score=None) — pas de score OCR pour l'audio.
+    Si Whisper désactivé / échec : ("", None) ; le pipeline marque FAILED.
+    Lève OperationTimeout si Whisper dépasse WHISPER_TIMEOUT_SEC.
+    """
+    from app.core.config import settings
+    from app.core.timeouts import OperationTimeout
+    from app.services.whisper_stt import transcribe_audio_bytes
+
+    if not settings.WHISPER_ENABLED:
+        return "", None
+    # Auto-detect FR/AR (fixtures FR + dictées cabinet) — plus fiable que forcer ar
+    text, provider = transcribe_audio_bytes(
+        content,
+        filename=filename or "audio.webm",
+        language="auto",
+    )
+    if provider == "whisper:timeout":
+        raise OperationTimeout(
+            f"Transcription Whisper dépassée ({settings.WHISPER_TIMEOUT_SEC:.0f}s)."
+        )
+    # repair_arabic_stt déjà appliqué dans whisper_stt pour l'arabe
+    return (text or "").strip(), None
+
+
 def extract_text(content: bytes, filename: str, mime_type: str) -> tuple[str, int | None]:
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    dotted = f".{ext}" if ext else get_extension(filename)
+
+    if is_audio_document(filename, mime_type) or dotted in AUDIO_EXTENSIONS:
+        return extract_from_audio(content, filename)
 
     if ext == "pdf" or mime_type == "application/pdf":
         return extract_from_pdf(content)

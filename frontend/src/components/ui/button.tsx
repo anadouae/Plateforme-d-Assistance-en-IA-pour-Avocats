@@ -11,15 +11,15 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-sanad-navy text-sanad-ivory shadow-luxe hover:bg-sanad-navy/90 hover:shadow-gold hover:-translate-y-0.5",
-        secondary: "bg-sanad-stone text-sanad-navy hover:bg-sanad-cream shadow-md",
+          "bg-sanad-ink text-white shadow-sanad-sm hover:-translate-y-0.5 hover:shadow-luxe",
+        secondary: "bg-white text-sanad-ink border border-[var(--line)] hover:border-sanad-gold shadow-sm",
         outline:
-          "border border-sanad-gold/50 bg-sanad-ivory/80 text-sanad-navy backdrop-blur hover:bg-sanad-cream hover:shadow-md",
-        ghost: "text-sanad-navy hover:bg-sanad-cream/80",
+          "border border-[var(--line)] bg-white/80 text-sanad-ink backdrop-blur hover:border-sanad-gold hover:shadow-sanad-sm",
+        ghost: "text-sanad-inkSoft hover:bg-white/60 hover:text-sanad-ink",
         gold:
-          "bg-gradient-to-r from-sanad-gold to-[#c4a574] text-sanad-navy shadow-gold hover:shadow-lg hover:-translate-y-0.5",
+          "bg-sanad-gold text-white shadow-gold hover:shadow-luxe hover:-translate-y-0.5",
         destructive: "bg-red-600 text-white hover:bg-red-700",
-        ivory: "bg-sanad-ivory text-sanad-navy border border-sanad-stone hover:shadow-luxe",
+        ivory: "bg-white text-sanad-ink border border-[var(--line)] hover:shadow-sanad-sm",
       },
       size: {
         default: "h-10 px-4 py-2",

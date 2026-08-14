@@ -1,0 +1,353 @@
+/* Glassmorphism — écran مرافعة (point de départ) */
+
+:root {
+  --ink: #0e1526;
+  --ink-soft: #3b4459;
+  --gold: #c7973f;
+  --gold-bright: #e8c97c;
+  --wax: #7e2a2a;
+  --wax-bright: #c4534e;
+  --teal: #1f6f54;
+  --charcoal: #0e1526;
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(14, 21, 38, 0.08);
+  --glass-shadow: rgba(14, 21, 38, 0.18);
+}
+
+.glass-redaction-root {
+  position: relative;
+  isolation: isolate;
+  min-height: min(70vh, 640px);
+  padding: 4px;
+}
+
+.glass-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: 28px;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 55% 45% at 12% 18%, rgba(232, 201, 124, 0.35), transparent 55%),
+    radial-gradient(ellipse 50% 40% at 88% 12%, rgba(87, 168, 140, 0.28), transparent 50%),
+    radial-gradient(ellipse 45% 50% at 78% 78%, rgba(31, 111, 84, 0.22), transparent 55%),
+    radial-gradient(ellipse 40% 35% at 20% 85%, rgba(14, 21, 38, 0.12), transparent 50%),
+    linear-gradient(165deg, #f7f5f0 0%, #efe9de 100%);
+}
+
+.glass-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(70px);
+  opacity: 0.48;
+  animation: glass-drift 21s ease-in-out infinite alternate;
+}
+
+.glass-blob--a {
+  width: 280px;
+  height: 280px;
+  top: -40px;
+  right: 8%;
+  background: rgba(232, 197, 119, 0.75);
+  animation-duration: 20s;
+}
+
+.glass-blob--b {
+  width: 320px;
+  height: 320px;
+  bottom: 5%;
+  left: 4%;
+  background: rgba(196, 83, 78, 0.55);
+  opacity: 0.4;
+  animation-duration: 22s;
+  animation-delay: -4s;
+}
+
+.glass-blob--c {
+  width: 240px;
+  height: 240px;
+  top: 42%;
+  right: 18%;
+  background: rgba(62, 142, 130, 0.55);
+  opacity: 0.42;
+  animation-duration: 19s;
+  animation-delay: -8s;
+}
+
+@keyframes glass-drift {
+  0% {
+    transform: translate(0, 0) scale(1);
+  }
+  100% {
+    transform: translate(-28px, 22px) scale(1.08);
+  }
+}
+
+.glass-panel {
+  position: relative;
+  z-index: 1;
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  border: 1px solid rgba(176, 141, 63, 0.35);
+  border-radius: 24px;
+  box-shadow:
+    0 20px 50px -20px rgba(22, 35, 63, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.75);
+}
+
+.glass-panel--main {
+  background: rgba(255, 255, 255, 0.88);
+  overflow: hidden;
+}
+
+.glass-panel--main::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 130px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.55) 0%,
+    transparent 100%
+  );
+  pointer-events: none;
+}
+
+.glass-eyebrow {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+.glass-title {
+  font-family: "Amiri", Georgia, serif;
+  font-weight: 700;
+  font-size: 44px;
+  line-height: 1.25;
+  color: var(--ink);
+}
+
+.glass-sub {
+  font-family: "IBM Plex Sans Arabic", "Cairo", sans-serif;
+  font-weight: 400;
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--ink-soft);
+}
+
+.glass-divider-label {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: "IBM Plex Sans Arabic", "Cairo", sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+
+.glass-divider-label::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    rgba(176, 141, 63, 0.45),
+    transparent
+  );
+}
+
+.glass-opt {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 22px 20px;
+  text-align: start;
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  border: 1px solid rgba(176, 141, 63, 0.4);
+  border-radius: 20px;
+  box-shadow:
+    0 16px 40px -18px rgba(22, 35, 63, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  overflow: hidden;
+  cursor: pointer;
+  transition:
+    transform 0.35s ease,
+    background 0.35s ease,
+    box-shadow 0.35s ease,
+    border-color 0.35s ease;
+  font-family: "IBM Plex Sans Arabic", "Cairo", sans-serif;
+  color: var(--ink);
+}
+
+.glass-opt::before {
+  content: "";
+  position: absolute;
+  inset: -40% -20%;
+  background: linear-gradient(
+    120deg,
+    rgba(255, 255, 255, 0.55),
+    transparent 60%
+  );
+  transform: rotate(20deg) translateX(0);
+  transition: transform 0.45s ease;
+  pointer-events: none;
+}
+
+.glass-opt--featured {
+  background: rgba(232, 197, 119, 0.28);
+  border-color: rgba(232, 197, 119, 0.55);
+}
+
+.glass-opt:hover,
+.glass-opt:focus-visible {
+  transform: translateY(-6px);
+  background: rgba(255, 255, 255, 0.58);
+  box-shadow:
+    0 28px 55px -18px rgba(22, 35, 63, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  outline: none;
+}
+
+.glass-opt:focus-visible {
+  box-shadow:
+    0 0 0 3px rgba(176, 141, 63, 0.45),
+    0 28px 55px -18px rgba(22, 35, 63, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.glass-opt:hover::before,
+.glass-opt:focus-visible::before {
+  transform: rotate(20deg) translateX(30px);
+}
+
+.glass-opt:active::after {
+  content: "";
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--wax-bright);
+  border-radius: 50%;
+  animation: glass-stamp 0.38s ease-out forwards;
+  pointer-events: none;
+}
+
+@keyframes glass-stamp {
+  0% {
+    transform: scale(1.9);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(0.7);
+    opacity: 0;
+  }
+}
+
+.glass-seal {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 1.5px solid var(--gold);
+  background: rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: var(--ink);
+  transition:
+    transform 0.35s ease,
+    border-color 0.35s ease;
+}
+
+.glass-opt:hover .glass-seal,
+.glass-opt:focus-visible .glass-seal {
+  transform: scale(1.08) rotate(-6deg);
+  border-color: var(--wax-bright);
+  color: var(--wax);
+}
+
+.glass-opt-title {
+  font-family: "Amiri", Georgia, serif;
+  font-weight: 700;
+  font-size: 22px;
+  color: var(--ink);
+}
+
+.glass-opt-desc {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--ink-soft);
+}
+
+.glass-opt-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: auto;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gold);
+}
+
+.glass-opt-cta svg {
+  transition: transform 0.3s ease;
+}
+
+.glass-opt:hover .glass-opt-cta svg {
+  transform: translateX(-4px);
+}
+
+.glass-foot {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-family: "IBM Plex Sans Arabic", "Cairo", sans-serif;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+
+.glass-tpl-grid button {
+  font-family: "IBM Plex Sans Arabic", "Cairo", sans-serif;
+}
+
+@media (max-width: 860px) {
+  .glass-title {
+    font-size: 32px;
+  }
+
+  .glass-panel--main {
+    padding: 1.25rem !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .glass-blob {
+    animation: none !important;
+  }
+
+  .glass-opt,
+  .glass-opt::before,
+  .glass-seal,
+  .glass-opt-cta svg {
+    transition: none !important;
+  }
+
+  .glass-opt:hover,
+  .glass-opt:focus-visible {
+    transform: none;
+  }
+
+  .glass-opt:active::after {
+    animation: none !important;
+  }
+}

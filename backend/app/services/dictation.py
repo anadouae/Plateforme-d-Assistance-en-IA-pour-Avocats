@@ -1,10 +1,11 @@
-"""Dictée vocale → correction arabe → document officiel marocain."""
+"""Dictée vocale → correction (AR/FR) → document officiel marocain."""
 
 from __future__ import annotations
 
 import logging
 import re
 
+from app.core.config import settings
 from app.services.arabic_text_fix import repair_arabic_stt, strip_markdown_noise
 from app.services.free_llm_router import chat_free_tier
 from app.services.plaidoirie_prompt import (
@@ -24,7 +25,16 @@ DOC_TYPES = {
     "minutes": "عرض حال / محضر",
 }
 
-POLISH_SYSTEM = """أنت مراجع لغوي قانوني مغربي متخصص في اللغة العربية الفصحى.
+DOC_TYPES_FR = {
+    "plaidoirie": "Plaidoirie",
+    "general": "Document juridique",
+    "petition": "Requête / assignation",
+    "memo": "Mémoire en défense",
+    "letter": "Courrier officiel",
+    "minutes": "Procès-verbal",
+}
+
+POLISH_SYSTEM_AR = """أنت مراجع لغوي قانوني مغربي متخصص في اللغة العربية الفصحى.
 مهمتك: تحويل نص مُملى شفهيًا (أخطاء تعرف صوتي، دارجة، تكرار، غياب ترقيم، حرف ة المكتوب ه خطأً)
 إلى نص عربي فصيح، واضح، مهني.
 
@@ -37,6 +47,51 @@ POLISH_SYSTEM = """أنت مراجع لغوي قانوني مغربي متخصص
 6. لا تختلق وقائعًا ولا أرقامًا ولا فصول قانون. إن غاب شيء: [À VÉRIFIER : ...].
 7. أعد النص المصحح فقط — ممنوع Markdown، ممنوع **نجمات**، ممنوع # عناوين، ممنوع شرح.
 8. إن كان النص فارغًا بلا معنى: جملة واحدة تطلب إعادة الإملاء."""
+
+POLISH_SYSTEM_FR = """Tu es un réviseur juridique marocain, expert en français professionnel.
+Ta mission : transformer un texte dicté oralement (erreurs STT, répétitions, ponctuation absente)
+en français juridique clair et soigné.
+
+Règles strictes :
+1. Supprime les répétitions, garde le sens une seule fois.
+2. Corrige orthographe et grammaire.
+3. Ajoute la ponctuation française.
+4. Structure en paragraphes (ligne vide entre eux).
+5. Style professionnel de barreau, sans changer le fond.
+6. N'invente jamais de faits, montants ou articles de loi. Si manque : [À VÉRIFIER : ...].
+7. Renvoie UNIQUEMENT le texte corrigé — pas de Markdown, pas d'explication.
+8. Si le texte est vide / sans sens : une seule phrase demandant de redicter."""
+
+COMPOSE_SYSTEM_FR = """Tu es un assistant de rédaction juridique marocain (français).
+À partir du texte source, produis un document structuré pour le tribunal.
+
+Format de sortie OBLIGATOIRE :
+TITLE: <titre court>
+BODY:
+<corps structuré avec points numérotés si pertinent>
+CHECKS:
+- <points à vérifier, ou « aucun »>
+"""
+
+
+def _normalize_lang(language: str | None) -> str:
+    lang = (language or "ar").strip().lower()
+    if lang.startswith("fr"):
+        return "fr"
+    return "ar"
+
+
+def _local_only() -> bool:
+    return bool(getattr(settings, "DICTATION_LOCAL_ONLY", False))
+
+
+def _llm(prompt: str, system: str, preferred: str = "mistral") -> tuple[str | None, str]:
+    return chat_free_tier(
+        prompt,
+        system,
+        preferred=preferred,
+        local_only=_local_only(),
+    )
 
 
 def _strip_fences(text: str) -> str:
@@ -65,23 +120,43 @@ def _collapse_repeats(text: str) -> str:
 
 
 def polish_arabic_dictation(raw: str) -> tuple[str, str]:
-    """Corrige et ponctue une dictée arabe. Retourne (texte, provider)."""
+    """Rétrocompat : polish arabe."""
+    return polish_dictation(raw, language="ar")
+
+
+def polish_dictation(raw: str, language: str = "ar") -> tuple[str, str]:
+    """Corrige et ponctue une dictée AR ou FR. Retourne (texte, provider)."""
+    lang = _normalize_lang(language)
     raw = (raw or "").strip()
     if not raw:
         return "", "none"
-    raw = repair_arabic_stt(_collapse_repeats(raw))
+    raw = _collapse_repeats(raw)
+    if lang == "ar":
+        raw = repair_arabic_stt(raw)
     if len(raw) < 8:
         return raw, "passthrough"
 
-    prompt = (
-        "النص المُملى (أزل التكرار، أصلح حرف ة، صحّح ونقّط — بدون Markdown):\n\n"
-        f"{raw}"
-    )
-    text, provider = chat_free_tier(prompt, POLISH_SYSTEM, preferred="mistral")
+    if lang == "fr":
+        system = POLISH_SYSTEM_FR
+        prompt = (
+            "Texte dicté (supprime répétitions, corrige, ponctue — sans Markdown) :\n\n"
+            f"{raw}"
+        )
+    else:
+        system = POLISH_SYSTEM_AR
+        prompt = (
+            "النص المُملى (أزل التكرار، أصلح حرف ة، صحّح ونقّط — بدون Markdown):\n\n"
+            f"{raw}"
+        )
+
+    text, provider = _llm(prompt, system)
     if not text:
         logger.warning("Dictation polish LLM unavailable — returning cleaned raw")
         return raw, "none"
-    return strip_markdown_noise(repair_arabic_stt(_strip_fences(text))), provider
+    cleaned = strip_markdown_noise(_strip_fences(text))
+    if lang == "ar":
+        cleaned = repair_arabic_stt(cleaned)
+    return cleaned, provider
 
 
 def _parse_compose_output(cleaned: str, hint_title: str) -> tuple[str, str, list[str]]:
@@ -117,14 +192,40 @@ def compose_official_document(
     city: str | None = None,
     cabinet_name: str | None = None,
     plaidoirie_type: str | None = None,
+    language: str = "ar",
 ) -> tuple[str, str, str, list[str]]:
     """
     Rédige le corps du document officiel.
-    Retourne (title_ar, body_ar, provider, checks).
+    Retourne (title, body, provider, checks).
     """
+    lang = _normalize_lang(language)
     body = (body or "").strip()
     if not body:
         return "", "", "none", []
+
+    if lang == "fr":
+        kind = DOC_TYPES_FR.get(doc_type, DOC_TYPES_FR["general"])
+        hint_title = title.strip() if title else kind
+        extras = []
+        if city:
+            extras.append(f"Ville proposée : {city}")
+        if cabinet_name:
+            extras.append(f"Cabinet : {cabinet_name}")
+        system = COMPOSE_SYSTEM_FR
+        prompt = (
+            f"Type de document : {kind}\n"
+            f"Titre suggéré : {hint_title}\n"
+            + ("\n".join(extras) + "\n" if extras else "")
+            + "\nTexte source :\n\n"
+            f"{body}\n\n"
+            "Réponds au format TITLE / BODY / CHECKS."
+        )
+        text, provider = _llm(prompt, system)
+        if not text:
+            return hint_title, body, "none", []
+        cleaned = strip_markdown_noise(_strip_fences(text))
+        title_out, body_out, checks = _parse_compose_output(cleaned, hint_title)
+        return strip_markdown_noise(title_out), strip_markdown_noise(body_out), provider, checks
 
     kind = DOC_TYPES.get(doc_type, DOC_TYPES["general"])
     hint_title = title.strip() if title else kind
@@ -152,7 +253,7 @@ def compose_official_document(
         f"{body}\n\n"
         "أرجع النتيجة بالشكل المطلوب (TITLE / BODY / CHECKS)."
     )
-    text, provider = chat_free_tier(prompt, system, preferred="mistral")
+    text, provider = _llm(prompt, system)
     if not text:
         return hint_title, body, "none", []
 

@@ -1,4 +1,4 @@
-"""Synthèse via Mistral — cloud rapide si clé dispo, sinon Ollama local."""
+"""Notes / résumé de chunks pour synthèse intelligente (map-reduce)."""
 
 from __future__ import annotations
 
@@ -10,40 +10,41 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+# Phase map : notes denses (pas un résumé figé de 150 mots)
 SYSTEM_PROMPTS = {
     "fr": (
-        "Tu es un assistant juridique marocain. "
-        "Résume le document de façon factuelle, UNIQUEMENT en français. "
-        "N'invente rien. Structure Markdown claire :\n"
-        "## Faits\n## Points clés\n## Risques\n"
-        "Max 150 mots. Termine par : « Ceci ne constitue pas un avis juridique. »"
+        "Tu es un analyste juridique de cabinet. "
+        "Pour CE MORCEAU de document, extrais des NOTES UTILES et fidèles "
+        "(faits, parties, dates, montants, demandes, décisions, risques, obligations). "
+        "Markdown court, puces. N'invente rien. "
+        "Si le morceau est peu informatif, dis-le en une ligne. "
+        "UNIQUEMENT en français. Pas de disclaimer."
     ),
     "ar": (
-        "أنت مساعد قانوني مغربي. "
-        "لخّص الوثيقة بشكل واقعي ومنظّم، حصرياً باللغة العربية الفصحى. "
-        "لا تختلق معلومات. استخدم Markdown بهذا الشكل:\n"
-        "## الوقائع\n## النقاط الأساسية\n## المخاطر ونقاط الانتباه\n"
-        "حد أقصى 150 كلمة. اختم بـ: «هذا لا يُعد استشارة قانونية.»"
+        "أنت محلل قانوني. من هذا الجزء من الوثيقة، استخرج ملاحظات مفيدة ودقيقة "
+        "(وقائع، أطراف، تواريخ، مبالغ، طلبات، قرارات، مخاطر، التزامات). "
+        "Markdown مختصر. لا تختلق. بالعربية فقط."
     ),
     "en": (
-        "You are a Moroccan legal assistant. "
-        "Summarize the document factually, ONLY in English. "
-        "Do not invent. Clear Markdown:\n"
-        "## Facts\n## Key points\n## Risks\n"
-        "Max 150 words. End with: “This does not constitute legal advice.”"
+        "You are a legal analyst. From THIS chunk, extract faithful useful notes "
+        "(facts, parties, dates, amounts, claims, decisions, risks). "
+        "Short Markdown bullets. Do not invent. English only."
     ),
 }
 
 USER_PROMPTS = {
-    "fr": "Résume ce document :\n\n",
-    "ar": "لخّص هذه الوثيقة بالعربية المنظمة:\n\n",
-    "en": "Summarize this document:\n\n",
+    "fr": "Notes juridiques utiles pour ce morceau :\n\n",
+    "ar": "ملاحظات قانونية مفيدة لهذا الجزء:\n\n",
+    "en": "Useful legal notes for this chunk:\n\n",
 }
 
 MERGE_PROMPTS = {
-    "fr": "Fusionne en un seul résumé court (max 120 mots), en français :\n\n",
-    "ar": "ادمج في ملخص عربي واحد قصير ومنظم (حد أقصى 120 كلمة):\n\n",
-    "en": "Merge into one short summary (max 120 words), in English:\n\n",
+    "fr": (
+        "Fusionne ces notes de morceaux en un dossier de notes cohérent "
+        "(sans doublons, sans invention), Markdown structuré :\n\n"
+    ),
+    "ar": "ادمج هذه الملاحظات في ملف ملاحظات متسق دون تكرار ودون اختلاق:\n\n",
+    "en": "Merge these chunk notes into one coherent note file without invention:\n\n",
 }
 
 
@@ -72,13 +73,13 @@ def _summarize_mistral_cloud(text: str, language: str | None = None) -> str | No
     if not settings.MISTRAL_API_KEY:
         return None
     locale = _locale(language)
-    payload_text = (text or "").strip()[:8000]
+    payload_text = (text or "").strip()[:10000]
     if len(payload_text) < 20:
         return None
     base = settings.MISTRAL_BASE_URL.rstrip("/")
-    model = settings.MISTRAL_MODEL or "mistral-small-latest"
+    model = settings.MISTRAL_MODEL or "mistral-medium-latest"
     try:
-        with httpx.Client(timeout=60.0) as client:
+        with httpx.Client(timeout=float(settings.LLM_HTTP_TIMEOUT_SEC or 45)) as client:
             r = client.post(
                 f"{base}/chat/completions",
                 headers={
@@ -87,8 +88,8 @@ def _summarize_mistral_cloud(text: str, language: str | None = None) -> str | No
                 },
                 json={
                     "model": model,
-                    "temperature": 0.2,
-                    "max_tokens": 512,
+                    "temperature": 0.25,
+                    "max_tokens": 1200,
                     "messages": [
                         {"role": "system", "content": SYSTEM_PROMPTS[locale]},
                         {
@@ -107,13 +108,13 @@ def _summarize_mistral_cloud(text: str, language: str | None = None) -> str | No
 
 
 def _summarize_ollama_local(
-    text: str, max_chars: int = 3500, language: str | None = None
+    text: str, max_chars: int = 4500, language: str | None = None
 ) -> str | None:
     locale = _locale(language)
     payload_text = (text or "").strip()[:max_chars]
     if len(payload_text) < 20:
         return None
-    timeout = min(float(settings.OLLAMA_CHAT_TIMEOUT or 90), 90.0)
+    timeout = min(float(settings.OLLAMA_CHAT_TIMEOUT or 120), 120.0)
     body = {
         "model": _ollama_model(),
         "stream": False,
@@ -123,9 +124,9 @@ def _summarize_ollama_local(
             {"role": "user", "content": f"{USER_PROMPTS[locale]}{payload_text}"},
         ],
         "options": {
-            "temperature": 0.1,
-            "num_predict": min(320, int(settings.OLLAMA_NUM_PREDICT or 320)),
-            "num_ctx": 2048,
+            "temperature": 0.2,
+            "num_predict": max(512, min(900, int(settings.OLLAMA_NUM_PREDICT or 512))),
+            "num_ctx": 4096,
             "num_thread": 4,
         },
     }
@@ -141,20 +142,20 @@ def _summarize_ollama_local(
 
 
 def summarize_text(
-    text: str, max_chars: int = 8000, language: str | None = None
+    text: str, max_chars: int = 10000, language: str | None = None
 ) -> tuple[str | None, str, str]:
-    """Retourne (summary, provider, model). Cloud Mistral d'abord."""
+    """Retourne (notes, provider, model). Cloud Mistral d'abord."""
     cleaned = (text or "").strip()[:max_chars]
     if len(cleaned) < 20:
         return None, "none", ""
 
     cloud = _summarize_mistral_cloud(cleaned, language=language)
     if cloud:
-        return cloud, "mistral-cloud", settings.MISTRAL_MODEL or "mistral-small-latest"
+        return cloud, "mistral-cloud", settings.MISTRAL_MODEL or "mistral-medium-latest"
 
     if ollama_available():
         local = _summarize_ollama_local(
-            cleaned, max_chars=min(max_chars, 3500), language=language
+            cleaned, max_chars=min(max_chars, 4500), language=language
         )
         if local:
             return local, "ollama", _ollama_model()
@@ -164,10 +165,11 @@ def summarize_text(
 
 def summarize_long(
     text: str,
-    chunk_size: int = 8000,
-    max_chunks: int = 2,
+    chunk_size: int = 7000,
+    max_chunks: int = 6,
     language: str | None = None,
 ) -> tuple[str | None, str, str]:
+    """Map-reduce : notes par morceau → notes fusionnées (pour synthèse finale)."""
     cleaned = (text or "").strip()
     if len(cleaned) < 20:
         return None, "none", ""
@@ -176,9 +178,29 @@ def summarize_long(
 
     locale = _locale(language)
     chunks = [cleaned[i : i + chunk_size] for i in range(0, len(cleaned), chunk_size)]
+    # Priorise début + fin (souvent en-tête / dispositif) + milieu
+    if len(chunks) > max_chunks:
+        head_n = max(2, max_chunks // 2)
+        tail_n = max(1, max_chunks - head_n - 1)
+        mid_idx = len(chunks) // 2
+        selected = chunks[:head_n]
+        if 0 < mid_idx < len(chunks) - 1 and chunks[mid_idx] not in selected:
+            selected.append(chunks[mid_idx])
+        selected.extend(chunks[-tail_n:])
+        # dédoublonnage en gardant l'ordre
+        seen: set[int] = set()
+        ordered: list[str] = []
+        for c in selected:
+            h = hash(c[:80])
+            if h in seen:
+                continue
+            seen.add(h)
+            ordered.append(c)
+        chunks = ordered[:max_chunks]
+
     partials: list[str] = []
     provider, model = "none", ""
-    for chunk in chunks[:max_chunks]:
+    for chunk in chunks:
         part, prov, mod = summarize_text(chunk, max_chars=chunk_size, language=language)
         if part:
             partials.append(part)
@@ -189,11 +211,10 @@ def summarize_long(
         return partials[0], provider, model
     return summarize_text(
         MERGE_PROMPTS[locale] + "\n\n---\n\n".join(partials),
-        max_chars=8000,
+        max_chars=12000,
         language=language,
     )
 
 
-# compat anciens imports
 def _model() -> str:
     return _ollama_model()

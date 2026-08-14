@@ -55,15 +55,25 @@ export function PublicNavbar({ variant = "light" }: { variant?: "light" | "dark"
           ))}
         </nav>
 
-        <div className="flex items-center gap-2 sm:gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           <LanguageSwitch variant={variant} />
           <div className="hidden sm:block">
-            <AnimatedButton href="/login" variant={isDark ? "ghost" : "ghost"} size="default">
+            <AnimatedButton href="/login" variant="ghost" size="default">
               {t.nav.login}
             </AnimatedButton>
           </div>
-          <AnimatedButton href="/register" variant="gold" size="default">
-            {t.footer.register}
+          <AnimatedButton
+            href="/login?tab=join"
+            variant="outline"
+            size="default"
+            className={cn(
+              !isDark && "border-[#0B1F4A]/25 bg-[#0B1F4A]/5 text-[#0B1F4A] hover:bg-[#0B1F4A]/10",
+            )}
+          >
+            {t.nav.join}
+          </AnimatedButton>
+          <AnimatedButton href="/login?tab=register" variant="gold" size="default">
+            {t.nav.register}
           </AnimatedButton>
           <button
             type="button"
@@ -103,6 +113,16 @@ export function PublicNavbar({ variant = "light" }: { variant?: "light" | "dark"
             <Link href="/login" onClick={() => setMobileOpen(false)} className="mt-2">
               <Button variant="outline" className="w-full">
                 {t.nav.login}
+              </Button>
+            </Link>
+            <Link href="/login?tab=join" onClick={() => setMobileOpen(false)}>
+              <Button variant="outline" className="w-full">
+                {t.nav.join}
+              </Button>
+            </Link>
+            <Link href="/login?tab=register" onClick={() => setMobileOpen(false)}>
+              <Button className="w-full bg-sanad-gold text-sanad-navy hover:bg-sanad-gold/90">
+                {t.nav.register}
               </Button>
             </Link>
           </div>

@@ -3,7 +3,6 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { motion } from "framer-motion";
 import {
   ArrowRight,
   FileText,
@@ -14,9 +13,8 @@ import {
   Upload,
   Wand2,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { VoiceMeter } from "@/components/ai/voice-meter";
+import { VoiceOrb, VoiceWave } from "@/components/ai/voice-orb";
 import { DocumentWorkspace } from "@/components/redaction/document-workspace";
 import {
   api,
@@ -34,7 +32,6 @@ import { useSpeechInput, cleanDictationNoise } from "@/hooks/use-speech-input";
 import { useWhisperDictation } from "@/hooks/use-whisper-dictation";
 import { useAuthStore } from "@/store/auth";
 import { cn } from "@/lib/utils";
-import { Magnetic } from "@/components/motion/magnetic";
 
 function stripStars(text: string): string {
   return text
@@ -51,7 +48,7 @@ type Props = {
 };
 
 /**
- * Espace dictée / document — arabe uniquement (avocats marocains).
+ * Espace dictée / document — AR + FR (Whisper local + polish/compose).
  */
 export function PlaidoirieWorkspace({ templateId }: Props) {
   const user = useAuthStore((s) => s.user);
@@ -69,6 +66,7 @@ export function PlaidoirieWorkspace({ templateId }: Props) {
   const [message, setMessage] = useState("");
   const [provider, setProvider] = useState("");
   const [sttOk, setSttOk] = useState<boolean | null>(null);
+  const [dictationLang, setDictationLang] = useState<"ar" | "fr">("ar");
   const [customTemplates, setCustomTemplates] = useState<CabinetPlaidoirieTemplate[]>(
     [],
   );
@@ -80,6 +78,8 @@ export function PlaidoirieWorkspace({ templateId }: Props) {
   const selectedCustom = customTemplates.find((t) => t.id === templateId);
   const templateLabel =
     selectedCustom?.name || selectedTemplate?.labelAr || "مرافعة";
+  const isFr = dictationLang === "fr";
+  const textDir = isFr ? "ltr" : "rtl";
 
   const {
     recording,
@@ -91,12 +91,23 @@ export function PlaidoirieWorkspace({ templateId }: Props) {
     supported: whisperSupported,
     analyser,
     livePartial,
+    setLanguage: setWhisperLanguage,
   } = useWhisperDictation("ar");
 
   const { listening, supported, error: speechError, startListening, stopListening } =
-    useSpeechInput("ar");
+    useSpeechInput(dictationLang);
   const sessionBaseRef = useRef("");
   const whisperProgressRef = useRef("");
+  /** Texte Chrome live (instantané) pendant que Whisper tourne en arrière-plan. */
+  const chromeLiveRef = useRef("");
+  const [liveCaption, setLiveCaption] = useState("");
+
+  function switchDictationLang(lang: "ar" | "fr") {
+    if (lang === dictationLang) return;
+    if (recording || transcribing || listening) return;
+    setDictationLang(lang);
+    setWhisperLanguage(lang);
+  }
 
   useEffect(() => {
     api.getCases().then(setCases).catch(() => setCases([]));
@@ -132,15 +143,22 @@ export function PlaidoirieWorkspace({ templateId }: Props) {
   }, [templateId]);
 
   useEffect(() => {
+    // Whisper : met à jour si Chrome n’est pas déjà en train d’écrire en live
     if (!recording || !livePartial) return;
+    if (chromeLiveRef.current.trim()) return;
     const base = sessionBaseRef.current;
-    setRaw(cleanDictationNoise([base, livePartial].filter(Boolean).join(" ")));
+    const next = cleanDictationNoise([base, livePartial].filter(Boolean).join(" "));
+    setRaw(next);
+    setLiveCaption(livePartial);
   }, [livePartial, recording]);
 
   const onSpeechResult = useCallback((finals: string, liveInterim: string) => {
     const base = sessionBaseRef.current;
     const parts = [base, finals, liveInterim].filter((p) => p && p.trim());
-    setRaw(cleanDictationNoise(parts.join(" ")));
+    const next = cleanDictationNoise(parts.join(" "));
+    chromeLiveRef.current = [finals, liveInterim].filter(Boolean).join(" ").trim();
+    setRaw(next);
+    setLiveCaption(chromeLiveRef.current);
   }, []);
 
   async function applyTextAndPolish(text: string, fromProvider?: string) {
@@ -152,7 +170,7 @@ export function PlaidoirieWorkspace({ templateId }: Props) {
     setBusy("polish");
     setError("");
     try {
-      const res = await api.polishDictation(cleaned);
+      const res = await api.polishDictation(cleaned, dictationLang);
       setPolished(stripStars(cleanDictationNoise(res.polished)));
       setProvider(res.provider || fromProvider || "");
     } catch (e) {
@@ -165,39 +183,78 @@ export function PlaidoirieWorkspace({ templateId }: Props) {
 
   async function toggleWhisperMic() {
     if (recording || transcribing) {
+      if (listening) stopListening();
+      const chromeSnapshot = chromeLiveRef.current.trim();
+      chromeLiveRef.current = "";
+      setLiveCaption("");
       const result = await stopRecordingAndTranscribe();
       whisperProgressRef.current = "";
-      if (result?.text) {
+      // Whisper prioritaire ; sinon on garde le texte Chrome déjà affiché
+      const finalText = result?.text?.trim() || chromeSnapshot;
+      if (finalText) {
         sessionBaseRef.current = "";
-        await applyTextAndPolish(result.text, result.provider);
+        await applyTextAndPolish(finalText, result?.provider || "chrome");
       }
       return;
     }
     if (listening) stopListening();
     sessionBaseRef.current = cleanDictationNoise(raw);
     whisperProgressRef.current = "";
+    chromeLiveRef.current = "";
+    setLiveCaption("");
+
+    // Live instantané (Chrome) + Whisper en parallèle pour la précision à l’arrêt
+    if (supported) {
+      startListening(onSpeechResult);
+    }
+
     await startRecording((segmentText) => {
       whisperProgressRef.current = [whisperProgressRef.current, segmentText]
         .filter(Boolean)
-        .join("\n\n");
-      setRaw(
-        cleanDictationNoise(
-          [sessionBaseRef.current, whisperProgressRef.current]
-            .filter(Boolean)
-            .join("\n\n"),
-        ),
+        .join(" ");
+      // Si Chrome écrit déjà, on ne remplace pas (évite les sauts)
+      if (chromeLiveRef.current.trim()) return;
+      const next = cleanDictationNoise(
+        [sessionBaseRef.current, whisperProgressRef.current]
+          .filter(Boolean)
+          .join(" "),
       );
+      setRaw(next);
+      setLiveCaption(segmentText);
     });
+  }
+
+  async function openInGoogleDocs() {
+    const text = [docTitle.trim(), "", docBody.trim()].filter(Boolean).join("\n\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      setMessage(
+        "تم نسخ المرافعة — افتح Google Docs والصق (Ctrl+V / Cmd+V) للتعديل.",
+      );
+    } catch {
+      setMessage(
+        "تعذر النسخ التلقائي — انسخ النص يدوياً ثم الصقه في Google Docs.",
+      );
+    }
+    window.open(
+      "https://docs.google.com/document/create",
+      "_blank",
+      "noopener,noreferrer",
+    );
   }
 
   function toggleChromeMic() {
     if (listening) {
       stopListening();
+      chromeLiveRef.current = "";
+      setLiveCaption("");
       setRaw((prev) => cleanDictationNoise(prev));
       return;
     }
     if (recording || transcribing) return;
     sessionBaseRef.current = cleanDictationNoise(raw);
+    chromeLiveRef.current = "";
+    setLiveCaption("");
     setRaw(sessionBaseRef.current);
     startListening(onSpeechResult);
   }
@@ -263,7 +320,7 @@ export function PlaidoirieWorkspace({ templateId }: Props) {
     setBusy("polish");
     setError("");
     try {
-      const res = await api.polishDictation(cleaned);
+      const res = await api.polishDictation(cleaned, dictationLang);
       setPolished(res.polished);
       setProvider(res.provider);
     } catch (e) {
@@ -290,6 +347,7 @@ export function PlaidoirieWorkspace({ templateId }: Props) {
         polish_first: !polished,
         plaidoirie_type: composeType,
         title: docTitle || selectedCustom?.name || selectedTemplate?.labelAr,
+        language: dictationLang,
       });
       if (res.polished) setPolished(res.polished);
       setDocTitle(
@@ -343,51 +401,61 @@ export function PlaidoirieWorkspace({ templateId }: Props) {
 
   if (!ready) {
     return (
-      <div className="flex items-center justify-center py-20 text-sm text-slate-500">
-        <Loader2 className="me-2 h-4 w-4 animate-spin" />
+      <div className="section-sub" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <Loader2 className="h-4 w-4 animate-spin" />
         …
       </div>
     );
   }
 
   return (
-    <div className="space-y-5">
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="flex flex-wrap items-end justify-between gap-3"
+    <div>
+      <Link
+        href="/redaction"
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 4,
+          fontSize: 12.5,
+          fontWeight: 600,
+          color: "var(--ink-soft)",
+          marginBottom: 8,
+          textDecoration: "none",
+        }}
       >
+        <ArrowRight className="h-3.5 w-3.5 rotate-180" />
+        {isFr ? "Modèles" : "النماذج"}
+      </Link>
+      <div className="dossiers-top" style={{ marginBottom: 20 }}>
         <div>
-          <Link
-            href="/redaction"
-            className="mb-2 inline-flex items-center gap-1 text-xs text-sanad-muted hover:text-sanad-navy"
-          >
-            <ArrowRight className="h-3.5 w-3.5 rotate-180" />
-            النماذج
-          </Link>
-          <h1 className="font-display text-2xl font-semibold text-sanad-navy" dir="rtl">
+          <div className="section-title" style={{ marginBottom: 4 }} dir="rtl">
             {templateLabel}
-          </h1>
+          </div>
+          <div className="section-sub" style={{ marginBottom: 0 }}>
+            {isFr
+              ? "Dictée → correction → document officiel"
+              : "إملاء → تصحيح → وثيقة رسمية"}
+          </div>
         </div>
         {sttOk !== null && (
-          <span
-            className={cn(
-              "rounded-full px-3 py-1 text-xs font-medium",
-              sttOk ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-800",
-            )}
-          >
-            Whisper {sttOk ? "prêt" : "indisponible"}
+          <span className={cn("status-pill", sttOk && "status-pill--closed")}>
+            Whisper {sttOk ? (isFr ? "prêt" : "جاهز") : isFr ? "indisponible" : "غير متاح"}
           </span>
         )}
-      </motion.div>
+      </div>
 
       {composeChecks.length > 0 && (
         <div
           dir="rtl"
-          className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+          className="card"
+          style={{
+            marginBottom: 18,
+            background: "rgba(199,151,63,0.1)",
+            borderColor: "rgba(199,151,63,0.35)",
+          }}
         >
-          <p className="font-semibold">للمراجعة</p>
-          <ul className="mt-2 list-disc space-y-1 pe-5">
+          <p style={{ fontWeight: 700, marginBottom: 8 }}>{isFr ? "À revoir" : "للمراجعة"}</p>
+          <ul style={{ paddingInlineStart: 20, margin: 0 }}>
             {composeChecks.map((c) => (
               <li key={c}>{c}</li>
             ))}
@@ -395,240 +463,383 @@ export function PlaidoirieWorkspace({ templateId }: Props) {
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <div className="space-y-4">
-          <Card className="overflow-hidden border-sanad-navy/10 shadow-luxe">
-            <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
-              <CardTitle className="text-base">الإملاء · الصوت</CardTitle>
-              <div className="flex flex-wrap items-center gap-2">
-                <Magnetic strength={20}>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={recording || transcribing ? "default" : "gold"}
-                    className={cn((recording || transcribing) && "bg-red-600 hover:bg-red-700")}
-                    onClick={() => void toggleWhisperMic()}
-                    disabled={!whisperSupported || busy !== null || sttOk === false}
-                  >
-                    {transcribing ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        …
-                      </>
-                    ) : recording ? (
-                      <>
-                        <MicOff className="h-4 w-4" />
-                        إيقاف
-                      </>
-                    ) : (
-                      <>
-                        <Mic className="h-4 w-4" />
-                        ميكروفون
-                      </>
-                    )}
-                  </Button>
-                </Magnetic>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  disabled={recording || transcribing || busy !== null}
-                  onClick={() => fileRef.current?.click()}
-                >
-                  <Upload className="h-4 w-4" />
-                  ملف صوتي
-                </Button>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept="audio/*,.webm,.wav,.mp3,.m4a,.ogg"
-                  className="hidden"
-                  onChange={(e) => void onAudioFile(e.target.files?.[0] || null)}
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={listening ? "default" : "ghost"}
-                  className={cn(listening && "bg-amber-600 hover:bg-amber-700 text-white")}
-                  onClick={toggleChromeMic}
-                  disabled={!supported || recording || transcribing || busy !== null}
-                  title="Chrome"
-                >
-                  Chrome
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <VoiceMeter analyser={analyser} active={recording} />
+      <div className="plaid-grid">
+        <div className="card" style={{ padding: 22 }}>
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
+              marginBottom: 8,
+            }}
+          >
+            <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>
+              {isFr ? "Dictée · audio" : "الإملاء · الصوت"}
+            </h3>
+            <div className="type-pick" role="group" aria-label={isFr ? "Langue" : "اللغة"}>
+              <button
+                type="button"
+                className={`type-pill${dictationLang === "ar" ? " sel" : ""}`}
+                disabled={recording || transcribing || listening}
+                onClick={() => switchDictationLang("ar")}
+              >
+                ع
+              </button>
+              <button
+                type="button"
+                className={`type-pill${dictationLang === "fr" ? " sel" : ""}`}
+                disabled={recording || transcribing || listening}
+                onClick={() => switchDictationLang("fr")}
+              >
+                FR
+              </button>
+            </div>
+          </div>
 
-              {recording && (
-                <p className="animate-pulse text-xs font-medium text-red-600">● تسجيل</p>
+          <div className="voice-orb-wrap" style={{ padding: "18px 8px 10px" }}>
+            <VoiceOrb listening={recording || listening} />
+            <button
+              type="button"
+              className="mic-btn"
+              aria-pressed={recording || listening}
+              onClick={() => void toggleWhisperMic()}
+              disabled={
+                busy !== null ||
+                transcribing ||
+                (!whisperSupported && !supported) ||
+                (sttOk === false && !supported)
+              }
+            >
+              {transcribing ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : recording ? (
+                <MicOff className="h-4 w-4" />
+              ) : (
+                <Mic className="h-4 w-4" />
               )}
-              {transcribing && (
-                <p className="flex items-center gap-2 text-xs font-medium text-sanad-navy">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  تفريغ…
-                </p>
-              )}
-              {(speechError || whisperError) && (
-                <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                  {whisperError || speechError}
-                </p>
-              )}
+              {transcribing
+                ? "…"
+                : recording
+                  ? isFr
+                    ? "Arrêter"
+                    : "إيقاف"
+                  : isFr
+                    ? "Commencer à dicter"
+                    : "ابدأ الإملاء"}
+            </button>
+            <VoiceWave active={recording || listening} />
+          </div>
 
-              <textarea
-                dir="rtl"
-                lang="ar"
-                className="min-h-[200px] w-full rounded-xl border border-sanad-border bg-sanad-cream/40 px-3 py-3 text-right text-base leading-relaxed outline-none focus:ring-2 focus:ring-sanad-gold/40"
-                placeholder="النص…"
-                value={raw}
-                onChange={(e) => setRaw(e.target.value)}
-              />
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={!raw.trim() || busy !== null || recording || transcribing}
-                  onClick={() => void handlePolish()}
-                >
-                  {busy === "polish" ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Wand2 className="h-4 w-4" />
-                  )}
-                  تصحيح
-                </Button>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setRaw("");
-                    setPolished("");
-                    setMessage("");
-                  }}
-                >
-                  مسح
-                </Button>
-              </div>
-              {message && <p className="text-sm text-green-700">{message}</p>}
-            </CardContent>
-          </Card>
+          <VoiceMeter analyser={analyser} active={recording} />
+          <div aria-live="polite" className="sr-only">
+            {recording || listening
+              ? isFr
+                ? "Écoute active — les mots s’affichent en direct"
+                : "جاري الاستماع — الكلمات تظهر فوراً"
+              : isFr
+                ? "Micro inactif"
+                : "الميكروفون متوقف"}
+          </div>
+
+          {(recording || listening) && (
+            <div
+              className="live-caption"
+              dir={textDir}
+              aria-live="polite"
+              style={{
+                marginTop: 10,
+                minHeight: 52,
+                borderRadius: 16,
+                border: "1px solid rgba(199,151,63,0.35)",
+                background: "rgba(255,252,246,0.95)",
+                padding: "12px 14px",
+                fontSize: 15,
+                lineHeight: 1.55,
+                fontWeight: 600,
+                color: "var(--ink)",
+                textAlign: isFr ? "left" : "right",
+              }}
+            >
+              {liveCaption.trim() || raw.trim() ? (
+                liveCaption.trim() || raw
+              ) : (
+                <span style={{ color: "var(--ink-soft)", fontWeight: 500 }}>
+                  {isFr
+                    ? "Parlez — les mots apparaissent ici instantanément…"
+                    : "تحدث — تظهر الكلمات هنا فوراً…"}
+                </span>
+              )}
+            </div>
+          )}
+
+          <div className="doc-actions" style={{ marginTop: 12, marginBottom: 12 }}>
+            <button
+              type="button"
+              className="chip-btn"
+              disabled={recording || transcribing || busy !== null}
+              onClick={() => fileRef.current?.click()}
+            >
+              <Upload width={14} height={14} />
+              {isFr ? "Fichier audio" : "ملف صوتي"}
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="audio/*,.webm,.wav,.mp3,.m4a,.ogg,.mp4,.aac"
+              style={{ display: "none" }}
+              onChange={(e) => void onAudioFile(e.target.files?.[0] || null)}
+            />
+            <button
+              type="button"
+              className={`chip-btn${listening && !recording ? " primary" : ""}`}
+              onClick={toggleChromeMic}
+              disabled={!supported || recording || transcribing || busy !== null}
+              title="Chrome"
+            >
+              Chrome
+            </button>
+          </div>
+
+          {recording && (
+            <p style={{ fontSize: 12, fontWeight: 600, color: "#b91c1c" }} dir={textDir}>
+              {isFr
+                ? supported
+                  ? "● Enregistrement — texte en direct"
+                  : "● Enregistrement — texte progressif (~3 s)"
+                : supported
+                  ? "● جارٍ التسجيل — النص يظهر فوراً"
+                  : "● جارٍ التسجيل — نص تدريجي (~3 ث)"}
+            </p>
+          )}
+          {listening && !recording && (
+            <p style={{ fontSize: 12, fontWeight: 600, color: "var(--emerald)" }} dir={textDir}>
+              {isFr ? "● Chrome — transcription instantanée" : "● Chrome — تفريغ فوري"}
+            </p>
+          )}
+          {transcribing && (
+            <p
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                fontSize: 12,
+                fontWeight: 600,
+                color: "var(--ink)",
+              }}
+              dir={textDir}
+            >
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              {isFr ? "Transcription finale…" : "التفريغ النهائي…"}
+            </p>
+          )}
+          {(speechError || whisperError) && (
+            <p
+              style={{
+                background: "rgba(199,151,63,0.12)",
+                color: "#8a6321",
+                borderRadius: 12,
+                padding: "8px 12px",
+                fontSize: 12,
+              }}
+            >
+              {whisperError || speechError}
+            </p>
+          )}
+
+          <div className="form-field full" style={{ marginTop: 10 }}>
+            <label style={{ fontSize: 12, fontWeight: 700, color: "var(--ink-soft)" }}>
+              {isFr ? "Texte dicté (en direct)" : "النص المُملى (مباشر)"}
+            </label>
+            <textarea
+              dir={textDir}
+              lang={dictationLang}
+              value={raw}
+              onChange={(e) => {
+                setRaw(e.target.value);
+                if (recording || listening) setLiveCaption(e.target.value);
+              }}
+              placeholder={
+                isFr
+                  ? "Les mots s’écrivent ici pendant que vous parlez…"
+                  : "تُكتب الكلمات هنا أثناء الحديث…"
+              }
+              style={{
+                minHeight: 180,
+                width: "100%",
+                textAlign: isFr ? "left" : "right",
+                resize: "vertical",
+                border: "1px solid var(--line)",
+                background: "#fff",
+                borderRadius: 12,
+                padding: "12px 14px",
+                fontSize: 15,
+                lineHeight: 1.6,
+                color: "var(--ink)",
+                outline: "none",
+              }}
+            />
+          </div>
+          <div className="doc-actions">
+            <button
+              type="button"
+              className="chip-btn"
+              disabled={!raw.trim() || busy !== null || recording || transcribing}
+              onClick={() => void handlePolish()}
+            >
+              {busy === "polish" ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Wand2 width={14} height={14} />
+              )}
+              {isFr ? "Corriger" : "تصحيح"}
+            </button>
+            <button
+              type="button"
+              className="chip-btn"
+              onClick={() => {
+                setRaw("");
+                setPolished("");
+                setMessage("");
+              }}
+            >
+              {isFr ? "Effacer" : "مسح"}
+            </button>
+          </div>
+          {message && (
+            <p style={{ fontSize: 13, color: "var(--emerald)", marginTop: 8 }}>{message}</p>
+          )}
 
           {polished && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Sparkles className="h-4 w-4 text-sanad-gold" />
-                  النص المصحح
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
+            <div style={{ marginTop: 18 }}>
+              <p
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  fontWeight: 700,
+                  fontSize: 14,
+                  marginBottom: 8,
+                }}
+              >
+                <Sparkles width={16} height={16} style={{ color: "var(--gold)" }} />
+                {isFr ? "Texte corrigé" : "النص المصحح"}
+              </p>
+              <div className="form-field">
                 <textarea
-                  dir="rtl"
-                  lang="ar"
-                  className="min-h-[140px] w-full rounded-xl border border-sanad-border px-3 py-3 text-right text-sm leading-relaxed outline-none focus:ring-2 focus:ring-sanad-gold/40"
+                  dir={textDir}
+                  lang={dictationLang}
                   value={polished}
                   onChange={(e) => setPolished(e.target.value)}
+                  style={{
+                    minHeight: 120,
+                    textAlign: isFr ? "left" : "right",
+                    resize: "vertical",
+                  }}
                 />
-                {provider && (
-                  <p className="mt-2 text-[10px] text-slate-400">via {provider}</p>
-                )}
-              </CardContent>
-            </Card>
+              </div>
+              {provider && (
+                <p style={{ fontSize: 10, color: "var(--ink-soft)", marginTop: 6 }}>
+                  via {provider}
+                </p>
+              )}
+            </div>
           )}
         </div>
 
-        <div className="space-y-4">
-          <Card className="border-sanad-gold/30 shadow-luxe">
-            <CardHeader>
-              <CardTitle className="text-base">الوثيقة الرسمية</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <div className="flex items-center gap-3 rounded-xl border border-sanad-border/80 bg-sanad-cream/50 px-3 py-2.5">
-                <Image
-                  src="/armoiries-maroc.png"
-                  alt=""
-                  width={48}
-                  height={60}
-                  className="h-14 w-auto object-contain"
-                  priority
-                />
-                <div className="text-right" dir="rtl">
-                  <p className="text-sm font-bold text-[#1a3a2a]">المملكة المغربية</p>
-                  <p className="text-xs font-semibold text-sanad-gold">مرافعة</p>
-                </div>
+        <div>
+          <div className="card doc-preview">
+            <span className="badge">{isFr ? "Document officiel" : "الوثيقة الرسمية"}</span>
+            <div className="flex items-center gap-3" style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <Image
+                src="/armoiries-maroc.png"
+                alt=""
+                width={48}
+                height={60}
+                style={{ height: 56, width: "auto", objectFit: "contain" }}
+                priority
+              />
+              <div dir="rtl" style={{ textAlign: "right" }}>
+                <p style={{ fontSize: 14, fontWeight: 700, color: "#1a3a2a", margin: 0 }}>
+                  المملكة المغربية
+                </p>
+                <p style={{ fontSize: 12, fontWeight: 600, color: "var(--gold)", margin: 0 }}>
+                  مرافعة
+                </p>
               </div>
-              <div className="flex items-center justify-between gap-3 rounded-xl border border-sanad-border px-3 py-2">
-                <span className="text-sm text-sanad-muted">الأولوية</span>
-                <div className="flex gap-1 rounded-lg bg-sanad-cream/60 p-0.5">
-                  <button
-                    type="button"
-                    onClick={() => setPriority("normal")}
-                    className={cn(
-                      "rounded-md px-3 py-1.5 text-xs font-medium transition",
-                      priority === "normal"
-                        ? "bg-white text-sanad-navy shadow-sm"
-                        : "text-sanad-muted hover:text-sanad-navy",
-                    )}
-                  >
-                    عادي
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPriority("urgent")}
-                    className={cn(
-                      "rounded-md px-3 py-1.5 text-xs font-medium transition",
-                      priority === "urgent"
-                        ? "bg-amber-500 text-white shadow-sm"
-                        : "text-sanad-muted hover:text-amber-700",
-                    )}
-                  >
-                    عاجل
-                  </button>
-                </div>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+                border: "1px solid var(--line)",
+                borderRadius: 12,
+                padding: "10px 12px",
+              }}
+            >
+              <span style={{ fontSize: 13, color: "var(--ink-soft)" }}>
+                {isFr ? "Priorité" : "الأولوية"}
+              </span>
+              <div className="type-pick">
+                <button
+                  type="button"
+                  className={`type-pill${priority === "normal" ? " sel" : ""}`}
+                  onClick={() => setPriority("normal")}
+                >
+                  {isFr ? "Normal" : "عادي"}
+                </button>
+                <button
+                  type="button"
+                  className={`type-pill${priority === "urgent" ? " sel" : ""}`}
+                  onClick={() => setPriority("urgent")}
+                >
+                  {isFr ? "Urgent" : "عاجل"}
+                </button>
               </div>
-              <Button
-                className="w-full gap-2"
-                disabled={!(polished || raw || docBody).trim() || busy !== null}
-                onClick={() => void handleCompose()}
-              >
-                {busy === "compose" ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <FileText className="h-4 w-4" />
-                )}
-                توليد الوثيقة
-              </Button>
-              {error && <p className="text-sm text-red-600">{error}</p>}
-            </CardContent>
-          </Card>
+            </div>
+
+            <button
+              type="button"
+              className="mic-btn"
+              style={{ width: "100%", justifyContent: "center" }}
+              disabled={!(polished || raw || docBody).trim() || busy !== null}
+              onClick={() => void handleCompose()}
+            >
+              {busy === "compose" ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <FileText className="h-4 w-4" />
+              )}
+              {isFr ? "Générer le document" : "توليد الوثيقة"}
+            </button>
+            {error && <p style={{ fontSize: 13, color: "#b91c1c" }}>{error}</p>}
+          </div>
 
           {docBody && (
-            <DocumentWorkspace
-              title={docTitle}
-              body={docBody}
-              onTitleChange={setDocTitle}
-              onBodyChange={setDocBody}
-              cases={cases}
-              caseId={caseId}
-              onCaseIdChange={setCaseId}
-              onExportPdf={() => exportOfficialArabicDocument(exportOpts)}
-              onExportDocLegacy={() => downloadOfficialArabicDoc(exportOpts)}
-              onExportWord={handleExportWord}
-              onOpenGoogleDocs={() =>
-                window.open(
-                  "https://docs.google.com/document/create",
-                  "_blank",
-                  "noopener,noreferrer",
-                )
-              }
-              onSaveTemplate={handleSaveAsCabinetTemplate}
-              onSaveToCase={handleSaveToCase}
-              savingCase={busy === "save"}
-              exportingWord={busy === "word"}
-              savingTemplate={busy === "saveTpl"}
-            />
+            <div style={{ marginTop: 18 }}>
+              <DocumentWorkspace
+                title={docTitle}
+                body={docBody}
+                onTitleChange={setDocTitle}
+                onBodyChange={setDocBody}
+                cases={cases}
+                caseId={caseId}
+                onCaseIdChange={setCaseId}
+                onExportPdf={() => exportOfficialArabicDocument(exportOpts)}
+                onExportDocLegacy={() => downloadOfficialArabicDoc(exportOpts)}
+                onExportWord={handleExportWord}
+                onOpenGoogleDocs={() => void openInGoogleDocs()}
+                onSaveTemplate={handleSaveAsCabinetTemplate}
+                onSaveToCase={handleSaveToCase}
+                savingCase={busy === "save"}
+                exportingWord={busy === "word"}
+                savingTemplate={busy === "saveTpl"}
+              />
+            </div>
           )}
         </div>
       </div>

@@ -38,6 +38,22 @@ def _get_redis():
         return None
 
 
+def _raise_429(bucket_key: str, limit: int, window_sec: int) -> None:
+    logger.warning(
+        "Rate limit exceeded",
+        extra={
+            "endpoint": bucket_key,
+            "status_code": 429,
+            "task": "rate_limit",
+        },
+    )
+    raise HTTPException(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        detail="Trop de requêtes. Réessayez dans quelques instants.",
+        headers={"Retry-After": str(window_sec)},
+    )
+
+
 def _check_memory(bucket_key: str, limit: int, window_sec: int) -> None:
     now = time.monotonic()
     cutoff = now - window_sec
@@ -46,10 +62,7 @@ def _check_memory(bucket_key: str, limit: int, window_sec: int) -> None:
         while q and q[0] < cutoff:
             q.popleft()
         if len(q) >= limit:
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail="Trop de requêtes. Réessayez dans quelques instants.",
-            )
+            _raise_429(bucket_key, limit, window_sec)
         q.append(now)
 
 
@@ -69,10 +82,7 @@ def _check_redis(bucket_key: str, limit: int, window_sec: int) -> bool:
         results = pipe.execute()
         count = int(results[2])
         if count > limit:
-            raise HTTPException(
-                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                detail="Trop de requêtes. Réessayez dans quelques instants.",
-            )
+            _raise_429(bucket_key, limit, window_sec)
         return True
     except HTTPException:
         raise
@@ -81,23 +91,46 @@ def _check_redis(bucket_key: str, limit: int, window_sec: int) -> bool:
         return False
 
 
+def _effective_limit(limit: int) -> int:
+    """En local/Docker, toutes les requêtes partagent souvent la même IP."""
+    env = (settings.ENVIRONMENT or "").lower()
+    if settings.DEBUG or env in {"development", "dev", "local"}:
+        return max(limit * 8, 80)
+    return limit
+
+
+def _client_ip(request: Request) -> str:
+    ip = request.client.host if request.client else "unknown"
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        ip = forwarded.split(",")[0].strip() or ip
+    return ip
+
+
 def check_rate_limit(
     request: Request,
     *,
     key: str,
     limit: int,
     window_sec: int = 60,
+    subject: str | None = None,
 ) -> None:
-    """Lève 429 si trop de requêtes pour (IP, key) dans la fenêtre."""
-    ip = request.client.host if request.client else "unknown"
+    """
+    Lève 429 si trop de requêtes pour (IP[, subject], key) dans la fenêtre.
+    `subject` = user_id pour limiter par compte (uploads).
+    """
+    limit = _effective_limit(limit)
+    ip = _client_ip(request)
     bucket_key = f"{key}:{ip}"
+    if subject:
+        bucket_key = f"{key}:u:{subject}:{ip}"
     if not _check_redis(bucket_key, limit, window_sec):
         _check_memory(bucket_key, limit, window_sec)
 
 
 def count_failures(request: Request, *, key: str, window_sec: int = 900) -> int:
     """Nombre d'échecs récents (IP) — pour déclencher CAPTCHA."""
-    ip = request.client.host if request.client else "unknown"
+    ip = _client_ip(request)
     bucket_key = f"{key}:{ip}"
     client = _get_redis()
     if client is not None:
@@ -119,7 +152,7 @@ def count_failures(request: Request, *, key: str, window_sec: int = 900) -> int:
 
 def record_failure(request: Request, *, key: str, window_sec: int = 900) -> int:
     """Enregistre un échec et retourne le total dans la fenêtre."""
-    ip = request.client.host if request.client else "unknown"
+    ip = _client_ip(request)
     bucket_key = f"{key}:{ip}"
     client = _get_redis()
     if client is not None:

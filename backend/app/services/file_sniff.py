@@ -10,6 +10,27 @@ _TIFF_LE = b"II*\x00"
 _TIFF_BE = b"MM\x00*"
 # DOCX = ZIP container
 _ZIP = b"PK\x03\x04"
+# Audio
+_RIFF = b"RIFF"
+_WAVE = b"WAVE"
+_OGG = b"OggS"
+_ID3 = b"ID3"
+_EBML = b"\x1a\x45\xdf\xa3"  # WebM / Matroska
+_FTIP = b"ftyp"
+
+
+def _is_mp3_frame(head: bytes) -> bool:
+    """Syncword MPEG audio (FF Ex / FF Fx) sans tag ID3."""
+    if len(head) < 2:
+        return False
+    return head[0] == 0xFF and (head[1] & 0xE0) == 0xE0
+
+
+def _is_mp4_family(content: bytes) -> bool:
+    """ISO BMFF (m4a / mp4) : ....ftyp...."""
+    if len(content) < 12:
+        return False
+    return content[4:8] == _FTIP
 
 
 def sniff_allowed_upload(content: bytes, ext: str) -> str | None:
@@ -51,6 +72,31 @@ def sniff_allowed_upload(content: bytes, ext: str) -> str | None:
             # ZIP générique sans marqueurs Office — rejeter
             if b"word/" not in content and b"[Content_Types].xml" not in content:
                 return "Le fichier ZIP n'est pas un document DOCX."
+        return None
+
+    if ext == ".wav":
+        if not (head.startswith(_RIFF) and content[8:12] == _WAVE):
+            return "Le fichier n'est pas un WAV valide."
+        return None
+
+    if ext == ".ogg":
+        if not head.startswith(_OGG):
+            return "Le fichier n'est pas un OGG valide."
+        return None
+
+    if ext == ".webm":
+        if not head.startswith(_EBML):
+            return "Le fichier n'est pas un WebM valide."
+        return None
+
+    if ext in {".mp3", ".mpeg", ".mpga"}:
+        if not (head.startswith(_ID3) or _is_mp3_frame(head)):
+            return "Le fichier n'est pas un MP3 valide."
+        return None
+
+    if ext in {".m4a", ".mp4"}:
+        if not _is_mp4_family(content):
+            return "Le fichier n'est pas un M4A/MP4 valide."
         return None
 
     return "Type de fichier non autorisé."

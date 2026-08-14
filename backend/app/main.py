@@ -22,10 +22,12 @@ from app.api import (
 )
 from app.api import settings as settings_api
 from app.core.config import settings
+from app.core.logging_config import CorrelationIdMiddleware, configure_logging
 from app.core.migrations import run_migrations
 from app.services.rag import ensure_legal_corpus, get_corpus_stats, warmup_embeddings
 from app.services.groq_llm import llm_health
 
+configure_logging()
 logger = logging.getLogger(__name__)
 
 
@@ -108,6 +110,8 @@ app = FastAPI(
     docs_url=_docs_url,
     redoc_url=_redoc_url,
     openapi_url=None if settings.ENVIRONMENT == "production" else "/openapi.json",
+    # Évite les 307 /api/documents/ → /api/documents qui droppent parfois l'Authorization
+    redirect_slashes=False,
 )
 
 origins = [o.strip() for o in settings.CORS_ORIGINS.split(",")]
@@ -119,6 +123,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(CorrelationIdMiddleware)
 
 app.include_router(auth.router)
 app.include_router(cases.router)
@@ -146,7 +151,9 @@ def root():
 
 
 @app.get("/health")
+@app.get("/api/health")
 def health():
+    """Alias `/api/health` pour les clients qui préfixent le préfixe API."""
     llm = {"status": "skipped"}
     corpus = {}
     try:
@@ -176,12 +183,14 @@ def health():
 
 
 @app.get("/health/live")
+@app.get("/api/health/live")
 def health_live():
     """Healthcheck rapide — ne touche ni LLM ni Chroma."""
     return {"status": "ok"}
 
 
 @app.get("/health/stt")
+@app.get("/api/health/stt")
 def health_stt():
     from app.services.whisper_stt import whisper_status
 

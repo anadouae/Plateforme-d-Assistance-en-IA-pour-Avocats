@@ -1,3 +1,5 @@
+import { getTranslations } from "@/lib/i18n/translations";
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001";
 
 export class ApiError extends Error {
@@ -8,6 +10,19 @@ export class ApiError extends Error {
     super(message);
     this.name = "ApiError";
   }
+}
+
+function apiMsg(
+  key: "timeout" | "unreachable" | "serverError" | "uploadTimeout",
+): string {
+  return getTranslations(getClientLocale()).app.api[key];
+}
+
+function isTimeoutError(e: unknown): boolean {
+  return (
+    (e instanceof DOMException && e.name === "TimeoutError") ||
+    (e instanceof Error && e.name === "TimeoutError")
+  );
 }
 
 function activeTokenStorage(): Storage {
@@ -70,7 +85,7 @@ async function refreshAccessToken(): Promise<string | null> {
           credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ refresh_token: refresh }),
-          signal: AbortSignal.timeout(12_000),
+          signal: AbortSignal.timeout(20_000),
         });
         if (!res.ok) return null;
         const data = (await res.json()) as AuthResponse;
@@ -119,7 +134,8 @@ async function request<T>(
   path: string,
   options: RequestInit = {},
   retried = false,
-  timeoutMs = 25_000,
+  timeoutMs = 60_000,
+  timeoutRetried = false,
 ): Promise<T> {
   const token = getToken();
   const method = (options.method || "GET").toUpperCase();
@@ -146,31 +162,32 @@ async function request<T>(
       credentials: "include",
     });
   } catch (e) {
-    if (e instanceof DOMException && e.name === "TimeoutError") {
-      throw new ApiError("Délai dépassé — le serveur ne répond pas. Réessayez.", 0);
+    // Un seul nouvel essai automatique sur timeout (réseaux / cold start Docker)
+    if (isTimeoutError(e) && !timeoutRetried && !options.signal) {
+      return request<T>(path, options, retried, Math.min(timeoutMs + 20_000, 90_000), true);
     }
-    throw new ApiError(
-      "Impossible de joindre le serveur. Vérifiez que l'API est démarrée (port 8001), puis réessayez.",
-      0,
-    );
+    if (isTimeoutError(e)) {
+      throw new ApiError(apiMsg("timeout"), 0);
+    }
+    throw new ApiError(apiMsg("unreachable"), 0);
   }
 
   if (res.status === 401 && !retried && path !== "/api/auth/refresh") {
     const newToken = await handleUnauthorized();
     if (newToken) {
-      return request<T>(path, options, true, timeoutMs);
+      return request<T>(path, options, true, timeoutMs, timeoutRetried);
     }
   }
 
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ detail: "Erreur serveur" }));
+    const body = await res.json().catch(() => ({ detail: apiMsg("serverError") }));
     const detail = body.detail;
     const message =
       typeof detail === "string"
         ? detail
         : Array.isArray(detail)
           ? detail.map((d: { msg?: string }) => d.msg).join(", ")
-          : "Erreur serveur";
+          : apiMsg("serverError");
     throw new ApiError(message, res.status);
   }
   if (res.status === 204) return undefined as T;
@@ -204,16 +221,10 @@ async function uploadRequest<T>(
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (e) {
-    if (e instanceof DOMException && e.name === "TimeoutError") {
-      throw new ApiError(
-        "Transcription trop longue — réessayez avec un audio plus court.",
-        0,
-      );
+    if (isTimeoutError(e)) {
+      throw new ApiError(apiMsg("uploadTimeout"), 0);
     }
-    throw new ApiError(
-      "Impossible de joindre le serveur. Vérifiez que l'API est démarrée (port 8001).",
-      0,
-    );
+    throw new ApiError(apiMsg("unreachable"), 0);
   }
 
   if (res.status === 401 && !retried) {
@@ -376,6 +387,9 @@ export const api = {
   getSynthesis: (id: string, language?: AppLocale) =>
     request<SynthesisResult>(
       `/api/documents/${id}/synthese?lang=${language || getClientLocale()}`,
+      {},
+      false,
+      180_000,
     ),
 
   askDocument: (id: string, question: string, language?: AppLocale) =>
@@ -485,21 +499,21 @@ export const api = {
   deleteAgendaEvent: (id: string) =>
     request<void>(`/api/workspace/agenda/${id}`, { method: "DELETE" }),
 
-  polishDictation: (text: string) =>
+  polishDictation: (text: string, language: "ar" | "fr" = "ar") =>
     request<{ polished: string; provider: string }>("/api/dictation/polish", {
       method: "POST",
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, language }),
     }),
 
   transcribeDictation: (
     file: File,
-    _language: string = "ar",
+    language: string = "ar",
     timeoutMs = 600_000,
   ) => {
     const form = new FormData();
     form.append("file", file);
-    // Sanad Maroc : STT arabe uniquement
-    form.append("language", "ar");
+    const lang = language.toLowerCase().startsWith("fr") ? "fr" : "ar";
+    form.append("language", lang);
     return uploadRequest<{
       text: string;
       provider: string;
@@ -509,9 +523,14 @@ export const api = {
   },
 
   getDictationSttStatus: () =>
-    request<{ enabled: boolean; model: string; device: string; loaded: boolean }>(
-      "/api/dictation/stt-status",
-    ),
+    request<{
+      enabled: boolean;
+      model: string;
+      device: string;
+      loaded: boolean;
+      languages?: string[];
+      local_only?: boolean;
+    }>("/api/dictation/stt-status"),
 
   composeDictation: (data: {
     text: string;
@@ -519,6 +538,7 @@ export const api = {
     title?: string;
     polish_first?: boolean;
     plaidoirie_type?: string;
+    language?: "ar" | "fr";
   }) =>
     request<{
       title: string;
@@ -527,6 +547,7 @@ export const api = {
       provider: string;
       checks?: string[];
       plaidoirie_type?: string | null;
+      language?: string;
       header_ar: string;
       header_fr: string;
       motto_ar: string;
@@ -603,10 +624,39 @@ export const api = {
 
   getTeam: () => request<TeamMember[]>("/api/team"),
 
-  inviteTeamMember: (data: TeamInvitePayload) =>
-    request<TeamInviteResult>("/api/team/invite", {
+  getJoinCode: () => request<JoinCodeInfo>("/api/team/join-code"),
+
+  regenerateJoinCode: () =>
+    request<JoinCodeInfo>("/api/team/join-code/regenerate", { method: "POST" }),
+
+  validateJoinCode: (code: string) =>
+    request<{ valid: boolean }>("/api/team/join/validate", {
+      method: "POST",
+      body: JSON.stringify({ code }),
+    }),
+
+  submitJoinRequest: (data: {
+    code: string;
+    full_name: string;
+    email: string;
+    password: string;
+  }) =>
+    request<{ message: string }>("/api/team/join/request", {
       method: "POST",
       body: JSON.stringify(data),
+    }),
+
+  getJoinRequests: () => request<MembershipRequestItem[]>("/api/team/requests"),
+
+  approveJoinRequest: (id: string, role: string) =>
+    request<TeamMember>(`/api/team/requests/${id}/approve`, {
+      method: "POST",
+      body: JSON.stringify({ role }),
+    }),
+
+  rejectJoinRequest: (id: string) =>
+    request<{ message: string }>(`/api/team/requests/${id}/reject`, {
+      method: "POST",
     }),
 
   updateTeamMember: (id: string, data: TeamUpdatePayload) =>
@@ -745,6 +795,8 @@ export interface CreateCasePayload {
   status: string;
   description?: string;
   tags?: string[];
+  responsible_id?: string;
+  first_hearing_at?: string;
 }
 
 export interface DocumentItem {
@@ -758,6 +810,9 @@ export interface DocumentItem {
   case_id: string;
   case_reference: string | null;
   created_at: string;
+  /** "audio" | "file" — déduit côté API */
+  kind?: "audio" | "file" | string;
+  error_message?: string | null;
 }
 
 export interface DocumentDetail extends DocumentItem {
@@ -870,23 +925,23 @@ export interface TeamMember {
   created_at: string;
 }
 
-export interface TeamInvitePayload {
-  email: string;
-  full_name: string;
-  role: string;
-}
-
 export interface TeamUpdatePayload {
   role?: string;
   is_active?: boolean;
 }
 
-export interface TeamInviteResult {
-  message: string;
-  invite_url: string;
+export interface JoinCodeInfo {
+  join_code: string;
+  regenerated_at?: string | null;
+}
+
+export interface MembershipRequestItem {
+  id: string;
+  full_name: string;
   email: string;
-  email_sent?: boolean;
-  dev_mail_url?: string | null;
+  status: string;
+  requested_at: string;
+  resolved_at?: string | null;
 }
 
 export interface CabinetSettings {

@@ -55,7 +55,7 @@ export function AuthLayout({ children, wide = false }: AuthLayoutProps) {
         <div className="flex flex-1 flex-col justify-between p-6 sm:p-10 lg:max-w-[46%] lg:p-14">
           <div className="flex items-center justify-between gap-4">
             <Link href="/" className="inline-block">
-              <SanadLogo size="lg" className="drop-shadow-lg" />
+              <SanadLogo size="lg" dark withWordmark className="drop-shadow-lg" />
             </Link>
             <div className="lg:hidden">
               <LanguageSwitch variant="dark" />

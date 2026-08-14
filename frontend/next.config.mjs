@@ -2,7 +2,7 @@
 const nextConfig = {
   transpilePackages: ["three", "@react-three/fiber", "@react-three/drei"],
   async rewrites() {
-    return [{ source: "/favicon.ico", destination: "/logo-sanad.png" }];
+    return [{ source: "/favicon.ico", destination: "/logo-sanad-cube.png" }];
   },
   async headers() {
     return [

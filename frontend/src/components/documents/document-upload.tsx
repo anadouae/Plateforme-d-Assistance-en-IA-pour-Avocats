@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Upload, File, X, Loader2, CheckCircle2 } from "lucide-react";
+import { Upload, File, Mic, X, Loader2, CheckCircle2 } from "lucide-react";
 import { ProcessingSteps } from "@/components/ai/processing-steps";
 import { Button } from "@/components/ui/button";
 import { api, ApiError, type DocumentItem } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { useTranslations } from "@/store/locale";
 
 interface DocumentUploadProps {
   caseId: string;
@@ -13,7 +14,33 @@ interface DocumentUploadProps {
   onUpload: (caseId: string, file: File) => Promise<DocumentItem>;
 }
 
+const ALLOWED_EXTS = [
+  "pdf",
+  "docx",
+  "png",
+  "jpg",
+  "jpeg",
+  "tiff",
+  "webm",
+  "wav",
+  "mp3",
+  "m4a",
+  "ogg",
+  "mp4",
+  "mpeg",
+  "mpga",
+];
+
+const AUDIO_EXTS = new Set(["webm", "wav", "mp3", "m4a", "ogg", "mp4", "mpeg", "mpga"]);
+
+function isAudioFile(name: string, kind?: string | null) {
+  if (kind === "audio") return true;
+  const ext = name.split(".").pop()?.toLowerCase() || "";
+  return AUDIO_EXTS.has(ext);
+}
+
 export function DocumentUpload({ caseId, onUploaded, onUpload }: DocumentUploadProps) {
+  const t = useTranslations().app.documents;
   const [dragging, setDragging] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
@@ -30,20 +57,23 @@ export function DocumentUpload({ caseId, onUploaded, onUpload }: DocumentUploadP
 
   useEffect(() => () => stopPolling(), [stopPolling]);
 
-  const handleFile = useCallback((f: File) => {
-    setError("");
-    setProcessingDoc(null);
-    const ext = f.name.split(".").pop()?.toLowerCase();
-    if (!["pdf", "docx", "png", "jpg", "jpeg", "tiff"].includes(ext || "")) {
-      setError("Format non autorisé. Utilisez PDF, DOCX ou image.");
-      return;
-    }
-    if (f.size > 50 * 1024 * 1024) {
-      setError("Fichier trop volumineux (max 50 Mo).");
-      return;
-    }
-    setFile(f);
-  }, []);
+  const handleFile = useCallback(
+    (f: File) => {
+      setError("");
+      setProcessingDoc(null);
+      const ext = f.name.split(".").pop()?.toLowerCase();
+      if (!ALLOWED_EXTS.includes(ext || "")) {
+        setError(t.formatError);
+        return;
+      }
+      if (f.size > 50 * 1024 * 1024) {
+        setError(t.sizeError);
+        return;
+      }
+      setFile(f);
+    },
+    [t.formatError, t.sizeError],
+  );
 
   function startPolling(docId: string) {
     stopPolling();
@@ -79,7 +109,7 @@ export function DocumentUpload({ caseId, onUploaded, onUpload }: DocumentUploadP
         startPolling(uploaded.id);
       }
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Erreur lors de l'upload");
+      setError(e instanceof ApiError ? e.message : t.uploadError);
       setLoading(false);
     }
   }
@@ -91,6 +121,9 @@ export function DocumentUpload({ caseId, onUploaded, onUpload }: DocumentUploadP
 
   const isDone = processingDoc?.status === "indexed";
   const isFailed = processingDoc?.status === "failed";
+  const audioProcessing =
+    Boolean(processingDoc && isAudioFile(processingDoc.original_name, processingDoc.kind)) ||
+    Boolean(file && isAudioFile(file.name));
 
   return (
     <div className="space-y-4">
@@ -115,22 +148,20 @@ export function DocumentUpload({ caseId, onUploaded, onUpload }: DocumentUploadP
           )}
         >
           <Upload className="mb-3 h-8 w-8 text-slate-400" />
-          <p className="text-sm font-medium text-sanad-slate">
-            Glissez-déposez un document ici
-          </p>
-          <p className="mt-1 text-xs text-slate-500">PDF, DOCX, PNG, JPG — max 50 Mo</p>
+          <p className="text-sm font-medium text-sanad-slate">{t.dropHint}</p>
+          <p className="mt-1 text-xs text-slate-500">{t.formatsHint}</p>
           <label className="mt-4 cursor-pointer">
             <input
               type="file"
               className="hidden"
-              accept=".pdf,.docx,.png,.jpg,.jpeg,.tiff"
+              accept=".pdf,.docx,.png,.jpg,.jpeg,.tiff,.webm,.wav,.mp3,.m4a,.ogg,.mp4,.mpeg,.mpga,audio/*"
               onChange={(e) => {
                 const f = e.target.files?.[0];
                 if (f) handleFile(f);
               }}
             />
             <span className="inline-flex h-9 items-center rounded-lg border border-sanad-border bg-white px-4 text-sm font-medium hover:bg-sanad-light">
-              Choisir un fichier
+              {t.chooseFile}
             </span>
           </label>
         </div>
@@ -139,7 +170,11 @@ export function DocumentUpload({ caseId, onUploaded, onUpload }: DocumentUploadP
       {file && !isProcessing && (
         <div className="flex items-center justify-between rounded-lg border border-sanad-border bg-white p-3">
           <div className="flex items-center gap-2">
-            <File className="h-4 w-4 text-sanad-blue" />
+            {isAudioFile(file.name) ? (
+              <Mic className="h-4 w-4 text-sanad-blue" />
+            ) : (
+              <File className="h-4 w-4 text-sanad-blue" />
+            )}
             <span className="text-sm text-sanad-slate">{file.name}</span>
             <span className="text-xs text-slate-400">
               ({(file.size / 1024).toFixed(0)} Ko)
@@ -159,26 +194,27 @@ export function DocumentUpload({ caseId, onUploaded, onUpload }: DocumentUploadP
         <div className="space-y-3 rounded-xl border border-sanad-blue/20 bg-sanad-blue/5 p-4">
           <div className="flex items-center gap-2 text-sm font-medium text-sanad-blue">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Traitement de {processingDoc.original_name}
+            {t.processingOf} {processingDoc.original_name}
           </div>
-          <ProcessingSteps status={processingDoc.status} />
+          <ProcessingSteps status={processingDoc.status} kind={audioProcessing ? "audio" : "file"} />
           <p className="text-xs text-slate-500">
-            Extraction OCR et indexation en cours — quelques instants...
+            {audioProcessing ? t.processingAudioHint : t.processingHint}
           </p>
         </div>
       )}
 
       {isFailed && processingDoc && (
         <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
-          Échec du traitement de {processingDoc.original_name}. Vérifiez le format ou réessayez.
+          {processingDoc.error_message ||
+            `${t.processingFailed} ${processingDoc.original_name}.`}
         </div>
       )}
 
       {isDone && processingDoc && (
         <div className="flex items-center gap-2 rounded-lg bg-green-50 px-4 py-3 text-sm text-green-800">
           <CheckCircle2 className="h-4 w-4" />
-          {processingDoc.original_name} indexé avec succès.
-          {processingDoc.ocr_alert && " Attention : qualité OCR faible."}
+          {processingDoc.original_name} {t.indexedOk}
+          {processingDoc.ocr_alert && ` ${t.ocrWeak}`}
         </div>
       )}
 
@@ -191,10 +227,10 @@ export function DocumentUpload({ caseId, onUploaded, onUpload }: DocumentUploadP
           {loading ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" />
-              Import en cours...
+              {t.importing}
             </>
           ) : (
-            "Importer et analyser"
+            t.importAnalyze
           )}
         </Button>
       )}

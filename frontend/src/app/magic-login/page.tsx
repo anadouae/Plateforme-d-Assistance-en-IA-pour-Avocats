@@ -27,7 +27,7 @@ function MagicLoginInner() {
         if (cancelled) return;
         setAuth(data, { remember: true });
         setStatus("ok");
-        const dest = data.user.role === "admin_webvoice" ? "/admin" : "/dashboard";
+        const dest = data.user.role === "admin_webvoice" ? "/admin" : "/home";
         window.location.assign(dest);
       } catch (err) {
         if (cancelled) return;

@@ -39,7 +39,7 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   }, [isAuthenticated, user, router]);
 
   if (!isAuthenticated() || user?.role !== "admin_webvoice") {
-    return <div className="flex min-h-screen items-center justify-center"><p className="text-slate-500">Chargement...</p></div>;
+    return <div className="flex min-h-screen items-center justify-center"><p className="text-slate-500">…</p></div>;
   }
 
   return (

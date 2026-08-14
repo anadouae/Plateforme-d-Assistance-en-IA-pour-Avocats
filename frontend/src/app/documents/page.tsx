@@ -1,13 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, Eye, FileText, Trash2 } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { api, type DocumentItem } from "@/lib/api";
-import { useAuthStore } from "@/store/auth";
+import { api, type CaseListItem, type DocumentItem } from "@/lib/api";
+import { useLocaleStore, useTranslations } from "@/store/locale";
 
 function formatSize(bytes: number) {
   if (bytes < 1024) return `${bytes} o`;
@@ -15,114 +12,205 @@ function formatSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
 }
 
+function ocrPercent(doc: DocumentItem) {
+  if (doc.status === "ready" || doc.status === "done" || doc.status === "Traité") return 100;
+  if (typeof doc.ocr_score === "number") return Math.min(100, Math.max(8, Math.round(doc.ocr_score)));
+  if (doc.status === "processing" || doc.status === "pending") return 62;
+  return 100;
+}
+
+function statusLabel(doc: DocumentItem, ar: boolean) {
+  const pct = ocrPercent(doc);
+  if (pct >= 100) return ar ? "معالَج" : "Traité";
+  return ar ? "جارٍ" : "En cours";
+}
+
 export default function DocumentsPage() {
-  const user = useAuthStore((s) => s.user);
+  const locale = useLocaleStore((s) => s.locale);
+  const t = useTranslations().app.documents;
+  const ar = locale === "ar";
   const [documents, setDocuments] = useState<DocumentItem[]>([]);
+  const [cases, setCases] = useState<CaseListItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [dragging, setDragging] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [caseId, setCaseId] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  function load() {
+  const load = useCallback(() => {
     setLoading(true);
-    api.getDocuments().then(setDocuments).catch(() => setDocuments([])).finally(() => setLoading(false));
+    Promise.all([api.getDocuments(), api.getCases()])
+      .then(([docs, cs]) => {
+        setDocuments(docs);
+        setCases(cs);
+        if (!caseId && cs[0]) setCaseId(cs[0].id);
+      })
+      .catch(() => {
+        setDocuments([]);
+        setCases([]);
+      })
+      .finally(() => setLoading(false));
+  }, [caseId]);
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function handleFiles(files: FileList | null) {
+    if (!files?.length || !caseId) return;
+    setUploading(true);
+    try {
+      for (const file of Array.from(files)) {
+        await api.uploadDocument(caseId, file);
+      }
+      load();
+    } finally {
+      setUploading(false);
+      setDragging(false);
+    }
   }
-
-  useEffect(() => { load(); }, []);
-
-  const canDelete = user?.role !== "assistant_juridique";
 
   return (
     <AppShell>
-      <div className="space-y-6">
-        <h1 className="text-2xl font-bold text-sanad-slate">Documents</h1>
+      <div className="section-title">{t.title}</div>
+      <div className="section-sub">
+        {ar
+          ? "أسقط ملفاتك — سند يقرأها ويصنّفها ويلخّصها."
+          : "Déposez vos pièces — Sanad les lit, les classe et les synthétise."}
+      </div>
 
-        <Card>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-sanad-border bg-sanad-light text-left text-slate-500">
-                    <th className="px-6 py-3 font-medium">Nom</th>
-                    <th className="px-6 py-3 font-medium">Dossier</th>
-                    <th className="px-6 py-3 font-medium">Taille</th>
-                    <th className="px-6 py-3 font-medium">OCR</th>
-                    <th className="px-6 py-3 font-medium">Statut</th>
-                    <th className="px-6 py-3 font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loading ? (
-                    <tr>
-                      <td colSpan={6} className="px-6 py-8 text-center text-slate-400">
-                        Chargement...
-                      </td>
-                    </tr>
-                  ) : documents.length === 0 ? (
-                    <tr>
-                      <td colSpan={6} className="px-6 py-8 text-center text-slate-400">
-                        Aucun document. Importez depuis un dossier.
-                      </td>
-                    </tr>
-                  ) : (
-                    documents.map((doc) => (
-                      <tr key={doc.id} className="border-b border-sanad-border hover:bg-sanad-light/50">
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-2">
-                            <FileText className="h-4 w-4 text-sanad-blue" />
-                            <span className="font-medium text-sanad-slate">{doc.original_name}</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <Link href={`/cases/${doc.case_id}`} className="text-sanad-blue hover:underline">
-                            {doc.case_reference || "—"}
-                          </Link>
-                        </td>
-                        <td className="px-6 py-4 text-slate-600">{formatSize(doc.file_size)}</td>
-                        <td className="px-6 py-4">
-                          {doc.ocr_score != null ? (
-                            <span className={doc.ocr_score < 70 ? "flex items-center gap-1 text-amber-600" : "text-green-700"}>
-                              {doc.ocr_score < 70 && <AlertTriangle className="h-3.5 w-3.5" />}
-                              {doc.ocr_score} %
-                            </span>
-                          ) : (
-                            <span className="text-slate-400">N/A</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className="rounded-full bg-green-100 px-2 py-0.5 text-xs text-green-700">
-                            {doc.status}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex gap-2">
-                            <Link href={`/documents/${doc.id}`}>
-                              <Button variant="ghost" size="sm">
-                                <Eye className="h-4 w-4" />
-                                Voir
-                              </Button>
-                            </Link>
-                            {canDelete && (
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={async () => {
-                                  if (confirm("Supprimer ce document ?")) {
-                                    await api.deleteDocument(doc.id);
-                                    load();
-                                  }
-                                }}
-                              >
-                                <Trash2 className="h-4 w-4 text-red-500" />
-                              </Button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
+      {cases.length > 0 && (
+        <div className="dossiers-top" style={{ marginBottom: 12 }}>
+          <div className="search-fluid" style={{ maxWidth: 360 }}>
+            <select
+              value={caseId}
+              onChange={(e) => setCaseId(e.target.value)}
+              style={{ border: "none", outline: "none", flex: 1, background: "transparent", fontSize: 13.5 }}
+              aria-label={ar ? "ملف الوجهة" : "Dossier cible"}
+            >
+              {cases.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.reference} — {c.client_name}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
+
+      <div
+        className={`drop-zone${dragging ? " is-dragover" : ""}`}
+        onDragEnter={(e) => {
+          e.preventDefault();
+          setDragging(true);
+        }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          void handleFiles(e.dataTransfer.files);
+        }}
+        onClick={() => inputRef.current?.click()}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") inputRef.current?.click();
+        }}
+      >
+        <div className="icon-up">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round">
+            <path d="M12 16V4" />
+            <path d="M7 9l5-5 5 5" />
+            <path d="M4 20h16" />
+          </svg>
+        </div>
+        <h4>{ar ? "أسقط ملفاتك هنا" : "Glissez vos fichiers ici"}</h4>
+        <p>
+          {uploading
+            ? ar
+              ? "جارٍ الرفع…"
+              : "Téléversement…"
+            : ar
+              ? "PDF، Word، صور — OCR تلقائي"
+              : "PDF, Word, images — OCR automatique"}
+        </p>
+        <input
+          ref={inputRef}
+          type="file"
+          multiple
+          accept=".pdf,.doc,.docx,.png,.jpg,.jpeg,.webp,.txt,.audio/*,.wav,.mp3,.m4a,.webm"
+          className="hidden"
+          style={{ display: "none" }}
+          onChange={(e) => void handleFiles(e.target.files)}
+        />
+      </div>
+
+      <div className="doc-table">
+        {loading ? (
+          <p className="section-sub">{t.loading}</p>
+        ) : documents.length === 0 ? (
+          <p className="section-sub">{t.empty}</p>
+        ) : (
+          documents.map((doc) => {
+            const pct = ocrPercent(doc);
+            const gold =
+              doc.mime_type?.includes("word") ||
+              doc.original_name.toLowerCase().endsWith(".docx") ||
+              doc.kind === "audio";
+            return (
+              <div key={doc.id} className="doc-row">
+                <div className="doc-name">
+                  <div
+                    className="doc-file-ico"
+                    style={
+                      gold
+                        ? { background: "rgba(199,151,63,0.14)", color: "var(--gold)" }
+                        : undefined
+                    }
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <div>{doc.original_name}</div>
+                    <div className="row-sub">
+                      {doc.case_reference || "—"} · {formatSize(doc.file_size)}
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <div className="ocr-bar">
+                    <span style={{ width: `${pct}%` }} />
+                  </div>
+                  <div className="row-sub" style={{ marginTop: 6 }}>
+                    {pct >= 100
+                      ? ar
+                        ? "OCR منتهٍ"
+                        : "OCR terminé"
+                      : ar
+                        ? "تحليل جارٍ"
+                        : "Analyse en cours"}
+                  </div>
+                </div>
+                <div
+                  className={`status-pill${pct >= 100 ? " status-pill--closed" : ""}`}
+                >
+                  {statusLabel(doc, ar)}
+                </div>
+                <div style={{ textAlign: "right", color: "var(--ink-soft)" }}>
+                  <Link href={`/documents/${doc.id}`} style={{ color: "inherit", textDecoration: "none" }}>
+                    ⋯
+                  </Link>
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
     </AppShell>
   );

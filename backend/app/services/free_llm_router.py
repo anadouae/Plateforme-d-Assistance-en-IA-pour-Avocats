@@ -148,7 +148,7 @@ def _openai_chat(
         "max_tokens": max_tokens,
     }
     try:
-        with httpx.Client(timeout=60.0) as client:
+        with httpx.Client(timeout=float(settings.LLM_HTTP_TIMEOUT_SEC or 30)) as client:
             r = client.post(url, headers=headers, json=payload)
         if r.status_code >= 400:
             bucket.mark_fail(r.status_code)
@@ -170,7 +170,7 @@ def _openai_chat(
 
 def _call_ollama_local(system: str, prompt: str) -> str | None:
     try:
-        with httpx.Client(timeout=settings.OLLAMA_CHAT_TIMEOUT) as client:
+        with httpx.Client(timeout=min(float(settings.OLLAMA_CHAT_TIMEOUT or 90), 90.0)) as client:
             r = client.post(
                 f"{settings.OLLAMA_BASE_URL}/api/chat",
                 json={
@@ -199,12 +199,20 @@ def chat_free_tier(
     preferred: str | None = None,
     *,
     allow_ollama: bool = True,
+    local_only: bool = False,
     prior_messages: list[dict[str, str]] | None = None,
 ) -> tuple[str | None, str]:
     """
     Essaie les providers free dans l'ordre.
     Retourne (texte, nom_provider).
+    local_only=True → Ollama uniquement (confidentialité dictée).
     """
+    if local_only or getattr(settings, "DICTATION_LOCAL_ONLY", False):
+        text = _call_ollama_local(system, prompt)
+        if text:
+            return text, "ollama"
+        return None, "none"
+
     preferred = (preferred or "auto").strip().lower()
     buckets = [_get_bucket(p.name, p) for p in _providers()]
 
@@ -223,7 +231,7 @@ def chat_free_tier(
             logger.info("LLM reply via %s", bucket.name)
             return text, bucket.name
 
-    if allow_ollama and settings.LLM_ALLOW_CLOUD_FALLBACK:
+    if allow_ollama:
         text = _call_ollama_local(system, prompt)
         if text:
             return text, "ollama"

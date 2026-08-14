@@ -182,7 +182,7 @@ def request_register_otp(
     """Étape 1 inscription : envoie un code à 6 chiffres pour prouver l'email."""
     from app.core.rate_limit import check_rate_limit
 
-    check_rate_limit(request, key="auth.register_otp", limit=5, window_sec=60)
+    check_rate_limit(request, key="auth.register_otp", limit=15, window_sec=60)
     existing = db.query(User).filter(User.email == data.email.lower()).first()
     if existing:
         # Même message (anti-énumération)
@@ -309,6 +309,9 @@ async def register(data: RegisterRequest, request: Request, db: Session = Depend
     )
     db.add(cabinet)
     db.flush()
+    from app.services.join_code import assign_unique_join_code
+
+    assign_unique_join_code(db, cabinet, data.cabinet_name)
 
     user = User(
         email=data.email.lower(),
@@ -510,6 +513,14 @@ async def login(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="CAPTCHA_REQUIRED",
             )
+
+    from app.services.join_code import find_pending_join_block
+
+    if find_pending_join_block(db, data.email, data.password):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="طلبك قيد المراجعة — لا يمكنك الدخول قبل موافقة المنسّق.",
+        )
 
     user = db.query(User).filter(User.email == data.email.lower()).first()
 

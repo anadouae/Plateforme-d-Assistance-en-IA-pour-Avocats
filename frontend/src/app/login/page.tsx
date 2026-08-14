@@ -1,18 +1,7 @@
-import { Suspense } from "react";
-import { LoginForm } from "./login-form";
+"use client";
 
-function LoginFallback() {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-sanad-cream">
-      <p className="text-sanad-muted">Chargement...</p>
-    </div>
-  );
-}
+import { UnifiedAuth } from "@/components/auth/unified-auth";
 
 export default function LoginPage() {
-  return (
-    <Suspense fallback={<LoginFallback />}>
-      <LoginForm />
-    </Suspense>
-  );
+  return <UnifiedAuth initialTab="login" />;
 }

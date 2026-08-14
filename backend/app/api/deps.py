@@ -54,6 +54,16 @@ def require_roles(*roles: UserRole):
     return checker
 
 
+def require_not_assistant(user: User = Depends(get_current_user)) -> User:
+    """Bloque le rôle assistant_juridique (synthèse, suppressions, analyse IA)."""
+    if user.role == UserRole.ASSISTANT:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Vous n'avez pas l'autorisation d'accéder à cette ressource.",
+        )
+    return user
+
+
 def log_audit(
     db: Session,
     action: str,

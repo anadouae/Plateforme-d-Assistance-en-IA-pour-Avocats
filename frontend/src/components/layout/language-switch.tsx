@@ -2,40 +2,47 @@
 
 import { locales, type Locale } from "@/lib/i18n/translations";
 import { useLocaleStore } from "@/store/locale";
-import { cn } from "@/lib/utils";
 
 export function LanguageSwitch({ variant = "light" }: { variant?: "light" | "dark" }) {
   const locale = useLocaleStore((s) => s.locale);
   const setLocale = useLocaleStore((s) => s.setLocale);
-  const isDark = variant === "dark";
+
+  if (variant === "dark") {
+    return (
+      <div className="switch" role="group" aria-label="Language" style={{ background: "rgba(255,255,255,0.12)" }}>
+        {locales.map((l) => (
+          <span
+            key={l.code}
+            role="button"
+            tabIndex={0}
+            className={locale === l.code ? "on" : undefined}
+            onClick={() => setLocale(l.code as Locale)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") setLocale(l.code as Locale);
+            }}
+          >
+            {l.label}
+          </span>
+        ))}
+      </div>
+    );
+  }
 
   return (
-    <div
-      className={cn(
-        "flex items-center rounded-lg border p-0.5 text-xs font-semibold",
-        isDark
-          ? "border-sanad-gold/30 bg-white/5 backdrop-blur"
-          : "border-sanad-gold/20 bg-sanad-cream",
-      )}
-    >
+    <div className="switch" role="group" aria-label="Language">
       {locales.map((l) => (
-        <button
+        <span
           key={l.code}
-          type="button"
+          role="button"
+          tabIndex={0}
+          className={locale === l.code ? "on" : undefined}
           onClick={() => setLocale(l.code as Locale)}
-          className={cn(
-            "rounded-md px-2.5 py-1 transition-all duration-200",
-            locale === l.code
-              ? isDark
-                ? "bg-sanad-gold text-sanad-navy shadow-sm"
-                : "bg-sanad-navy text-sanad-ivory shadow-sm"
-              : isDark
-                ? "text-sanad-cream/70 hover:text-white"
-                : "text-sanad-muted hover:text-sanad-navy",
-          )}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") setLocale(l.code as Locale);
+          }}
         >
           {l.label}
-        </button>
+        </span>
       ))}
     </div>
   );

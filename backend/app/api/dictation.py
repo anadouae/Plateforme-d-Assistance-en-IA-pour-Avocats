@@ -1,4 +1,4 @@
-"""API dictée arabe → document officiel (+ transcription Whisper)."""
+"""API dictée AR/FR → document officiel (+ transcription Whisper local)."""
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from pydantic import BaseModel, Field
@@ -9,7 +9,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.rate_limit import check_rate_limit
 from app.models import User, UserRole
-from app.services.dictation import compose_official_document, polish_arabic_dictation
+from app.services.dictation import compose_official_document, polish_dictation
 from app.services.plaidoirie_prompt import PLAIDOIRIE_TYPES
 from app.services.whisper_stt import transcribe_audio_bytes, whisper_status
 
@@ -24,8 +24,16 @@ _PLAIDOIRIE_TYPE_PATTERN = (
 )
 
 
+def _norm_lang(language: str | None) -> str:
+    lang = (language or "ar").strip().lower()
+    if lang.startswith("fr"):
+        return "fr"
+    return "ar"
+
+
 class PolishRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=20000)
+    language: str = Field("ar", pattern="^(ar|fr|AR|FR)$")
 
 
 class PolishResponse(BaseModel):
@@ -41,6 +49,7 @@ class ComposeRequest(BaseModel):
     )
     title: str | None = Field(None, max_length=255)
     polish_first: bool = True
+    language: str = Field("ar", pattern="^(ar|fr|AR|FR)$")
     plaidoirie_type: str | None = Field(
         None,
         pattern=_PLAIDOIRIE_TYPE_PATTERN,
@@ -55,6 +64,7 @@ class ComposeResponse(BaseModel):
     provider: str
     checks: list[str] = []
     plaidoirie_type: str | None = None
+    language: str = "ar"
     header_ar: str = "المملكة المغربية"
     header_fr: str = "Royaume du Maroc"
     motto_ar: str = "الله · الوطن · الملك"
@@ -71,7 +81,10 @@ class TranscribeResponse(BaseModel):
 def dictation_stt_status(
     user: User = Depends(require_roles(UserRole.AVOCAT, UserRole.ADMIN_CABINET)),
 ):
-    return whisper_status()
+    status_payload = whisper_status()
+    status_payload["languages"] = ["ar", "fr"]
+    status_payload["local_only"] = bool(settings.DICTATION_LOCAL_ONLY)
+    return status_payload
 
 
 @router.post("/transcribe", response_model=TranscribeResponse)
@@ -82,7 +95,7 @@ async def transcribe_dictation(
     user: User = Depends(require_roles(UserRole.AVOCAT, UserRole.ADMIN_CABINET)),
     db: Session = Depends(get_db),
 ):
-    """Audio (webm/wav/mp3…) → texte via faster-whisper local."""
+    """Audio (webm/wav/mp3…) → texte via faster-whisper local (ar | fr)."""
     check_rate_limit(request, key="dictation.transcribe", limit=40, window_sec=60)
 
     if not settings.WHISPER_ENABLED:
@@ -100,12 +113,11 @@ async def transcribe_dictation(
     if len(raw) < 64:
         raise HTTPException(status_code=400, detail="Fichier audio vide")
 
-    # Produit Maroc : transcription forcée en arabe
-    lang = "ar"
+    lang = _norm_lang(language)
     text, provider = transcribe_audio_bytes(
         raw,
         filename=file.filename or "audio.webm",
-        language="ar",
+        language=lang,
     )
 
     if not text:
@@ -117,7 +129,7 @@ async def transcribe_dictation(
             ),
         )
 
-    log_audit(db, "dictation.transcribe", user=user, request=request, details=provider)
+    log_audit(db, "dictation.transcribe", user=user, request=request, details=f"{provider}:{lang}")
     db.commit()
     return TranscribeResponse(
         text=text,
@@ -128,17 +140,18 @@ async def transcribe_dictation(
 
 
 @router.post("/polish", response_model=PolishResponse)
-def polish_dictation(
+def polish_dictation_endpoint(
     data: PolishRequest,
     request: Request,
     user: User = Depends(require_roles(UserRole.AVOCAT, UserRole.ADMIN_CABINET)),
     db: Session = Depends(get_db),
 ):
     check_rate_limit(request, key="dictation.polish", limit=20, window_sec=60)
-    polished, provider = polish_arabic_dictation(data.text)
+    lang = _norm_lang(data.language)
+    polished, provider = polish_dictation(data.text, language=lang)
     if not polished:
         raise HTTPException(status_code=400, detail="نص فارغ / texte vide")
-    log_audit(db, "dictation.polish", user=user, request=request, details=provider)
+    log_audit(db, "dictation.polish", user=user, request=request, details=f"{provider}:{lang}")
     db.commit()
     return PolishResponse(polished=polished, provider=provider)
 
@@ -151,10 +164,11 @@ def compose_dictation_document(
     db: Session = Depends(get_db),
 ):
     check_rate_limit(request, key="dictation.compose", limit=15, window_sec=60)
+    lang = _norm_lang(data.language)
     source = data.text.strip()
     polished = None
     if data.polish_first:
-        polished, _ = polish_arabic_dictation(source)
+        polished, _ = polish_dictation(source, language=lang)
         source = polished or source
 
     city = None
@@ -174,6 +188,7 @@ def compose_dictation_document(
         city=city,
         cabinet_name=cabinet_name,
         plaidoirie_type=ptype,
+        language=lang,
     )
     if not body:
         raise HTTPException(
@@ -186,7 +201,7 @@ def compose_dictation_document(
         "dictation.compose",
         user=user,
         request=request,
-        details=f"{data.doc_type}:{ptype or '-'}",
+        details=f"{data.doc_type}:{ptype or '-'}:{lang}",
     )
     db.commit()
     return ComposeResponse(
@@ -196,4 +211,5 @@ def compose_dictation_document(
         provider=provider,
         checks=checks,
         plaidoirie_type=ptype,
+        language=lang,
     )
