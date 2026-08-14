@@ -90,6 +90,14 @@ async def lifespan(app: FastAPI):
 
     rag_task = asyncio.create_task(_delayed_rag())
 
+    if settings.SEED_DEMO_DATA:
+        try:
+            from app.services.demo_seed import run_demo_seed
+
+            await asyncio.to_thread(run_demo_seed, with_demo_data=True)
+        except Exception as exc:
+            logger.exception("SEED_DEMO_DATA failed: %s", exc)
+
     yield
 
     rag_task.cancel()

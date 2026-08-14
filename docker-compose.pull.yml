@@ -1,22 +1,28 @@
-# Pull Sanad images from the registry (no local build).
+# Pull Sanad images from GHCR (no local rebuild, no bind-mount override).
 #
-# Default = GitHub Container Registry (GHCR).
 # Usage:
 #   docker compose -f docker-compose.yml -f docker-compose.pull.yml pull
 #   docker compose -f docker-compose.yml -f docker-compose.pull.yml up -d
 #
-# First pull of private GHCR packages (if the repo/packages are private):
-#   echo YOUR_GITHUB_PAT | docker login ghcr.io -u YOUR_GITHUB_USER --password-stdin
-#
-# Pin a version: SANAD_IMAGE_TAG=2026-08-13 (default: latest)
 # Optional Docker Hub: SANAD_REGISTRY=docker.io/anadouae1
+# Pin tag: SANAD_IMAGE_TAG=2026-08-14
 
 services:
   backend:
     image: ${SANAD_REGISTRY:-ghcr.io/anadouae}/sanad-backend:${SANAD_IMAGE_TAG:-latest}
+    build: !reset null
+    volumes: !override
+      - chroma_data:/app/data/chromadb
+      - hf_cache:/root/.cache/huggingface
 
   celery-worker:
     image: ${SANAD_REGISTRY:-ghcr.io/anadouae}/sanad-celery:${SANAD_IMAGE_TAG:-latest}
+    build: !reset null
+    volumes: !override
+      - chroma_data:/app/data/chromadb
+      - hf_cache:/root/.cache/huggingface
 
   frontend:
     image: ${SANAD_REGISTRY:-ghcr.io/anadouae}/sanad-frontend:${SANAD_IMAGE_TAG:-latest}
+    build: !reset null
+    volumes: !reset null

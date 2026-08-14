@@ -26,20 +26,22 @@ Plaidoirie → **Micro Whisper** → Stop → texte → **Corriger**.
 
 ## Images registry (sans rebuild)
 
-Par défaut **GHCR** (publiées par GitHub Actions) :
+Par défaut **GHCR** :
 
 - `ghcr.io/anadouae/sanad-backend`
 - `ghcr.io/anadouae/sanad-celery`
-- `ghcr.io/anadouae/sanad-frontend`
+- `ghcr.io/anadouae/sanad-frontend` (build **prod** via `Dockerfile.prod`)
 
-(Anciennes images Docker Hub encore dispo : `anadouae1/sanad-*` — `SANAD_REGISTRY=docker.io/anadouae1`.)
+**Rendre les packages publics** (une fois) : GitHub → Packages → chaque image → Package settings → Change visibility → Public.
 
-Sur n’importe quelle machine (après clone du repo pour le `docker-compose`) :
+Sinon :
+```bash
+echo YOUR_GITHUB_PAT | docker login ghcr.io -u YOUR_GITHUB_USER --password-stdin
+```
+
+Sur n’importe quelle machine (clone du repo pour le compose) :
 
 ```bash
-# si packages GHCR privés :
-# echo YOUR_GITHUB_PAT | docker login ghcr.io -u YOUR_GITHUB_USER --password-stdin
-
 docker compose -f docker-compose.yml -f docker-compose.pull.yml pull
 docker compose -f docker-compose.yml -f docker-compose.pull.yml up -d
 ```

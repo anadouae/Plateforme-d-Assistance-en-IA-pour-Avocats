@@ -1,26 +1,38 @@
 # Production overrides — VPS Linux
-# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.vps up -d
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.vps up -d
+# Prefer pull (no rebuild):
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml -f docker-compose.pull.yml --env-file .env.vps up -d
 
 services:
   backend:
     environment:
       ENVIRONMENT: production
       DEBUG: "false"
-      # Toujours Postgres du compose (pas Neon)
       DATABASE_URL: postgresql://sanad:sanad_secret@postgres:5432/sanad
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-false}
       WHISPER_ENABLED: ${WHISPER_ENABLED:-true}
       WHISPER_MODEL: ${WHISPER_MODEL:-medium}
       WHISPER_DEVICE: ${WHISPER_DEVICE:-cpu}
       WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-int8}
+    volumes: !override
+      - chroma_data:/app/data/chromadb
+      - hf_cache:/root/.cache/huggingface
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
     restart: unless-stopped
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://127.0.0.1:8001}
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
     ports:
       - "3000:3000"
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://127.0.0.1:8001}
+    volumes: !reset null
     depends_on:
       - backend
     restart: unless-stopped
@@ -38,4 +50,7 @@ services:
     restart: unless-stopped
 
   celery-worker:
+    volumes: !override
+      - chroma_data:/app/data/chromadb
+      - hf_cache:/root/.cache/huggingface
     restart: unless-stopped

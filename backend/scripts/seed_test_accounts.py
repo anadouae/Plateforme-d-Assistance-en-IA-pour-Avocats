@@ -228,13 +228,7 @@ def _seed_demo_cases(db, cabinet: Cabinet, admin: User) -> None:
     print("  + Dossier WV-2026-0002 (vide — pour tester upload)")
 
 
-def seed():
-    import argparse
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--with-demo-data", action="store_true")
-    args = parser.parse_args()
-
+def seed(with_demo_data: bool = False):
     db = SessionLocal()
     try:
         print("\n=== Sanad — création des comptes de test ===\n")
@@ -247,7 +241,7 @@ def seed():
             cabinet = cabinets[account["cabinet_key"]]
             users[account["email"]] = _get_or_create_user(db, account, cabinet)
 
-        if args.with_demo_data:
+        if with_demo_data:
             _seed_demo_cases(db, cabinets["atlas"], users["demo@sanad.ma"])
 
         db.commit()
@@ -262,4 +256,9 @@ def seed():
 
 
 if __name__ == "__main__":
-    seed()
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--with-demo-data", action="store_true")
+    args = parser.parse_args()
+    seed(with_demo_data=args.with_demo_data)

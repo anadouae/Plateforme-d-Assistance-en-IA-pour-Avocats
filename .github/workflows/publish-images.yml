@@ -68,7 +68,10 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: ./frontend
+          file: ./frontend/Dockerfile.prod
           push: true
+          build-args: |
+            NEXT_PUBLIC_API_URL=http://localhost:8001
           tags: |
             ${{ env.REGISTRY }}/${{ env.OWNER }}/sanad-frontend:latest
             ${{ env.REGISTRY }}/${{ env.OWNER }}/sanad-frontend:${{ steps.meta.outputs.sha }}
