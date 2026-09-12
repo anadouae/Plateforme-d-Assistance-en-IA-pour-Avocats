@@ -1,0 +1,38 @@
+#!/usr/bin/env python3
+"""Deploy false-positive contradiction fixes."""
+from pathlib import Path
+import paramiko
+
+ROOT = Path(__file__).resolve().parents[1]
+PASSWORD = "P@s$wiy.O0p"
+FILES = [
+    "backend/app/services/dictation_contradictions.py",
+    "backend/app/services/dictation_assist.py",
+    "scripts/_smoke_false_contradictions.py",
+]
+
+c = paramiko.SSHClient()
+c.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+c.connect("51.38.78.23", username="root", password=PASSWORD, timeout=60, banner_timeout=120)
+sftp = c.open_sftp()
+for rel in FILES:
+    sftp.put(str(ROOT / rel), f"/opt/sanad/{rel}")
+    print("ok", rel)
+sftp.close()
+
+cmd = r"""
+cd /opt/sanad
+docker compose -f docker-compose.yml -f docker-compose.lexhub.yml build backend 2>&1 | tail -15
+docker compose -f docker-compose.yml -f docker-compose.lexhub.yml up -d backend 2>&1 | tail -8
+sleep 12
+docker compose -f docker-compose.yml -f docker-compose.lexhub.yml cp scripts/_smoke_false_contradictions.py backend:/tmp/_smoke_false_contradictions.py 2>&1
+docker compose -f docker-compose.yml -f docker-compose.lexhub.yml exec -T backend python /tmp/_smoke_false_contradictions.py 2>&1
+curl -sf -o /dev/null -w 'web:%{http_code}\n' https://lexhub.space/
+"""
+_, o, e = c.exec_command(cmd, timeout=600)
+print(o.read().decode(errors="replace"))
+err = e.read().decode(errors="replace")
+if err.strip():
+    print("err", err[-800:])
+c.close()
+print("DONE")

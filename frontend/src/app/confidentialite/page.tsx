@@ -1,8 +1,8 @@
 import { LegalPageLayout } from "@/components/layout/legal-page-layout";
 
 export const metadata = {
-  title: "Politique de confidentialité — Sanad",
-  description: "Politique de confidentialité et protection des données de la plateforme Sanad.",
+  title: "Politique de confidentialité — LexHub",
+  description: "Politique de confidentialité et protection des données de la plateforme LexHub.",
 };
 
 export default function ConfidentialitePage() {
@@ -14,7 +14,7 @@ export default function ConfidentialitePage() {
       <section>
         <h2 className="text-xl font-semibold">Introduction</h2>
         <p className="mt-3 text-sanad-muted">
-          WebVoice, éditeur de la plateforme Sanad, s&apos;engage à protéger la confidentialité
+          L&apos;éditeur de la plateforme LexHub s&apos;engage à protéger la confidentialité
           des données personnelles et professionnelles des cabinets d&apos;avocats et de leurs
           collaborateurs utilisant le service.
         </p>
@@ -47,7 +47,7 @@ export default function ConfidentialitePage() {
         <h2 className="text-xl font-semibold">Sécurité des données</h2>
         <p className="mt-3 text-sanad-muted">
           Les documents sont chiffrés au repos (AES-256) et en transit (TLS 1.3). L&apos;accès
-          aux données est strictement limité par rôle (avocat, admin cabinet, admin WebVoice).
+          aux données est strictement limité par rôle (avocat, admin cabinet, admin plateforme).
           Aucune donnée client n&apos;est utilisée pour entraîner des modèles d&apos;IA tiers.
         </p>
       </section>
@@ -61,23 +61,29 @@ export default function ConfidentialitePage() {
       </section>
 
       <section>
-        <h2 className="text-xl font-semibold">Vos droits</h2>
+        <h2 className="text-xl font-semibold">Vos droits (loi 09-08)</h2>
         <p className="mt-3 text-sanad-muted">
-          Conformément à la loi marocaine n° 09-08 et au RGPD le cas échéant, vous disposez d&apos;un
-          droit d&apos;accès, de rectification, de suppression et de portabilité de vos données.
-          Pour exercer ces droits :{" "}
-          <a href="mailto:contact@webvoice.ma" className="text-sanad-gold hover:underline">
-            contact@webvoice.ma
-          </a>
+          La loi marocaine n° 09-08 protège vos données personnelles (comme le RGPD en Europe).
+          Concrètement, vous pouvez : <strong>voir</strong> quelles données LexHub détient sur vous,
+          les <strong>corriger</strong>, demander leur <strong>suppression</strong>, ou en recevoir
+          une copie (<strong>portabilité</strong>). Écrivez à{" "}
+          <a href="mailto:contact@lexhub.space" className="text-sanad-gold hover:underline">
+            contact@lexhub.space
+          </a>{" "}
+          — nous répondons dans un délai raisonnable. Le RGPD s’applique en plus si vous
+          traitez des données de personnes dans l’UE ; sinon, la 09-08 suffit au Maroc.
         </p>
       </section>
 
       <section>
-        <h2 className="text-xl font-semibold">Cookies</h2>
+        <h2 className="text-xl font-semibold">Cookies et stockage local</h2>
         <p className="mt-3 text-sanad-muted">
-          Sanad utilise uniquement des cookies strictement nécessaires au fonctionnement
-          (session d&apos;authentification JWT). Aucun cookie publicitaire ou de tracking tiers
-          n&apos;est déployé.
+          LexHub n’utilise <strong>aucun cookie publicitaire</strong>, ni Google Analytics, ni
+          pixel de tracking. Pour rester connecté, le jeton d’authentification (JWT) est stocké
+          dans le navigateur (<code>localStorage</code> / <code>sessionStorage</code>) — ce n’est
+          pas un cookie marketing. Langue, densité d’affichage et thème sont aussi mémorisés
+          localement, uniquement sur votre machine. Aucun bandeau « Accepter les cookies » n’est
+          requis : il n’y a pas de traceurs optionnels.
         </p>
       </section>
 

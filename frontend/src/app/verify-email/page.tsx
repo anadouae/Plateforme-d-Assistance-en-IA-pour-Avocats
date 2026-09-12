@@ -1,16 +1,6 @@
-import { Suspense } from "react";
-import VerifyEmailContent from "./verify-email-content";
+import { redirect } from "next/navigation";
 
+/** Vérification par lien supprimée — l'inscription utilise un code OTP par email. */
 export default function VerifyEmailPage() {
-  return (
-    <Suspense
-      fallback={
-        <div className="flex min-h-screen items-center justify-center bg-sanad-cream">
-          <p className="text-sanad-muted">Chargement...</p>
-        </div>
-      }
-    >
-      <VerifyEmailContent />
-    </Suspense>
-  );
+  redirect("/login");
 }

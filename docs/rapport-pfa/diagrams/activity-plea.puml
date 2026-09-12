@@ -1,0 +1,18 @@
+@startuml activity-plea
+skinparam shadowing false
+start
+:Dossier et pièces;
+:Dicter ou importer l'audio;
+repeat
+  :Transcrire (STT cloud);
+  :Corriger la forme;
+  :Contrôle contradictions;
+repeat while (Relire encore ?) is (oui)
+->non;
+:Rédiger le document;
+if (Valider ?) then (oui)
+  :Notifier les assistants;
+endif
+:Exporter Word/PDF;
+stop
+@enduml

@@ -11,13 +11,13 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-sanad-ink text-white shadow-sanad-sm hover:-translate-y-0.5 hover:shadow-luxe",
-        secondary: "bg-white text-sanad-ink border border-[var(--line)] hover:border-sanad-gold shadow-sm",
+          "bg-gradient-to-br from-[var(--royal-700)] to-[var(--royal-900)] text-white shadow-[0_10px_28px_rgba(11,26,77,0.28),0_0_22px_rgba(76,124,255,0.28)] hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(11,26,77,0.35),0_0_32px_rgba(76,124,255,0.4)]",
+        secondary: "bg-white text-sanad-ink border border-[var(--line)] hover:border-[var(--royal-glow)] shadow-sm",
         outline:
-          "border border-[var(--line)] bg-white/80 text-sanad-ink backdrop-blur hover:border-sanad-gold hover:shadow-sanad-sm",
-        ghost: "text-sanad-inkSoft hover:bg-white/60 hover:text-sanad-ink",
+          "border border-[rgba(76,124,255,0.28)] bg-white/80 text-[var(--royal-800)] backdrop-blur hover:border-[var(--royal-glow)] hover:bg-[rgba(76,124,255,0.06)] hover:shadow-sanad-sm",
+        ghost: "text-sanad-inkSoft hover:bg-[rgba(76,124,255,0.08)] hover:text-sanad-ink",
         gold:
-          "bg-sanad-gold text-white shadow-gold hover:shadow-luxe hover:-translate-y-0.5",
+          "bg-gradient-to-br from-[var(--royal-glow)] via-[var(--royal-700)] to-[var(--royal-900)] text-white shadow-[0_0_28px_rgba(76,124,255,0.35)] hover:shadow-[0_0_40px_rgba(76,124,255,0.5)] hover:-translate-y-0.5",
         destructive: "bg-red-600 text-white hover:bg-red-700",
         ivory: "bg-white text-sanad-ink border border-[var(--line)] hover:shadow-sanad-sm",
       },

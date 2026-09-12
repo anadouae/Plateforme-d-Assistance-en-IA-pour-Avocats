@@ -144,10 +144,29 @@ def _summarize_ollama_local(
 def summarize_text(
     text: str, max_chars: int = 10000, language: str | None = None
 ) -> tuple[str | None, str, str]:
-    """Retourne (notes, provider, model). Cloud Mistral d'abord."""
+    """Retourne (notes, provider, model). ChatGPT d'abord, puis Mistral / Ollama."""
     cleaned = (text or "").strip()[:max_chars]
     if len(cleaned) < 20:
         return None, "none", ""
+
+    locale = _locale(language)
+    if getattr(settings, "LLM_FORCE_OPENAI", True) and (settings.OPENAI_API_KEY or "").strip():
+        try:
+            from app.services.free_llm_router import chat_free_tier
+
+            notes, prov = chat_free_tier(
+                f"{USER_PROMPTS[locale]}{cleaned}",
+                SYSTEM_PROMPTS[locale],
+                preferred="openai",
+                allow_ollama=False,
+                max_tokens=1200,
+                temperature=0.2,
+            )
+            if notes:
+                model = settings.OPENAI_MODEL or "gpt-4o"
+                return notes, prov or "openai", model
+        except Exception as exc:
+            logger.warning("OpenAI summarize failed: %s", exc)
 
     cloud = _summarize_mistral_cloud(cleaned, language=language)
     if cloud:

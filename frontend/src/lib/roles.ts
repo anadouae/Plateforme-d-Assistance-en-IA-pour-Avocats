@@ -1,4 +1,4 @@
-/** Rôles cabinet Sanad — alignés sur le backend UserRole. */
+/** Rôles cabinet LexHub — alignés sur le backend UserRole. */
 
 export type CabinetRole =
   | "avocat"
@@ -9,24 +9,24 @@ export type CabinetRole =
 /** Libellés FR */
 export const ROLE_LABELS: Record<string, string> = {
   avocat: "Avocat",
-  assistant_juridique: "Stagiaire",
-  admin_cabinet: "Gestion",
+  assistant_juridique: "Assistant",
+  admin_cabinet: "Admin cabinet",
   admin_webvoice: "Admin plateforme",
 };
 
 /** Libellés AR (UI cabinet) */
 export const ROLE_LABELS_AR: Record<string, string> = {
   avocat: "محامٍ",
-  assistant_juridique: "متدرّج",
-  admin_cabinet: "إدارة",
+  assistant_juridique: "مساعد",
+  admin_cabinet: "مسؤول المكتب",
   admin_webvoice: "منصة",
 };
 
 /** Rôles assignables à l'approbation d'une demande */
 export const ASSIGNABLE_ROLES = [
   { value: "avocat", labelAr: "محامٍ", labelFr: "Avocat" },
-  { value: "assistant_juridique", labelAr: "متدرّج", labelFr: "Stagiaire" },
-  { value: "admin_cabinet", labelAr: "إدارة", labelFr: "Gestion" },
+  { value: "assistant_juridique", labelAr: "مساعد", labelFr: "Assistant" },
+  { value: "admin_cabinet", labelAr: "مسؤول المكتب", labelFr: "Admin cabinet" },
 ] as const;
 
 export function isAssistant(role?: string | null): boolean {
@@ -46,7 +46,7 @@ export function canUseTemplates(role?: string | null): boolean {
   return role === "avocat" || role === "admin_cabinet";
 }
 
-export function roleLabel(role?: string | null, locale: "ar" | "fr" = "ar"): string {
+export function roleLabel(role?: string | null, locale: "ar" | "fr" = "fr"): string {
   if (!role) return "";
   if (locale === "ar") return ROLE_LABELS_AR[role] || ROLE_LABELS[role] || role;
   return ROLE_LABELS[role] || role;

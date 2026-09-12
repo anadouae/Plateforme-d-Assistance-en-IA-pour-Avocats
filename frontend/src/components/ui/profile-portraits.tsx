@@ -6,7 +6,7 @@ import { useTranslations } from "@/store/locale";
 
 /** Portraits SVG stylisés (cabinet) — pas d’assets externes. */
 const PORTRAITS = [
-  { id: "p1", bg: "#16233F", accent: "#E8C577", label: "A" },
+  { id: "p1", bg: "#16233F", accent: "#FFB07A", label: "A" },
   { id: "p2", bg: "#1E3A5F", accent: "#D4A84B", label: "M" },
   { id: "p3", bg: "#0F2744", accent: "#F0D78C", label: "S" },
   { id: "p4", bg: "#243B55", accent: "#C9A227", label: "Y" },
@@ -36,7 +36,7 @@ function PortraitSvg({
       <defs>
         <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="1">
           <stop offset="0%" stopColor={bg} />
-          <stop offset="100%" stopColor="#0B1F4A" />
+          <stop offset="100%" stopColor="#0B1A4D" />
         </linearGradient>
       </defs>
       <circle cx="32" cy="32" r="32" fill={`url(#${gradId})`} />
@@ -85,7 +85,7 @@ export function ProfilePortraits({
         "flex flex-wrap items-center gap-3 rounded-2xl border px-4 py-3",
         dark
           ? "border-white/15 bg-white/5 text-white"
-          : "border-[#B08D3F]/25 bg-white/80 text-[#16233F] shadow-[0_12px_32px_-18px_rgba(22,35,63,0.25)] backdrop-blur-md",
+          : "border-[#E85A00]/25 bg-white/80 text-[#16233F] shadow-[0_12px_32px_-18px_rgba(22,35,63,0.25)] backdrop-blur-md",
         className,
       )}
     >

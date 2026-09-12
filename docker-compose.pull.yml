@@ -1,4 +1,4 @@
-# Pull Sanad images from GHCR (no local rebuild, no bind-mount override).
+# Pull LexHub images from GHCR (no local rebuild, no bind-mount override).
 #
 # Usage:
 #   docker compose -f docker-compose.yml -f docker-compose.pull.yml pull

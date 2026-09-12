@@ -1,9 +1,9 @@
 /* Fond glass — écran d'authentification unifié */
 
 .auth-glass-page {
-  --ink: #0e1526;
-  --gold: #c7973f;
-  --gold-bright: #e8c97c;
+  --ink: #0a1228;
+  --gold: #ff6a00;
+  --gold-bright: #ffb07a;
   position: relative;
   min-height: 100dvh;
   isolation: isolate;
@@ -82,23 +82,25 @@
   margin: 12px 12px 0;
   padding: 10px 14px;
   border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.62);
-  background: rgba(255, 255, 255, 0.48);
-  backdrop-filter: blur(18px) saturate(150%);
-  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  border: 1px solid rgba(140, 170, 255, 0.28);
+  background: rgba(7, 16, 51, 0.55);
+  backdrop-filter: blur(20px) saturate(150%);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
   box-shadow:
-    0 16px 40px -20px rgba(22, 35, 63, 0.22),
-    inset 0 1px 0 rgba(255, 255, 255, 0.75);
+    0 16px 40px -20px rgba(7, 16, 51, 0.45),
+    0 0 36px rgba(76, 124, 255, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
 .auth-glass-card {
   border-radius: 24px;
-  border: 1px solid rgba(255, 255, 255, 0.7);
-  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid rgba(140, 170, 255, 0.28);
+  background: rgba(251, 252, 254, 0.94);
   backdrop-filter: blur(18px) saturate(150%);
   -webkit-backdrop-filter: blur(18px) saturate(150%);
   box-shadow:
-    0 24px 55px -22px rgba(22, 35, 63, 0.28),
+    0 24px 55px -22px rgba(7, 16, 51, 0.4),
+    0 0 28px rgba(76, 124, 255, 0.18),
     inset 0 1px 0 rgba(255, 255, 255, 0.85);
 }
 
@@ -108,8 +110,8 @@
   gap: 4px;
   padding: 4px;
   border-radius: 999px;
-  background: rgba(22, 35, 63, 0.08);
-  border: 1px solid rgba(22, 35, 63, 0.1);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(140, 170, 255, 0.22);
 }
 
 .auth-seg button {
@@ -118,16 +120,16 @@
   padding: 0.45rem 0.85rem;
   font-size: 12px;
   font-weight: 600;
-  color: #2c3b5c;
+  color: rgba(244, 246, 252, 0.78);
   background: transparent;
   cursor: pointer;
   transition: background 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .auth-seg button[data-active="true"] {
-  background: #16233f;
+  background: linear-gradient(155deg, #4c7cff, #1b3f9c 55%, #0b1a4d);
   color: #fff;
-  box-shadow: 0 4px 14px -6px rgba(22, 35, 63, 0.55);
+  box-shadow: 0 4px 18px rgba(76, 124, 255, 0.4);
 }
 
 .auth-stepper {
@@ -160,7 +162,7 @@
 }
 
 .auth-step[data-done="true"]::before {
-  background: #b08d3f;
+  background: #e85a00;
 }
 
 .auth-step-dot {
@@ -185,8 +187,8 @@
 }
 
 .auth-step[data-done="true"] .auth-step-dot {
-  background: #b08d3f;
-  border-color: #b08d3f;
+  background: #e85a00;
+  border-color: #e85a00;
   color: #fff;
 }
 

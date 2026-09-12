@@ -24,6 +24,36 @@ cd frontend && npm run dev
 
 Plaidoirie → **Micro Whisper** → Stop → texte → **Corriger**.
 
+## CAPTCHA Turnstile (obligatoire pour livrer en entreprise)
+
+Sans clés **réelles**, le backend **refuse de démarrer** en `ENVIRONMENT=production`.
+
+### Ce que l’entreprise / toi dois faire (une fois)
+
+1. Créer un compte Cloudflare (gratuit) : https://dash.cloudflare.com  
+2. Aller dans **Turnstile** → **Add site**  
+3. Domaines = le domaine de Sanad (ex. `sanad.cabinet.ma`)  
+4. Type de widget = **Managed**  
+5. Copier **Site Key** + **Secret Key**  
+6. Les mettre dans `.env.vps` :
+
+```bash
+TURNSTILE_SITE_KEY=0x4AAAAA...
+TURNSTILE_SECRET_KEY=0x4AAAAA...
+CAPTCHA_AFTER_FAILURES=3
+```
+
+7. Relancer :
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.prod.yml --env-file .env.vps up -d
+```
+
+Modèle prêt : copier `.env.vps.example` → `.env.vps` puis remplir.
+
+**Local / démo :** les clés de test Cloudflare sont OK (déjà dans `docker-compose.yml`).  
+**Prod client :** clés de test **interdites** (blocage au démarrage).
+
 ## Images registry (sans rebuild)
 
 Par défaut **GHCR** :

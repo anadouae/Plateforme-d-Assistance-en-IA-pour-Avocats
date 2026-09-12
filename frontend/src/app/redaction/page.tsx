@@ -1,161 +1,987 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/layout/app-shell";
-import { TemplatePicker } from "@/components/redaction/template-picker";
-import {
-  api,
-  ApiError,
-  type CabinetPlaidoirieTemplate,
-  type DocumentItem,
-} from "@/lib/api";
-import {
-  downloadOfficialArabicDoc,
-  exportOfficialArabicDocument,
-} from "@/lib/export-official-doc";
-import { PLAIDOIRIE_TEMPLATES } from "@/lib/plaidoirie-templates";
+import { PLEA_DRAFT_RESTORE_KEY } from "@/components/redaction/template-picker";
 import { useAuthStore } from "@/store/auth";
 import { isAssistant } from "@/lib/roles";
+import { useLocaleStore } from "@/store/locale";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  Download,
+  FileText,
+  Mic,
+  Printer,
+  Trash2,
+} from "lucide-react";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { PlaidoirieDocumentPreview } from "@/components/redaction/plaidoirie-document-preview";
+import { exportOfficialArabicDocument } from "@/lib/export-official-doc";
+import { api, type PlaidoirieDraftItem } from "@/lib/api";
+import { PLAIDOIRIE_TEMPLATES } from "@/lib/plaidoirie-templates";
+import { useCabinetEvent } from "@/hooks/use-cabinet-realtime";
+import {
+  hasMeaningfulPleaSession,
+  loadPleaSession,
+  pleaResumeHref,
+  pleaSessionPreview,
+} from "@/lib/plea-session";
 
 export default function RedactionPage() {
   const user = useAuthStore((s) => s.user);
   return (
     <AppShell>
-      {isAssistant(user?.role) ? <AssistantPlaidoirieView /> : <LawyerTemplateHub />}
+      {isAssistant(user?.role) ? <AssistantPleaLibrary /> : <LawyerPleaLibrary />}
     </AppShell>
   );
 }
 
-/** Même parcours qu’avant : picker → /redaction/[templateId]. */
-function LawyerTemplateHub() {
-  const router = useRouter();
-  const [customTemplates, setCustomTemplates] = useState<CabinetPlaidoirieTemplate[]>(
-    [],
-  );
-
-  useEffect(() => {
-    api
-      .listCabinetPlaidoirieTemplates()
-      .then(setCustomTemplates)
-      .catch(() => setCustomTemplates([]));
-  }, []);
-
-  async function handleDeleteCustom(id: string) {
-    if (!window.confirm("حذف هذا النموذج؟")) return;
-    try {
-      await api.deleteCabinetPlaidoirieTemplate(id);
-      setCustomTemplates((prev) => prev.filter((t) => t.id !== id));
-    } catch (e) {
-      window.alert(e instanceof ApiError ? e.message : "تعذر الحذف");
-    }
+function formatDate(iso: string, locale: string) {
+  try {
+    return new Date(iso).toLocaleDateString(locale === "ar" ? "ar-MA" : "fr-FR", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
   }
-
-  return (
-    <TemplatePicker
-      systemTemplates={PLAIDOIRIE_TEMPLATES}
-      customTemplates={customTemplates}
-      onSelect={(id) => router.push(`/redaction/${encodeURIComponent(id)}`)}
-      onDeleteCustom={(id) => void handleDeleteCustom(id)}
-    />
-  );
 }
 
-function AssistantPlaidoirieView() {
-  const [docs, setDocs] = useState<(DocumentItem & { caseRef?: string })[]>([]);
+function initials(title: string) {
+  return (title || "?")
+    .split(/\s+/)
+    .map((p) => p[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+}
+
+/** Avocat / admin cabinet : liste type dossiers + détail (pas le wizard). */
+function LawyerPleaLibrary() {
+  const router = useRouter();
+  const locale = useLocaleStore((s) => s.locale);
+  const isAr = locale === "ar";
+  const confirm = useConfirm();
+  const user = useAuthStore((s) => s.user);
+  const [items, setItems] = useState<PlaidoirieDraftItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [preview, setPreview] = useState<{ title: string; body: string } | null>(null);
+  const [filter, setFilter] = useState<"all" | "draft" | "validated" | "finalized">("all");
+  const [period, setPeriod] = useState<"all" | "today" | "7d" | "30d">("all");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState<PlaidoirieDraftItem | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [assistants, setAssistants] = useState<{ id: string; full_name: string }[]>([]);
+  const [cases, setCases] = useState<{ id: string; reference: string; client_name: string }[]>([]);
+  const [localDraft, setLocalDraft] = useState<{ preview: string; href: string } | null>(null);
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const cases = await api.getCases();
-        const all: (DocumentItem & { caseRef?: string })[] = [];
-        for (const c of cases) {
-          const list = await api.getDocuments(c.id).catch(() => []);
-          for (const d of list) {
-            const name = (d.original_name || "").toLowerCase();
-            if (
-              name.includes("plaidoirie") ||
-              name.includes("مرافعة") ||
-              name.includes("marafa")
-            ) {
-              all.push({ ...d, caseRef: c.reference });
-            }
-          }
-        }
-        setDocs(all);
-      } finally {
-        setLoading(false);
-      }
+  const exportMeta = {
+    cabinet_name: user?.cabinet_name || undefined,
+    lawyer_name: user?.full_name_ar || user?.full_name || undefined,
+    city: undefined as string | undefined,
+  };
+
+  async function exportWord(d: PlaidoirieDraftItem) {
+    setExportBusy(true);
+    try {
+      await api.downloadPlaidoirieDocx({
+        title: d.title,
+        body: d.body,
+        ...exportMeta,
+      });
+    } catch {
+      /* silencieux — toast éventuel plus tard */
+    } finally {
+      setExportBusy(false);
     }
-    void load();
-  }, []);
-
-  if (loading) {
-    return <p className="py-10 text-center text-sm text-[var(--ink-soft)]">…</p>;
   }
 
-  return (
-    <div className="space-y-4" dir="rtl">
-      <h1 className="font-display text-2xl font-medium text-[var(--ink)]">مرافعة</h1>
-      <p className="text-sm text-[var(--ink-soft)]">وثائق المرافعة المتاحة للتصدير</p>
-      {docs.length === 0 ? (
-        <p className="text-sm text-[var(--ink-soft)]">لا توجد مرافعات محفوظة بعد.</p>
-      ) : (
-        docs.map((d) => (
-          <div
-            key={d.id}
-            className="rounded-2xl border border-[var(--line)] bg-white/70 p-4 backdrop-blur"
-          >
-            <p className="font-semibold">{d.original_name}</p>
-            <p className="font-mono text-xs text-[var(--ink-soft)]">{d.caseRef}</p>
-            <div className="mt-3 flex flex-wrap gap-2">
+  async function exportPdf(d: PlaidoirieDraftItem) {
+    setExportBusy(true);
+    try {
+      await api.downloadPlaidoiriePdf({
+        title: d.title,
+        body: d.body,
+        ...exportMeta,
+      });
+    } catch {
+      /* silencieux */
+    } finally {
+      setExportBusy(false);
+    }
+  }
+
+  const labels = isAr
+    ? {
+        title: "المرافعات",
+        subtitle: "نظّموا المرافعات كالملفات — عنوان، تاريخ، ملف مرتبط. التحقق يجعلها ظاهرة للمساعد.",
+        new: "مرافعة جديدة",
+        search: "بحث عن مرافعة…",
+        all: "الكل",
+        drafts: "مسودات",
+        validated: "معتمدة",
+        finalized: "منتهية",
+        empty: "لا توجد مرافعة بعد. أنشئوا واحدة بالتسجيل الصوتي.",
+        draft: "مسودة",
+        validatedBadge: "معتمدة",
+        finalizedBadge: "منتهية",
+        open: "فتح التفاصيل",
+        back: "العودة للقائمة",
+        case: "الملف",
+        date: "آخر تحديث",
+        validate: "اعتماد للمساعد",
+        unvalidate: "إرجاع لمسودة",
+        edit: "فتح الورشة",
+        openStudio: "فتح الورشة",
+        print: "طباعة",
+        download: "Word",
+        pdf: "PDF",
+        delete: "حذف",
+        noCase: "بدون ملف مرتبط",
+        periodAll: "كل الفترة",
+        periodToday: "اليوم",
+        period7: "7 أيام",
+        period30: "30 يوماً",
+        assign: "إسناد إلى",
+        pin: "تثبيت",
+        unpin: "إلغاء التثبيت",
+        shortcuts: "اختصارات: N = جديدة · V = اعتماد",
+      }
+    : {
+        title: "Plaidoiries",
+        subtitle:
+          "Organisez comme vos dossiers : titre, date, dossier lié. Validez pour les montrer à l’assistant.",
+        new: "Nouvelle plaidoirie",
+        search: "Rechercher une plaidoirie…",
+        all: "Toutes",
+        drafts: "Brouillons",
+        validated: "Validées",
+        finalized: "Finalisées",
+        empty: "Aucune plaidoirie encore. Créez-en une par dictée.",
+        draft: "Brouillon",
+        validatedBadge: "Validée",
+        finalizedBadge: "Finalisée",
+        open: "Voir le détail",
+        back: "Retour à la liste",
+        case: "Dossier",
+        date: "Dernière MAJ",
+        validate: "Valider pour l’assistant",
+        unvalidate: "Repasser en brouillon",
+        edit: "Ouvrir l'atelier",
+        openStudio: "Ouvrir l'atelier",
+        print: "Imprimer",
+        download: "Word",
+        pdf: "PDF",
+        delete: "Supprimer",
+        noCase: "Sans dossier lié",
+        periodAll: "Toute période",
+        periodToday: "Aujourd’hui",
+        period7: "7 jours",
+        period30: "30 jours",
+        assign: "Assigner à",
+        pin: "Épingler",
+        unpin: "Désépingler",
+        linkCase: "Lier à un dossier",
+        linkCaseNone: "Sans dossier",
+        linkCaseNew: "Créer un nouveau dossier…",
+        shortcuts: "Raccourcis : N = nouvelle · V = valider",
+      };
+
+  const reload = useCallback(() => {
+    setLoading(true);
+    api
+      .listPlaidoirieDrafts()
+      .then(setItems)
+      .catch(() => setItems([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (!hasMeaningfulPleaSession()) {
+      setLocalDraft(null);
+      return;
+    }
+    const snap = loadPleaSession();
+    setLocalDraft({
+      preview: pleaSessionPreview(110),
+      href: pleaResumeHref(snap?.templateId || "libre"),
+    });
+  }, []);
+
+  useEffect(() => {
+    reload();
+    api
+      .listAssistants()
+      .then((rows) => setAssistants(rows.map((r) => ({ id: r.id, full_name: r.full_name }))))
+      .catch(() => setAssistants([]));
+    api
+      .getCases()
+      .then((rows) =>
+        setCases(rows.map((c) => ({ id: c.id, reference: c.reference, client_name: c.client_name }))),
+      )
+      .catch(() => setCases([]));
+  }, [reload]);
+
+  useCabinetEvent((data) => {
+    const ev = String(data?.event || "");
+    if (ev.startsWith("plaidoirie") || ev.startsWith("team")) {
+      void reload();
+    }
+  });
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || (e.target as HTMLElement)?.isContentEditable) {
+        return;
+      }
+      if (e.key.toLowerCase() === "n" && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        router.push("/redaction/new");
+      }
+      if (e.key.toLowerCase() === "v" && selected && selected.status !== "validated") {
+        e.preventDefault();
+        void onValidate(selected);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, router]);
+
+  const filtered = useMemo(() => {
+    let list = items;
+    if (filter === "draft") list = list.filter((i) => (i.status || "draft") === "draft");
+    if (filter === "validated") list = list.filter((i) => i.status === "validated");
+    if (filter === "finalized") list = list.filter((i) => i.status === "finalized");
+    const now = Date.now();
+    if (period === "today") {
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      list = list.filter((i) => new Date(i.updated_at).getTime() >= start.getTime());
+    } else if (period === "7d") {
+      list = list.filter((i) => now - new Date(i.updated_at).getTime() <= 7 * 864e5);
+    } else if (period === "30d") {
+      list = list.filter((i) => now - new Date(i.updated_at).getTime() <= 30 * 864e5);
+    }
+    const q = search.trim().toLowerCase();
+    if (q) {
+      list = list.filter(
+        (i) =>
+          i.title.toLowerCase().includes(q) ||
+          (i.case_reference || "").toLowerCase().includes(q) ||
+          (i.assigned_to_name || "").toLowerCase().includes(q) ||
+          (i.template_id || "").toLowerCase().includes(q),
+      );
+    }
+    if (typeFilter !== "all") {
+      list = list.filter((i) => (i.template_id || "libre") === typeFilter);
+    }
+    return [...list].sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned));
+  }, [items, filter, search, period, typeFilter]);
+
+  function openNew() {
+    router.push("/redaction/new");
+  }
+
+  function openEdit(d: PlaidoirieDraftItem) {
+    const tpl = d.template_id || "libre";
+    try {
+      sessionStorage.setItem(
+        PLEA_DRAFT_RESTORE_KEY,
+        JSON.stringify({
+          title: d.title,
+          body: d.body,
+          case_id: d.case_id || "",
+          checks: d.checks || [],
+          template_id: tpl,
+          draft_id: d.id,
+          resume_step: 3,
+        }),
+      );
+    } catch {
+      /* ignore */
+    }
+    // Hard navigation : même template_id sinon Next ne remonte pas l'atelier
+    window.location.assign(
+      `/redaction/${encodeURIComponent(tpl)}?draft=${encodeURIComponent(d.id)}`,
+    );
+  }
+
+  async function onValidate(d: PlaidoirieDraftItem) {
+    const prev = d;
+    const optimistic = { ...d, status: "validated" as const };
+    setItems((list) => list.map((x) => (x.id === d.id ? optimistic : x)));
+    setSelected(optimistic);
+    setBusy(true);
+    try {
+      const updated = await api.validatePlaidoirieDraft(d.id);
+      setItems((list) => list.map((x) => (x.id === d.id ? updated : x)));
+      setSelected(updated);
+    } catch {
+      setItems((list) => list.map((x) => (x.id === d.id ? prev : x)));
+      setSelected(prev);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onUnvalidate(d: PlaidoirieDraftItem) {
+    setBusy(true);
+    try {
+      const updated = await api.unvalidatePlaidoirieDraft(d.id);
+      setItems((prev) => prev.map((x) => (x.id === d.id ? updated : x)));
+      setSelected(updated);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onDelete(d: PlaidoirieDraftItem) {
+    const ok = await confirm({
+      title: isAr ? "حذف المرافعة" : "Supprimer la plaidoirie",
+      description: isAr
+        ? "سيتم حذف هذه المرافعة نهائياً."
+        : "Cette plaidoirie sera définitivement supprimée.",
+      tone: "danger",
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await api.deletePlaidoirieDraft(d.id);
+      setItems((prev) => prev.filter((x) => x.id !== d.id));
+      if (selected?.id === d.id) setSelected(null);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function printPlea(d: PlaidoirieDraftItem) {
+    void exportOfficialArabicDocument({
+      title: d.title,
+      body: d.body,
+      cabinetName: user?.cabinet_name,
+      lawyerName: user?.full_name_ar || user?.full_name,
+      autoPrint: true,
+    });
+  }
+
+  if (selected) {
+    const st = selected.status || "draft";
+    const badgeLabel =
+      st === "finalized"
+        ? labels.finalizedBadge
+        : st === "validated"
+          ? labels.validatedBadge
+          : labels.draft;
+    const badgeClass =
+      st === "finalized"
+        ? "rounded-full bg-sky-50 px-2.5 py-0.5 text-xs font-semibold text-sky-900"
+        : st === "validated"
+          ? "rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-800"
+          : "rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-semibold text-amber-800";
+    const validated = st === "validated";
+    return (
+      <div className="space-y-4" dir={isAr ? "rtl" : "ltr"}>
+        <button
+          type="button"
+          className="inline-flex items-center gap-2 text-sm font-semibold text-[var(--ink-soft)] hover:text-[var(--ink)]"
+          onClick={() => setSelected(null)}
+        >
+          <ArrowLeft className="h-4 w-4" />
+          {labels.back}
+        </button>
+
+        <div className="rounded-2xl border border-[var(--line)] bg-white/80 p-5 shadow-sm backdrop-blur">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-xl font-bold text-[var(--ink)]">{selected.title}</h1>
+                <span className={badgeClass}>{badgeLabel}</span>
+              </div>
+              <dl className="mt-3 grid gap-1 text-sm text-[var(--ink-soft)] sm:grid-cols-2">
+                <div>
+                  <dt className="text-xs uppercase tracking-wide opacity-70">{labels.case}</dt>
+                  <dd className="font-mono text-[var(--ink)]">
+                    {selected.case_reference || labels.noCase}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-xs uppercase tracking-wide opacity-70">{labels.date}</dt>
+                  <dd>{formatDate(selected.updated_at, locale)}</dd>
+                </div>
+              </dl>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            {!validated ? (
               <button
                 type="button"
-                className="chip-btn"
-                onClick={() => {
-                  api.getDocument(d.id).then((full) => {
-                    setPreview({
-                      title: d.original_name,
-                      body: full.extracted_text_preview || "",
+                className="chip-btn primary inline-flex items-center gap-1.5"
+                disabled={busy}
+                onClick={() => void onValidate(selected)}
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                {labels.validate}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="chip-btn inline-flex items-center gap-1.5"
+                disabled={busy}
+                onClick={() => void onUnvalidate(selected)}
+              >
+                {labels.unvalidate}
+              </button>
+            )}
+            {cases.length > 0 ? (
+              <select
+                className="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm"
+                value={selected.case_id || ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (v === "__new__") {
+                    router.push("/cases/new");
+                    return;
+                  }
+                  void api
+                    .updatePlaidoirieDraftCase(selected.id, v || null)
+                    .then((u) => {
+                      setItems((prev) => prev.map((x) => (x.id === u.id ? u : x)));
+                      setSelected(u);
                     });
+                }}
+              >
+                <option value="">{labels.linkCaseNone}</option>
+                {cases.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.reference} — {c.client_name}
+                  </option>
+                ))}
+                <option value="__new__">{labels.linkCaseNew}</option>
+              </select>
+            ) : null}
+            <button
+              type="button"
+              className="chip-btn"
+              disabled={busy}
+              onClick={() =>
+                void api.pinPlaidoirieDraft(selected.id).then((u) => {
+                  setItems((prev) => prev.map((x) => (x.id === u.id ? u : x)));
+                  setSelected(u);
+                })
+              }
+            >
+              {selected.pinned ? labels.unpin : labels.pin}
+            </button>
+            {assistants.length > 0 ? (
+              <select
+                className="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm"
+                value={selected.assigned_to_user_id || ""}
+                onChange={(e) => {
+                  const uid = e.target.value || null;
+                  void api.assignPlaidoirieDraft(selected.id, uid).then((u) => {
+                    setItems((prev) => prev.map((x) => (x.id === u.id ? u : x)));
+                    setSelected(u);
                   });
                 }}
               >
-                معاينة
-              </button>
-              {preview?.title === d.original_name && (
-                <>
-                  <button
-                    type="button"
-                    className="chip-btn primary"
-                    onClick={() =>
-                      exportOfficialArabicDocument({
-                        title: preview.title,
-                        body: preview.body,
-                      })
-                    }
-                  >
-                    PDF
-                  </button>
-                  <button
-                    type="button"
-                    className="chip-btn"
-                    onClick={() =>
-                      void downloadOfficialArabicDoc({
-                        title: preview.title,
-                        body: preview.body,
-                      })
-                    }
-                  >
-                    Word
-                  </button>
-                </>
-              )}
-            </div>
+                <option value="">{labels.assign}…</option>
+                {assistants.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.full_name}
+                  </option>
+                ))}
+              </select>
+            ) : null}
+            <button type="button" className="chip-btn primary" onClick={() => openEdit(selected)}>
+              {labels.edit}
+            </button>
+            <button
+              type="button"
+              className="chip-btn inline-flex items-center gap-1.5"
+              onClick={() => printPlea(selected)}
+            >
+              <Printer className="h-4 w-4" />
+              {labels.print}
+            </button>
+            <button
+              type="button"
+              className="chip-btn inline-flex items-center gap-1.5"
+              disabled={exportBusy}
+              onClick={() => void exportWord(selected)}
+            >
+              <Download className="h-4 w-4" />
+              {labels.download}
+            </button>
+            <button
+              type="button"
+              className="chip-btn inline-flex items-center gap-1.5 text-red-700"
+              disabled={busy}
+              onClick={() => void onDelete(selected)}
+            >
+              <Trash2 className="h-4 w-4" />
+              {labels.delete}
+            </button>
           </div>
-        ))
+
+          <PlaidoirieDocumentPreview
+            title={selected.title}
+            body={selected.body}
+            cabinetName={user?.cabinet_name}
+            lawyerName={user?.full_name_ar || user?.full_name}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5" dir={isAr ? "rtl" : "ltr"}>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-[var(--ink)]">{labels.title}</h1>
+          <p className="mt-1 max-w-xl text-sm text-[var(--ink-soft)]">{labels.subtitle}</p>
+        </div>
+        <button type="button" className="chip-btn primary inline-flex items-center gap-2" onClick={openNew}>
+          <Mic className="h-4 w-4" />
+          {labels.new}
+        </button>
+      </div>
+      {localDraft ? (
+        <div
+          className="rounded-2xl border px-4 py-3"
+          style={{
+            borderColor: "rgba(180, 83, 9, 0.35)",
+            background: "rgba(255, 247, 237, 0.95)",
+          }}
+        >
+          <p style={{ margin: 0, fontSize: 13, fontWeight: 650, color: "#9a3412" }}>
+            {isAr
+              ? "مسودة محلية غير منتهية — « مرافعة جديدة » لن تفتحها تلقائياً."
+              : "Brouillon local non terminé — « Nouvelle plaidoirie » ne le rouvre plus tout seul."}
+          </p>
+          {localDraft.preview ? (
+            <p
+              className="mt-1 text-sm text-[var(--ink)]"
+              dir="auto"
+              style={{ marginBottom: 0, opacity: 0.9 }}
+            >
+              {localDraft.preview}
+            </p>
+          ) : null}
+          <button
+            type="button"
+            className="chip-btn mt-3"
+            onClick={() => router.push(localDraft.href)}
+          >
+            {isAr ? "استئناف هذه المسودة" : "Reprendre ce brouillon"}
+          </button>
+        </div>
+      ) : null}
+
+      <div className="flex flex-wrap gap-2">
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder={labels.search}
+          className="min-w-[200px] flex-1 rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2 text-sm outline-none focus:border-[var(--royal-700)]"
+        />
+        {(
+          [
+            ["all", labels.all],
+            ["draft", labels.drafts],
+            ["validated", labels.validated],
+            ["finalized", labels.finalized],
+          ] as const
+        ).map(([k, lab]) => (
+          <button
+            key={k}
+            type="button"
+            className={filter === k ? "chip-btn primary" : "chip-btn"}
+            onClick={() => setFilter(k)}
+          >
+            {lab}
+          </button>
+        ))}
+        <select
+          className="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm"
+          value={period}
+          onChange={(e) => setPeriod(e.target.value as typeof period)}
+        >
+          <option value="all">{labels.periodAll}</option>
+          <option value="today">{labels.periodToday}</option>
+          <option value="7d">{labels.period7}</option>
+          <option value="30d">{labels.period30}</option>
+        </select>
+        <select
+          className="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm"
+          value={typeFilter}
+          onChange={(e) => setTypeFilter(e.target.value)}
+          title={isAr ? "نوع المرافعة" : "Type de plaidoirie"}
+        >
+          <option value="all">{isAr ? "كل الأنواع" : "Tous les types"}</option>
+          {PLAIDOIRIE_TEMPLATES.map((tpl) => (
+            <option key={tpl.id} value={tpl.id}>
+              {isAr ? tpl.labelAr : tpl.labelFr}
+            </option>
+          ))}
+        </select>
+      </div>
+      <p className="text-xs text-[var(--ink-soft)]">{labels.shortcuts}</p>
+
+      {loading ? (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div key={i} className="lexhub-skel h-28 rounded-2xl" />
+          ))}
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-[var(--line)] bg-white/50 p-8 text-center text-sm text-[var(--ink-soft)]">
+          <p>{labels.empty}</p>
+          <button type="button" className="chip-btn primary mt-4 inline-flex items-center gap-2" onClick={openNew}>
+            <Mic className="h-4 w-4" />
+            {labels.new}
+          </button>
+        </div>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {filtered.map((d) => {
+            const st = d.status || "draft";
+            const badgeLabel =
+              st === "finalized"
+                ? labels.finalizedBadge
+                : st === "validated"
+                  ? labels.validatedBadge
+                  : labels.draft;
+            const badgeClass =
+              st === "finalized"
+                ? "shrink-0 rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-bold text-sky-900"
+                : st === "validated"
+                  ? "shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-800"
+                  : "shrink-0 rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-bold text-amber-800";
+            return (
+              <button
+                key={d.id}
+                type="button"
+                onClick={() => setSelected(d)}
+                className="group rounded-2xl border border-[var(--line)] bg-white/80 p-4 text-start shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+              >
+                <div className="flex items-start gap-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--royal-900)] text-xs font-bold text-white">
+                    {initials(d.title)}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="truncate font-semibold text-[var(--ink)]">
+                        {d.pinned ? "📌 " : ""}
+                        {d.title}
+                      </p>
+                      <span className={badgeClass}>{badgeLabel}</span>
+                    </div>
+                    <p className="mt-1 font-mono text-xs text-[var(--ink-soft)]">
+                      {d.case_reference || labels.noCase}
+                    </p>
+                    {d.assigned_to_name ? (
+                      <p className="mt-1 text-xs text-[var(--royal-700)]">@{d.assigned_to_name}</p>
+                    ) : null}
+                    <p className="mt-1 text-xs text-[var(--ink-soft)]">
+                      {formatDate(d.updated_at, locale)}
+                    </p>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Assistant : uniquement validées + impression / téléchargement. */
+function AssistantPleaLibrary() {
+  const locale = useLocaleStore((s) => s.locale);
+  const isAr = locale === "ar";
+  const user = useAuthStore((s) => s.user);
+  const [items, setItems] = useState<PlaidoirieDraftItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<PlaidoirieDraftItem | null>(null);
+  const [search, setSearch] = useState("");
+  const [period, setPeriod] = useState<"all" | "today" | "7d" | "30d">("all");
+  const [exportBusy, setExportBusy] = useState(false);
+
+  const exportMeta = {
+    cabinet_name: user?.cabinet_name || undefined,
+    lawyer_name: user?.full_name_ar || user?.full_name || undefined,
+  };
+
+  async function exportWord(d: PlaidoirieDraftItem) {
+    setExportBusy(true);
+    try {
+      await api.downloadPlaidoirieDocx({
+        title: d.title,
+        body: d.body,
+        ...exportMeta,
+      });
+    } catch {
+      /* ignore */
+    } finally {
+      setExportBusy(false);
+    }
+  }
+
+  async function exportPdf(d: PlaidoirieDraftItem) {
+    setExportBusy(true);
+    try {
+      await api.downloadPlaidoiriePdf({
+        title: d.title,
+        body: d.body,
+        ...exportMeta,
+      });
+    } catch {
+      /* ignore */
+    } finally {
+      setExportBusy(false);
+    }
+  }
+
+  const labels = isAr
+    ? {
+        title: "مرافعات معتمدة",
+        subtitle: "يظهر هنا فقط ما اعتمده المحامي — معاينة، طباعة وتحميل.",
+        empty: "لا توجد مرافعة معتمدة بعد. عندما يعتمد المحامي مرافعة، تظهر هنا.",
+        back: "العودة",
+        case: "الملف",
+        date: "التاريخ",
+        print: "طباعة",
+        word: "Word",
+        pdf: "PDF",
+        noCase: "بدون ملف",
+        search: "بحث…",
+        periodAll: "كل الفترة",
+        periodToday: "اليوم",
+        period7: "7 أيام",
+        period30: "30 يوماً",
+      }
+    : {
+        title: "Plaidoiries validées",
+        subtitle:
+          "Uniquement ce que l’avocat a validé — aperçu, impression et téléchargement.",
+        empty:
+          "Aucune plaidoirie validée. Dès que l’avocat valide une plaidoirie, elle apparaît ici.",
+        back: "Retour",
+        case: "Dossier",
+        date: "Date",
+        print: "Imprimer",
+        word: "Word",
+        pdf: "PDF",
+        noCase: "Sans dossier",
+        search: "Rechercher…",
+        periodAll: "Toute période",
+        periodToday: "Aujourd’hui",
+        period7: "7 jours",
+        period30: "30 jours",
+      };
+
+  useEffect(() => {
+    api
+      .listPlaidoirieDrafts()
+      .then(setItems)
+      .catch(() => setItems([]))
+      .finally(() => setLoading(false));
+  }, []);
+
+  // Filet de sécurité : refresh périodique si le WS rate un événement
+  useEffect(() => {
+    const tick = () => {
+      if (document.visibilityState !== "visible") return;
+      void api
+        .listPlaidoirieDrafts()
+        .then(setItems)
+        .catch(() => undefined);
+    };
+    const id = window.setInterval(tick, 8000);
+    window.addEventListener("focus", tick);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener("focus", tick);
+    };
+  }, []);
+
+  useCabinetEvent((data) => {
+    const ev = data?.event || "";
+    if (
+      ev === "plaidoirie.validated" ||
+      ev === "plaidoirie.unvalidated" ||
+      ev.startsWith("plaidoirie")
+    ) {
+      void api
+        .listPlaidoirieDrafts()
+        .then(setItems)
+        .catch(() => undefined);
+    }
+  });
+
+  const filtered = useMemo(() => {
+    let list = items;
+    const now = Date.now();
+    if (period === "today") {
+      const start = new Date();
+      start.setHours(0, 0, 0, 0);
+      list = list.filter((i) => new Date(i.updated_at).getTime() >= start.getTime());
+    } else if (period === "7d") {
+      list = list.filter((i) => now - new Date(i.updated_at).getTime() <= 7 * 864e5);
+    } else if (period === "30d") {
+      list = list.filter((i) => now - new Date(i.updated_at).getTime() <= 30 * 864e5);
+    }
+    const q = search.trim().toLowerCase();
+    if (q) {
+      list = list.filter(
+        (i) =>
+          i.title.toLowerCase().includes(q) ||
+          (i.case_reference || "").toLowerCase().includes(q),
+      );
+    }
+    return [...list].sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned));
+  }, [items, search, period]);
+
+  function printPlea(d: PlaidoirieDraftItem) {
+    void exportOfficialArabicDocument({
+      title: d.title,
+      body: d.body,
+      cabinetName: user?.cabinet_name,
+      lawyerName: user?.full_name_ar || user?.full_name,
+      autoPrint: true,
+    });
+  }
+
+  if (selected) {
+    return (
+      <div className="space-y-4" dir={isAr ? "rtl" : "ltr"}>
+        <button
+          type="button"
+          className="inline-flex items-center gap-2 text-sm font-semibold text-[var(--ink-soft)]"
+          onClick={() => setSelected(null)}
+        >
+          <ArrowLeft className="h-4 w-4" />
+          {labels.back}
+        </button>
+        <div className="rounded-2xl border border-[var(--line)] bg-white/80 p-5 shadow-sm">
+          <h1 className="text-xl font-bold text-[var(--ink)]">{selected.title}</h1>
+          <dl className="mt-3 grid gap-1 text-sm text-[var(--ink-soft)] sm:grid-cols-2">
+            <div>
+              <dt className="text-xs uppercase opacity-70">{labels.case}</dt>
+              <dd className="font-mono text-[var(--ink)]">
+                {selected.case_reference || labels.noCase}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs uppercase opacity-70">{labels.date}</dt>
+              <dd>{formatDate(selected.updated_at, locale)}</dd>
+            </div>
+          </dl>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="chip-btn primary inline-flex items-center gap-1.5"
+              onClick={() => printPlea(selected)}
+            >
+              <Printer className="h-4 w-4" />
+              {labels.print}
+            </button>
+            <button
+              type="button"
+              className="chip-btn inline-flex items-center gap-1.5"
+              disabled={exportBusy}
+              onClick={() => void exportWord(selected)}
+            >
+              <Download className="h-4 w-4" />
+              {labels.word}
+            </button>
+          </div>
+          <PlaidoirieDocumentPreview
+            title={selected.title}
+            body={selected.body}
+            cabinetName={user?.cabinet_name}
+            lawyerName={user?.full_name_ar || user?.full_name}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5" dir={isAr ? "rtl" : "ltr"}>
+      <div>
+        <h1 className="text-2xl font-bold text-[var(--ink)]">{labels.title}</h1>
+        <p className="mt-1 max-w-xl text-sm text-[var(--ink-soft)]">{labels.subtitle}</p>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder={labels.search}
+          className="min-w-[200px] flex-1 rounded-xl border border-[var(--line)] bg-white/80 px-3 py-2 text-sm outline-none focus:border-[var(--royal-700)]"
+        />
+        <select
+          className="rounded-xl border border-[var(--line)] bg-white px-3 py-2 text-sm"
+          value={period}
+          onChange={(e) => setPeriod(e.target.value as typeof period)}
+        >
+          <option value="all">{labels.periodAll}</option>
+          <option value="today">{labels.periodToday}</option>
+          <option value="7d">{labels.period7}</option>
+          <option value="30d">{labels.period30}</option>
+        </select>
+      </div>
+      {loading ? (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="lexhub-skel h-28 rounded-2xl" />
+          ))}
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-[var(--line)] bg-white/50 p-8 text-center text-sm text-[var(--ink-soft)]">
+          {labels.empty}
+        </div>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {filtered.map((d) => (
+            <button
+              key={d.id}
+              type="button"
+              onClick={() => setSelected(d)}
+              className="rounded-2xl border border-[var(--line)] bg-white/80 p-4 text-start shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+            >
+              <div className="flex items-start gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-700 text-xs font-bold text-white">
+                  {initials(d.title)}
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate font-semibold text-[var(--ink)]">
+                    {d.pinned ? "📌 " : ""}
+                    {d.title}
+                  </p>
+                  <p className="mt-1 font-mono text-xs text-[var(--ink-soft)]">
+                    {d.case_reference || labels.noCase}
+                  </p>
+                  <p className="mt-1 text-xs text-[var(--ink-soft)]">
+                    {formatDate(d.updated_at, locale)}
+                  </p>
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
       )}
     </div>
   );

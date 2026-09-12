@@ -100,11 +100,19 @@ def _effective_limit(limit: int) -> int:
 
 
 def _client_ip(request: Request) -> str:
-    ip = request.client.host if request.client else "unknown"
+    """IP client — en prod derrière Caddy, prendre le DERNIER hop XFF de confiance, pas le spoofable premier."""
+    direct = request.client.host if request.client else "unknown"
+    env = (settings.ENVIRONMENT or "").lower()
     forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        ip = forwarded.split(",")[0].strip() or ip
-    return ip
+    if not forwarded:
+        return direct
+    parts = [p.strip() for p in forwarded.split(",") if p.strip()]
+    if not parts:
+        return direct
+    # Dev : premier hop OK. Prod : dernier hop (ajouté par le reverse-proxy de confiance).
+    if env in {"production", "prod"}:
+        return parts[-1]
+    return parts[0]
 
 
 def check_rate_limit(
@@ -126,6 +134,169 @@ def check_rate_limit(
         bucket_key = f"{key}:u:{subject}:{ip}"
     if not _check_redis(bucket_key, limit, window_sec):
         _check_memory(bucket_key, limit, window_sec)
+
+
+def check_named_rate_limit(
+    *,
+    name: str,
+    limit: int,
+    window_sec: int = 60,
+) -> None:
+    """Rate-limit sur une clé nommée (ex. code d'invitation), indépendante de l'IP."""
+    limit = _effective_limit(limit)
+    bucket_key = f"named:{name}"
+    if not _check_redis(bucket_key, limit, window_sec):
+        _check_memory(bucket_key, limit, window_sec)
+
+
+def get_cabinet_ai_daily_used(cabinet_id: str) -> int:
+    """Crédits IA déjà consommés aujourd’hui (UTC) — lecture seule."""
+    from datetime import datetime, timezone
+
+    day = datetime.now(timezone.utc).strftime("%Y%m%d")
+    key = f"ai:day:{cabinet_id}:{day}"
+    client = _get_redis()
+    if client is not None:
+        try:
+            return int(client.get(key) or 0)
+        except Exception:
+            return 0
+    with _lock:
+        bucket = _buckets.get(f"daily:{key}")
+        if not bucket:
+            return 0
+        now = time.time()
+        while bucket and now - bucket[0] > 86400:
+            bucket.popleft()
+        return len(bucket)
+
+
+def check_cabinet_ai_daily(
+    cabinet_id: str,
+    cost: int,
+    daily_cap: int,
+    *,
+    acknowledge_overage: bool = False,
+) -> None:
+    """
+    Incrémente le compteur journalier.
+    Au-delà du plafond : 429 structuré DAILY_CAP_CHOICE (choix client),
+    sauf si acknowledge_overage=True → on laisse continuer (crédits mois restent).
+    """
+    if daily_cap < 0 or cost <= 0:
+        return
+    from datetime import datetime, timezone
+
+    day = datetime.now(timezone.utc).strftime("%Y%m%d")
+    key = f"ai:day:{cabinet_id}:{day}"
+
+    def _choice_exc(used_now: int) -> HTTPException:
+        return HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={
+                "code": "DAILY_CAP_CHOICE",
+                "message": (
+                    "Vous avez beaucoup utilisé l’IA aujourd’hui "
+                    f"({daily_cap} crédits indicatifs / jour). "
+                    "Ce n’est pas un problème de paiement. "
+                    "Choisissez : attendre demain, ou continuer "
+                    "(les crédits du mois seront débités)."
+                ),
+                "daily_limit": int(daily_cap),
+                "daily_used": int(max(0, used_now)),
+                "choices": ["wait_tomorrow", "continue"],
+            },
+            headers={"Retry-After": "60"},
+        )
+
+    client = _get_redis()
+    if client is not None:
+        try:
+            pipe = client.pipeline()
+            pipe.incrby(key, cost)
+            pipe.expire(key, 36 * 3600)
+            used = int(pipe.execute()[0])
+            if used > daily_cap and not acknowledge_overage:
+                client.decrby(key, cost)
+                raise _choice_exc(used - cost)
+            return
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.warning("daily AI cap redis failed: %s", exc)
+
+    used_now = get_cabinet_ai_daily_used(cabinet_id)
+    if used_now + cost > daily_cap and not acknowledge_overage:
+        raise _choice_exc(used_now)
+
+    bucket_key = f"daily:{key}"
+    with _lock:
+        bucket = _buckets.setdefault(bucket_key, deque())
+        now = time.time()
+        while bucket and now - bucket[0] > 86400:
+            bucket.popleft()
+        for _ in range(max(1, min(cost, 20))):
+            bucket.append(now)
+
+
+def acquire_cabinet_ai_slot(cabinet_id: str, slots: int, *, ttl_sec: int = 180) -> str:
+    """Réserve un slot concurrent. Retourne token à liberer. 429 si saturé."""
+    import uuid as _uuid
+
+    token = str(_uuid.uuid4())
+    client = _get_redis()
+    if client is None or slots < 1:
+        return token
+    try:
+        key = f"ai:slots:{cabinet_id}"
+        now = time.time()
+        client.zremrangebyscore(key, 0, now - ttl_sec)
+        n = int(client.zcard(key) or 0)
+        if n >= slots:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=(
+                    "Trop de traitements IA en parallèle pour ce cabinet. "
+                    "Attendez la fin d'une rédaction / analyse."
+                ),
+                headers={"Retry-After": "30"},
+            )
+        client.zadd(key, {token: now})
+        client.expire(key, ttl_sec + 5)
+        return token
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.warning("AI slot acquire failed: %s", exc)
+        return token
+
+
+def release_cabinet_ai_slot(cabinet_id: str, token: str | None) -> None:
+    if not token:
+        return
+    client = _get_redis()
+    if client is None:
+        return
+    try:
+        client.zrem(f"ai:slots:{cabinet_id}", token)
+    except Exception:
+        pass
+
+
+def refund_cabinet_ai_daily(cabinet_id: str, cost: int) -> None:
+    if cost <= 0:
+        return
+    from datetime import datetime, timezone
+
+    day = datetime.now(timezone.utc).strftime("%Y%m%d")
+    key = f"ai:day:{cabinet_id}:{day}"
+    client = _get_redis()
+    if client is None:
+        return
+    try:
+        client.decrby(key, cost)
+    except Exception:
+        pass
 
 
 def count_failures(request: Request, *, key: str, window_sec: int = 900) -> int:

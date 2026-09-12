@@ -1,0 +1,18 @@
+@startuml seq-dictation
+!theme plain
+actor Avocat
+participant Navigateur
+participant "API FastAPI" as API
+participant "STT cloud" as STT
+database PostgreSQL
+
+Avocat -> Navigateur : parole (micro)\nou fichier audio
+Navigateur -> API : audio + JWT
+API -> STT : fichier
+STT --> API : texte brut
+API -> PostgreSQL : audit
+API --> Navigateur : transcription
+Navigateur -> API : Corriger (forme)
+API --> Navigateur : texte + marques STT
+note over Avocat, PostgreSQL : Puis rédaction, édition,\nvalidation ou assignation, export
+@enduml

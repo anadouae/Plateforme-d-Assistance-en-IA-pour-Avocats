@@ -4,7 +4,7 @@ import Link from "next/link";
 import { BookOpen, FileSearch, Scale, Shield, Sparkles } from "lucide-react";
 import { PublicNavbar } from "@/components/layout/public-navbar";
 import { PublicFooter } from "@/components/layout/public-footer";
-import { SanadLogo } from "@/components/brand/sanad-logo";
+import { LexHubLogo } from "@/components/brand/lexhub-logo";
 import { Button } from "@/components/ui/button";
 import { FadeIn, StaggerContainer, StaggerItem } from "@/components/motion/fade-in";
 import { TiltCard } from "@/components/motion/tilt-card";
@@ -31,7 +31,7 @@ export default function FonctionnalitesPage() {
 
         <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <FadeIn className="mb-14 flex flex-col items-center text-center sm:flex-row sm:items-center sm:text-left">
-            <SanadLogo size="xl" className="mb-4 sm:mb-0 sm:mr-6" />
+            <LexHubLogo size="xl" className="mb-4 sm:mb-0 sm:mr-6" />
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sanad-gold">LegalTech Maroc</p>
               <h1 className="mt-2 text-3xl font-bold text-sanad-navy sm:text-4xl">{tr.features.title}</h1>
@@ -81,7 +81,7 @@ export default function FonctionnalitesPage() {
                   <span className="font-semibold text-sanad-gold">{tr.ai.you}</span> {tr.ai.question}
                 </p>
                 <p className="mt-5 text-sm leading-relaxed text-sanad-cream/90">
-                  <span className="font-semibold text-sanad-gold">{tr.ai.sanad}</span> {tr.ai.answer}
+                  <span className="font-semibold text-sanad-gold">{tr.ai.lexhub}</span> {tr.ai.answer}
                 </p>
               </div>
             </TiltCard>

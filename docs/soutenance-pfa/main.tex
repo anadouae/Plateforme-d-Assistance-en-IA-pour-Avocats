@@ -1,0 +1,891 @@
+\documentclass[aspectratio=169, t]{beamer}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[french]{babel}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usetikzlibrary{positioning, arrows.meta, fit, calc, shapes.geometric}
+\usepackage{listings}
+\usepackage{hyperref}
+\usepackage{colortbl}
+\usepackage{array}
+\usepackage{xcolor}
+
+\usetheme[language=french, progressbar, sectiontoc]{uae}
+\beamertemplatenavigationsymbolsempty
+\setbeamercovered{transparent}
+
+% Palette de couleurs harmonisée (style UAE / ENSA Tétouan)
+\definecolor{GreenA}{HTML}{2D6A4F}
+\definecolor{GreenPale}{HTML}{D8F3DC}
+\definecolor{OrangeWarn}{HTML}{E07B54}
+\definecolor{OrangePale}{HTML}{FDEED9}
+\definecolor{BlueLight}{HTML}{EBF4FA}
+\definecolor{RowHL}{HTML}{FFF9C4}
+
+\lstset{
+  basicstyle=\ttfamily\scriptsize,
+  breaklines=true,
+  frame=single,
+  backgroundcolor=\color{gray!10},
+  keywordstyle=\color{UAEDarkBlue}\bfseries,
+  commentstyle=\color{gray},
+}
+
+% Macros Badges identiques au modèle Nutri-Score
+\newcommand{\badge}[2]{%
+  \tikz[baseline=(x.base)]\node[fill=#1,rounded corners=3pt,
+    inner xsep=4pt,inner ysep=2pt,font=\scriptsize\bfseries,
+    text=white](x){#2};%
+}
+\newcommand{\badgegreen}[1]{\badge{GreenA}{#1}}
+\newcommand{\badgeorange}[1]{\badge{OrangeWarn}{#1}}
+\newcommand{\badgeblue}[1]{\badge{UAEDarkBlue}{#1}}
+\newcommand{\badgegold}[1]{\badge{UAEAccentGold}{#1}}
+
+% Redéfinition de la page de titre pour intégrer ENSA, WEBVOICE et LexHub
+\renewcommand{\titleframe}{%
+  \begin{frame}[plain,noframenumbering]
+    \begin{tikzpicture}[remember picture,overlay]
+      \fill[UAEDarkBlue] (current page.north west)
+        rectangle ([yshift=-2.6cm]current page.north east);
+      \fill[UAELightBlue] ([yshift=-2.6cm]current page.north west)
+        rectangle ([yshift=-2.72cm]current page.north east);
+      \fill[UAEAccentGold] ([yshift=-2.72cm]current page.north west)
+        rectangle ([yshift=-2.82cm]current page.north east);
+      \node[anchor=west] at
+        ([xshift=0.7cm,yshift=-1.35cm]current page.north west){%
+          \includegraphics[height=1.55cm]{logo_uae_ensa.png}};
+      \node[anchor=center,text=white,align=center] at
+        ([yshift=-1.35cm]current page.north){%
+          \normalsize\textbf{Université Abdelmalek Essaâdi}\\[0.15cm]
+          {\small École Nationale des Sciences Appliquées — Tétouan}};
+      \node[anchor=east] at
+        ([xshift=-0.7cm,yshift=-1.35cm]current page.north east){%
+          \IfFileExists{logo-webvoice.png}{%
+            \includegraphics[height=1.35cm]{logo-webvoice.png}%
+          }{%
+            \tikz\node[draw=none]{};
+          }%
+        };
+    \end{tikzpicture}
+    \vspace{2.4cm}
+    \begin{center}
+      {\LARGE\bfseries\color{UAEDarkBlue}\inserttitle}\\[0.25cm]
+      {\large\bfseries\color{UAELightBlue}\insertsubtitle}\\[0.45cm]
+      \begin{minipage}{0.92\textwidth}
+        \small
+        \begin{tabular}{@{}ll@{}}
+          \textbf{Réalisé par :} EL ASSAL Douae & \textbf{Entreprise d'accueil :} WEBVOICE (Tanger) \\
+          \textbf{Filière :} Génie Informatique (2\textsuperscript{e} année) & \textbf{Encadrant entreprise :} M. Hatim BENHADDOU \\
+          \textbf{Année :} 2025–2026 & \textbf{Tuteur pédagogique :} Prof. Mohammed AL ACHHAB \\
+        \end{tabular}
+      \end{minipage}\\[0.45cm]
+      {\footnotesize\color{black!75}\textbf{Plateforme en production :} \url{https://lexhub.space}}
+    \end{center}
+    \vfill
+    \begin{center}
+      {\footnotesize\color{UAELightBlue}\insertvenue}
+    \end{center}
+    \vspace{0.15cm}
+  \end{frame}
+}
+
+% Métadonnées officielles
+\title{LexHub}
+\subtitle{Plateforme d'Assistance IA pour Cabinets d'Avocats au Maroc}
+\author[EL ASSAL Douae]{EL ASSAL Douae}
+\institute{ENSA Tétouan — WEBVOICE Tanger}
+\date{Septembre 2026}
+\venue{Soutenance de Projet de Fin d'Année (PFA) — Cycle Ingénieur Génie Informatique}
+
+\newcommand{\githubrepo}{\url{https://github.com/anadouae/Plateforme-d-Assistance-en-IA-pour-Avocats}}
+\newcommand{\produrl}{\url{https://lexhub.space}}
+
+\begin{document}
+
+% Slide 1 : Titre
+\titleframe
+
+% Slide 2 : Plan général
+\begin{frame}{Plan de la soutenance}
+\framesubtitle{De la problématique métier à la mise en production}
+\tableofcontents
+\end{frame}
+
+% =============================================================================
+% SECTION 1 : CADRAGE & PROBLÉMATIQUE
+% =============================================================================
+\section{Cadrage \& Problématique}
+
+\begin{frame}{Contexte métier des cabinets d'avocats}
+\framesubtitle{De l'oralité d'audience à la production écrite sous contrainte}
+
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.54\textwidth}
+  \textbf{Le quotidien d'un cabinet marocain :}
+  \begin{itemize}
+    \item Production documentaire volumineuse : requêtes, mémoires, conclusions et notes de plaidoirie.
+    \item Rythme imposé par les audiences judiciaires.
+    \item Environnement bilingue (\textbf{arabe standard} devant les juridictions, français en affaires).
+  \end{itemize}
+
+  \smallskip
+  \begin{alertblock}{Le circuit artisanal traditionnel}
+    Notes d'audience $\rightarrow$ dictée informelle (WhatsApp) $\rightarrow$ ressaisie par collaborateur $\rightarrow$ mise en page Word tardive.
+    \begin{itemize}
+      \item \textbf{Perte de temps} et risque d'erreurs matérielles.
+      \item \textbf{Aucune traçabilité} centralisée du dossier.
+    \end{itemize}
+  \end{alertblock}
+\end{column}
+
+\begin{column}{0.44\textwidth}
+  \begin{center}
+  \begin{tikzpicture}[
+    scale=0.76,
+    transform shape,
+    node distance=0.65cm,
+    box/.style={
+      draw=UAEDarkBlue,
+      rounded corners=4pt,
+      fill=BlueLight,
+      minimum width=3.4cm,
+      minimum height=0.60cm,
+      font=\scriptsize\bfseries,
+      text=UAEDarkBlue,
+      align=center,
+      inner sep=4pt
+    },
+    warn/.style={
+      draw=OrangeWarn,
+      rounded corners=4pt,
+      fill=OrangePale,
+      minimum width=3.4cm,
+      minimum height=0.60cm,
+      font=\scriptsize\bfseries,
+      text=OrangeWarn,
+      align=center,
+      inner sep=4pt
+    },
+    arr/.style={-{Stealth[length=2mm]}, thick, color=UAELightBlue}
+  ]
+    \node[box] (s1) {1. Notes d'audience à la volée};
+    \node[warn, below=of s1] (s2) {2. Dictée brute non structurée};
+    \node[warn, below=of s2] (s3) {3. Ressaisie manuelle lente};
+    \node[box, below=of s3] (s4) {4. Dépôt au greffe du tribunal};
+    \draw[arr] (s1) -- (s2);
+    \draw[arr] (s2) -- (s3);
+    \draw[arr] (s3) -- (s4);
+  \end{tikzpicture}
+  \end{center}
+
+  \smallskip
+  \begin{block}{Secret professionnel (Loi 28-08)}
+    L'article 30 impose une étanchéité absolue des données et pièces judiciaires.
+  \end{block}
+\end{column}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Limites des solutions actuelles}
+\framesubtitle{Pourquoi les outils génériques et existants ne suffisent pas}
+
+\begin{table}
+\caption{Benchmark synthétique des solutions (Rapport § 2)}
+\small
+\begin{tabular}{@{}p{3.2cm}p{5.4cm}p{5.4cm}@{}}
+\toprule
+\textbf{Solution} & \textbf{Forces constatées} & \textbf{Limites face au besoin métier} \\
+\midrule
+\textbf{ChatGPT / LLM générique} & Rédaction fluide, polyvalent & Hallucinations juridiques, fuite des données, pas de pièces ni de formatage \\
+\addlinespace
+\textbf{SmartAvocat / Avocato} & Suivi de dossiers, portail Mahakim & Gestion administrative pure ; \alert{aucun flux vocal vers plaidoirie} \\
+\addlinespace
+\textbf{Dragon Legal / Diskod} & Dictée bureautique vocale & Logiciel monoposte lourd, coûteux, pas SaaS, pas de collaboration \\
+\addlinespace
+\rowcolor{RowHL}
+\textbf{LexHub (lexhub.space)} & \textbf{Atelier plaidoirie 5 étapes, Web Speech API, Word .docx, multi-tenant} & \textbf{Réponse sur mesure déployée en production} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\vfill
+\centering
+\badgegreen{Décision : Concevoir un SaaS d'IA d'assistance ancré sur le droit marocain}
+\end{frame}
+
+\begin{frame}{Objectifs et positionnement de LexHub}
+\framesubtitle{Un copilote déontologique, pas un « robot-avocat »}
+
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.48\textwidth}
+  \textbf{Objectifs majeurs du projet :}
+  \begin{itemize}
+    \item \textbf{Pipeline en 5 étapes :} de la voix et des pièces vers le document finalisé.
+    \item \textbf{Reconnaissance vocale native :} via Web Speech API, zéro coût récurrent de transcription serveur.
+    \item \textbf{Export Word (.docx) unique :} prêt pour l'audience avec armoiries officielles.
+    \item \textbf{Isolation multi-tenant stricte :} par cabinet.
+    \item \textbf{Modèle économique pérenne :} forfaits, essai hybride, packs prépayés.
+  \end{itemize}
+\end{column}
+
+\begin{column}{0.48\textwidth}
+  \begin{exampleblock}{Principe d'ancrage factuel strict}
+    \begin{itemize}
+      \item L'IA structure, formule et polit en arabe juridique (\textit{Fusha}).
+      \item \alert{Interdiction formelle} d'inventer des faits, des articles de loi ou des montants non dictés.
+      \item L'avocat demeure seul responsable du contenu plaidé ou déposé.
+    \end{itemize}
+  \end{exampleblock}
+
+  \medskip
+  \begin{block}{Cadre de réalisation}
+    Stage chez \textbf{WEBVOICE} (Tanger) sous la tutelle de l'\textbf{ENSA Tétouan}.
+  \end{block}
+\end{column}
+\end{columns}
+\end{frame}
+
+% =============================================================================
+% SECTION 2 : ANALYSE DES BESOINS
+% =============================================================================
+\section{Analyse des Besoins}
+
+\begin{frame}{Acteurs du système \& Modèle RBAC}
+\framesubtitle{Quatre rôles aux responsabilités hermétiques}
+
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.54\textwidth}
+  \begin{table}
+  \footnotesize
+  \begin{tabular}{@{}p{2.6cm}p{4.8cm}@{}}
+  \toprule
+  \textbf{Rôle} & \textbf{Périmètre d'action} \\
+  \midrule
+  \textbf{Avocat} & Dicte, relit, valide, assigne et exporte les plaidoiries. \\
+  \addlinespace
+  \textbf{Assistant juridique} & Accède \textbf{uniquement} aux pièces validées ou assignées ; pas d'IA lourde. \\
+  \addlinespace
+  \textbf{Avocat Administrateur} & Gestion complète du cabinet, équipe, facturation, charte graphique. \\
+  \addlinespace
+  \textbf{Admin Plateforme (WebVoice)} & Supervision globale et suspension ; \alert{aucun accès aux dossiers}. \\
+  \bottomrule
+  \end{tabular}
+  \end{table}
+\end{column}
+
+\begin{column}{0.44\textwidth}
+  \begin{alertblock}{Principe de moindre privilège}
+    \begin{itemize}
+      \item L'assistant ne voit pas les brouillons personnels de l'avocat.
+      \item L'hébergeur (WebVoice) ne peut en aucun cas lire les dossiers judiciaires (secret professionnel).
+    \end{itemize}
+  \end{alertblock}
+
+  \smallskip
+  \begin{center}
+    \badgeblue{Isolation RBAC} \quad \badgegold{Auditabilité}
+  \end{center}
+\end{column}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Règle de gestion n° 1 : Collaboration étanche}
+\framesubtitle{Cycle de vie contrôlé d'une plaidoirie au cabinet}
+
+\begin{center}
+\begin{tikzpicture}[
+  state/.style={draw=UAEDarkBlue,rounded corners=6pt,fill=BlueLight,
+               minimum width=3.2cm,minimum height=1.1cm,
+               font=\small\bfseries,text=UAEDarkBlue,align=center},
+  val/.style={draw=GreenA,rounded corners=6pt,fill=GreenPale,
+              minimum width=3.2cm,minimum height=1.1cm,
+              font=\small\bfseries,text=GreenA,align=center},
+  fin/.style={draw=UAELightBlue,rounded corners=6pt,fill=white,
+              minimum width=3.2cm,minimum height=1.1cm,
+              font=\small\bfseries,text=UAELightBlue,align=center},
+  arr/.style={->,thick,>=Stealth}
+]
+  \node[state] (draft) {\textbf{Brouillon (draft)}\\{\scriptsize Invisible à l'assistant}};
+  \node[val,right=1.8cm of draft] (validated) {\textbf{Validée (validated)}\\{\scriptsize Visible à l'équipe}};
+  \node[fin,right=1.8cm of validated] (finalized) {\textbf{Finalisée (finalized)}\\{\scriptsize Export Word réalisé}};
+
+  \draw[arr,UAELightBlue] (draft) -- node[above,font=\scriptsize\bfseries]{Validation explicite} (validated);
+  \draw[arr,GreenA] (validated) -- node[above,font=\scriptsize\bfseries]{Export .docx} (finalized);
+  \draw[arr,dashed,OrangeWarn] (draft) to[bend left=25] node[above,font=\tiny\bfseries]{Assignation directe} (validated);
+\end{tikzpicture}
+\end{center}
+
+\medskip
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.48\textwidth}
+  \textbf{Protection par défaut :}
+  \begin{itemize}
+    \item Un nouveau projet démarre en statut \texttt{draft}.
+    \item L'avocat affine sa réflexion sans pression.
+  \end{itemize}
+\end{column}
+\begin{column}{0.48\textwidth}
+  \textbf{Transmission traçable :}
+  \begin{itemize}
+    \item Le geste de validation rend la plaidoirie accessible.
+    \item Notification interne instantanée pour l'assistant.
+  \end{itemize}
+\end{column}
+\end{columns}
+\end{frame}
+
+% =============================================================================
+% SECTION 3 : ATELIER DE PLAIDOIRIE
+% =============================================================================
+\section{Atelier de Plaidoirie}
+
+\begin{frame}{Le Cœur Métier : Les 5 étapes guidées}
+\framesubtitle{De la voix de l'avocat au document officiel prêt pour l'audience}
+
+\begin{center}
+\begin{tikzpicture}[
+  scale=0.88,
+  transform shape,
+  stepbox/.style={
+    draw=UAEDarkBlue,
+    rounded corners=5pt,
+    fill=BlueLight,
+    minimum width=2.4cm,
+    minimum height=1.2cm,
+    font=\scriptsize\bfseries,
+    text=UAEDarkBlue,
+    align=center,
+    inner sep=3pt
+  },
+  arr/.style={-{Stealth[length=2.5mm]}, thick, color=UAELightBlue}
+]
+  \node[stepbox] (e1) {Étape 1\\Dossier \& Pièces};
+  \node[stepbox, right=0.6cm of e1] (e2) {Étape 2\\Dictée Vocale};
+  \node[stepbox, right=0.6cm of e2] (e3) {Étape 3\\Transcription\\Fusha};
+  \node[stepbox, right=0.6cm of e3] (e4) {Étape 4\\Rédaction IA\\Assistée};
+  \node[stepbox, right=0.6cm of e4, fill=GreenPale, draw=GreenA, text=GreenA] (e5) {Étape 5\\Export Word\\(.docx)};
+
+  \draw[arr] (e1) -- (e2);
+  \draw[arr] (e2) -- (e3);
+  \draw[arr] (e3) -- (e4);
+  \draw[arr] (e4) -- (e5);
+\end{tikzpicture}
+\end{center}
+
+\medskip
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.32\textwidth}
+  \begin{block}{Entrée}
+    Pièces scannées, contrats, notes orales de l'avocat en arabe.
+  \end{block}
+\end{column}
+\begin{column}{0.32\textwidth}
+  \begin{block}{Traitement}
+    Web Speech API + correction Fusha + contrôle de cohérence.
+  \end{block}
+\end{column}
+\begin{column}{0.32\textwidth}
+  \begin{exampleblock}{Sortie}
+    Fichier Word (.docx) 100\,\% éditable, armoiries et charte cabinet.
+  \end{exampleblock}
+\end{column}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Étape 1 \& 2 : Dossier, Pièces \& Dictée Vocale}
+\framesubtitle{Capture de la parole via la Web Speech API native}
+
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.48\textwidth}
+  \textbf{Étape 1 — Dossier et pièces jointes :}
+  \begin{itemize}
+    \item Rattachement au dossier judiciaire (tribunal, numéro d'ordre, parties).
+    \item Intégration des pièces justificatives (contrats, PV d'huissier, factures).
+    \item Qualification du domaine (civil, commercial, famille, pénal).
+  \end{itemize}
+\end{column}
+
+\begin{column}{0.48\textwidth}
+  \textbf{Étape 2 — Dictée vocale native :}
+  \begin{itemize}
+    \item Standard W3C \textbf{Web Speech API} intégré au navigateur.
+    \item Affichage en direct des mots prononcés.
+  \end{itemize}
+
+  \smallskip
+  \begin{exampleblock}{Avantages technologiques}
+    \begin{itemize}
+      \item \textbf{Latence nulle :} flux audio traité localement.
+      \item \textbf{Confidentialité :} pas d'envoi d'enregistrements audio bruts vers des serveurs tiers.
+      \item \textbf{Coût zéro :} aucune facture API Whisper serveur.
+    \end{itemize}
+  \end{exampleblock}
+\end{column}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Étape 3 : Transcription Fusha \& Détection d'erreurs}
+\framesubtitle{Nettoyage typographique et contrôle déterministe des contradictions}
+
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.50\textwidth}
+  \textbf{Correction en arabe standard (Fusha) :}
+  \begin{itemize}
+    \item Normalisation de la syntaxe et du vocabulaire juridique marocain.
+    \item \textbf{Surlignage visuel orange} des termes rectifiés : l'avocat garde le contrôle visuel immédiat sur chaque retouche.
+  \end{itemize}
+\end{column}
+
+\begin{column}{0.48\textwidth}
+  \begin{alertblock}{Audit déterministe des contradictions}
+    Contrôle algorithmique sans hallucination sur 4 éléments matériels critiques :
+    \begin{enumerate}
+      \item \textbf{Dates :} cohérence chronologique des faits.
+      \item \textbf{Numéros de pièces :} concordance avec les annexes.
+      \item \textbf{Montants :} sommes réclamées en dirhams (MAD).
+      \item \textbf{Identités :} demandeur vs défendeur.
+    \end{enumerate}
+  \end{alertblock}
+\end{column}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Étape 4 : Rédaction Assistée \& Révision Interactive}
+\framesubtitle{Mise en forme selon les standards des tribunaux marocains}
+
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.50\textwidth}
+  \textbf{Structure procédurale normalisée :}
+  \begin{itemize}
+    \item \textbf{En-tête de cour :} juridiction, chambre, parties.
+    \item \textbf{Faits constants (Waqā'i') :} chronologie fidèle.
+    \item \textbf{Moyens de droit (Asbāb) :} réfutation des thèses adverses, visas légaux.
+    \item \textbf{Dispositif légal (Talabāt) :} prétentions chiffrées précises.
+  \end{itemize}
+\end{column}
+
+\begin{column}{0.48\textwidth}
+  \begin{block}{Assistant de révision par dialogue (Chat)}
+    \begin{itemize}
+      \item Dialogue interactif pour affiner un argument spécifique sans régénérer tout le document.
+      \item Prise en compte de requêtes ciblées (\textit{« Développe l'argument sur le défaut de livraison »}).
+    \end{itemize}
+  \end{block}
+
+  \smallskip
+  \begin{center}
+    \badgegreen{Ancrage factuel} \quad \badgeblue{Zéro invention}
+  \end{center}
+\end{column}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Étape 5 : Export Officiel Microsoft Word (.docx) Unique}
+\framesubtitle{Un livrable 100\,\% éditable, prêt pour l'audience}
+
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.50\textwidth}
+  \textbf{Pourquoi Word (.docx) exclusif ?}
+  \begin{itemize}
+    \item Le PDF figé est inadapté : l'avocat doit pouvoir ajuster une ligne à la volée avant de plaider.
+    \item Compatibilité universelle avec le secrétariat et les greffes des tribunaux.
+  \end{itemize}
+\end{column}
+
+\begin{column}{0.48\textwidth}
+  \begin{exampleblock}{Finition professionnelle du document}
+    \begin{itemize}
+      \item \textbf{Armoiries officielles} du Royaume du Maroc intégrées en en-tête.
+      \item Logo et coordonnées du cabinet d'avocats.
+      \item Typographie \textbf{Noto Naskh Arabic} (RTL parfait).
+      \item Statut mis à jour automatiquement : \texttt{finalized}.
+    \end{itemize}
+  \end{exampleblock}
+\end{column}
+\end{columns}
+\end{frame}
+
+% =============================================================================
+% SECTION 4 : CONCEPTION & ARCHITECTURE
+% =============================================================================
+\section{Conception \& Architecture}
+
+\begin{frame}{Architecture Logique Déployée (3 Tiers)}
+\framesubtitle{Microservices conteneurisés sous Docker Compose}
+
+\begin{center}
+\begin{tikzpicture}[
+  scale=0.82,
+  transform shape,
+  client/.style={draw=UAEDarkBlue,rounded corners=5pt,fill=BlueLight,
+                minimum width=3.2cm,minimum height=0.9cm,
+                font=\scriptsize\bfseries,text=UAEDarkBlue,align=center},
+  proxy/.style={draw=OrangeWarn,rounded corners=5pt,fill=OrangePale,
+                minimum width=2.6cm,minimum height=0.9cm,
+                font=\scriptsize\bfseries,text=OrangeWarn,align=center},
+  srv/.style={draw=GreenA,rounded corners=5pt,fill=GreenPale,
+              minimum width=3.2cm,minimum height=0.9cm,
+              font=\scriptsize\bfseries,text=GreenA,align=center},
+  db/.style={draw=UAEDarkBlue,rounded corners=5pt,fill=white,
+             minimum width=2.8cm,minimum height=0.9cm,
+             font=\scriptsize\bfseries,text=UAEDarkBlue,align=center},
+  arr/.style={->,thick,>=Stealth}
+]
+  \node[client] (browser) {Navigateur Client\\Next.js 14 / Web Speech};
+  \node[proxy,right=1.2cm of browser] (caddy) {Caddy 2\\TLS Automatique};
+  \node[srv,right=1.2cm of caddy] (fastapi) {FastAPI (Python 3.11)\\Logique Métier REST};
+
+  \node[db,below=0.9cm of fastapi] (pg) {PostgreSQL 15\\Données Relationnelles};
+  \node[db,left=0.8cm of pg] (redis) {Redis 7\\Cache \& Tâches};
+  \node[db,right=0.8cm of pg] (minio) {MinIO / S3\\Stockage Pièces};
+
+  \draw[arr,UAELightBlue] (browser) -- node[above,font=\tiny]{HTTPS} (caddy);
+  \draw[arr,UAELightBlue] (caddy) -- node[above,font=\tiny]{Port 8000} (fastapi);
+  \draw[arr,GreenA] (fastapi) -- (pg);
+  \draw[arr,GreenA] (fastapi) -- (redis);
+  \draw[arr,GreenA] (fastapi) -- (minio);
+
+  \node[draw=UAELightBlue,dashed,rounded corners=8pt,
+        fit=(fastapi)(pg)(redis)(minio),inner sep=8pt,
+        label={[font=\tiny\bfseries,UAELightBlue]above:Réseau Docker Privé interne}] {};
+\end{tikzpicture}
+\end{center}
+
+\smallskip
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.48\textwidth}
+  \textbf{Frontend :} React, TypeScript, Tailwind CSS, support RTL complet.
+\end{column}
+\begin{column}{0.48\textwidth}
+  \textbf{Backend :} FastAPI asynchrone, validation stricte Pydantic, SQLAlchemy 2.
+\end{column}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Isolation des Données \& Sécurité BDD}
+\framesubtitle{Architecture multi-tenant étanche par cabinet}
+
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.50\textwidth}
+  \textbf{Modèle relationnel multi-tenant :}
+  \begin{itemize}
+    \item Entité centrale : \textbf{\texttt{Cabinet}} (Tenant).
+    \item Clé étrangère \texttt{cabinet\_id} indexée et obligatoire sur toutes les tables (\texttt{cases}, \texttt{documents}, \texttt{drafts}).
+    \item Cloisonnement systématique au niveau ORM : impossible d'accéder aux données d'un confrère.
+  \end{itemize}
+
+  \smallskip
+  \textbf{Protection des identifiants :}
+  \begin{itemize}
+    \item Mots de passe hashés avec \textbf{bcrypt} + sel.
+    \item Authentification par sessions JWT et cookies sécurisés HTTP-Only.
+  \end{itemize}
+\end{column}
+
+\begin{column}{0.48\textwidth}
+  \begin{alertblock}{Audit BDD : Choix d'Adminer sécurisé}
+    \begin{itemize}
+      \item \textbf{Choix :} Conteneur \texttt{adminer:latest} sur le VPS (zéro installation locale, ultra-léger).
+      \item \textbf{Secret professionnel (Art. 30 Loi 28-08) :} Port public 8080 bloqué, route Caddy neutralisée (404/308).
+      \item \textbf{Accès chiffré exclusif :} Tunnel SSH via script \texttt{Ouvrir\_Adminer.bat} mappant \texttt{localhost:8088}.
+    \end{itemize}
+  \end{alertblock}
+\end{column}
+\end{columns}
+\end{frame}
+
+% =============================================================================
+% SECTION 5 : MODÈLE ÉCONOMIQUE
+% =============================================================================
+\section{Modèle Économique}
+
+\begin{frame}{Grille Tarifaire \& Essai Hybride}
+\framesubtitle{Product-Led Growth et maîtrise des coûts d'inférence}
+
+\begin{table}
+\caption{Grille des formules d'abonnement (API \texttt{/api/billing/plans})}
+\small
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+\textbf{Formule} & \textbf{Prix / mois} & \textbf{Prix / an (-15\,\%)} & \textbf{Essai offert} & \textbf{Forfait mensuel} \\
+\midrule
+\textbf{Découverte} & 0 MAD & 0 MAD & Permanent & 3 plaidoiries / 50 crédits \\
+\textbf{Solo} & 299 MAD & 2\,990 MAD & 14 jours & 35 plaidoiries / 600 crédits \\
+\textbf{Cabinet (Recommandé)} & 699 MAD & 6\,990 MAD & 30 jours & 120 plaidoiries / 2\,000 crédits \\
+\textbf{Entreprise} & 1\,290 MAD & 12\,900 MAD & 7 jours (qualifié) & 350 plaidoiries / 5\,000 crédits \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\smallskip
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.50\textwidth}
+  \begin{block}{Principe de l'essai hybride (Hybrid Trial)}
+    Double contrôle : durée calendaire \textbf{ET} plafond strict Fair-Use (Solo 400 cr, Cabinet 1\,000 cr, Entreprise 1\,800 cr).
+  \end{block}
+\end{column}
+\begin{column}{0.48\textwidth}
+  \begin{exampleblock}{Repère IA journalier (Soft-cap)}
+    Seuil préventif par jour avec choix guidé : \textit{« Continuer maintenant »} ou \textit{« Attendre demain »}.
+  \end{exampleblock}
+\end{column}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Protection Anti-Abus : Qualification Entreprise}
+\framesubtitle{Rupture du libre-service et Deux Piliers de vérification}
+
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.50\textwidth}
+  \textbf{Rupture de l'activation directe :}
+  \begin{itemize}
+    \item Tout clic sur l'offre Entreprise redirige vers le formulaire \texttt{/commercial?intent=enterprise}.
+    \item 7 critères de qualification enregistrés dans \texttt{commercial\_leads}.
+  \end{itemize}
+
+  \smallskip
+  \begin{block}{Palier 5 « Sur mesure »}
+    Pour les cabinets de plus de 15 avocats : infrastructure dédiée et devis personnalisé.
+  \end{block}
+\end{column}
+
+\begin{column}{0.48\textwidth}
+  \begin{alertblock}{Pilier 1 — KYC léger déontologique}
+    Vérification obligatoire de l'inscription au tableau officiel de l'\textbf{Ordre des Avocats du Barreau} (Loi 28-08).
+  \end{alertblock}
+
+  \smallskip
+  \begin{exampleblock}{Pilier 2 — Double Verrou commercial}
+    \begin{itemize}
+      \item Durée d'essai resserrée à \textbf{7 jours} (PLG).
+      \item Plafond bridé à \textbf{1\,800 crédits} (au lieu de 5\,000 crédits payants).
+    \end{itemize}
+  \end{exampleblock}
+\end{column}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Packs Prépayés, Sièges Extra \& Parrainage}
+\framesubtitle{Flexibilité financière pour les cabinets}
+
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.48\textwidth}
+  \textbf{Packs de crédits prépayés FIFO :}
+  \begin{itemize}
+    \item 500 cr (110 MAD), 1\,000 cr (200 MAD), 2\,500 cr (450 MAD).
+    \item \alert{Réservés aux abonnés payants actifs} (erreur 403 en période d'essai).
+    \item Validité 12 mois avec consommation First-In First-Out.
+  \end{itemize}
+
+  \medskip
+  \textbf{Sièges collaborateurs à la carte :}
+  \begin{itemize}
+    \item Plan Cabinet : +99 MAD / mois / avocat.
+  \end{itemize}
+\end{column}
+
+\begin{column}{0.48\textwidth}
+  \begin{exampleblock}{Programme de parrainage confraternel}
+    \begin{itemize}
+      \item Code unique attribué à chaque cabinet (\texttt{LH-CAS-XXXX}).
+      \item \textbf{Filleul :} +14 jours d'essai offerts.
+      \item \textbf{Parrain :} +30 jours d'abonnement crédités au premier paiement réel du filleul.
+      \item Croissance virale organique au sein des barreaux.
+    \end{itemize}
+  \end{exampleblock}
+\end{column}
+\end{columns}
+\end{frame}
+
+% =============================================================================
+% SECTION 6 : DÉPLOIEMENT & DÉMONSTRATION
+% =============================================================================
+\section{Déploiement \& Démonstration}
+
+\begin{frame}{Infrastructure de Production \& CI/CD}
+\framesubtitle{Plateforme live sur https://lexhub.space}
+
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.48\textwidth}
+  \textbf{Environnement de production :}
+  \begin{itemize}
+    \item VPS dédié OVHcloud (\texttt{51.38.78.23}).
+    \item Domaine officiel : \url{https://lexhub.space}.
+    \item Certificats SSL/TLS automatiques via Caddy.
+    \item Base PostgreSQL sauvegardée quotidiennement.
+  \end{itemize}
+\end{column}
+
+\begin{column}{0.48\textwidth}
+  \begin{block}{Pipeline d'intégration continue (CI/CD)}
+    \begin{itemize}
+      \item GitHub Actions : tests et build automatique des images Docker.
+      \item Publication des images sur GitHub Packages (GHCR).
+      \item Déploiement sans coupure de service.
+    \end{itemize}
+  \end{block}
+
+  \smallskip
+  \begin{center}
+    \badgegreen{Production active} \quad \badgeblue{TLS 1.3}
+  \end{center}
+\end{column}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Démonstration : Accueil Public \& Dossiers}
+\framesubtitle{Interface utilisateur réactive et bilingue}
+
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.48\textwidth}
+  \centering
+  \IfFileExists{screenshots/01-accueil.png}{%
+    \includegraphics[width=0.98\textwidth]{screenshots/01-accueil.png}%
+  }{%
+    \fbox{\rule{0pt}{3cm}\rule{5cm}{0pt}}%
+  }
+  \par{\scriptsize\color{UAEDarkBlue}\textbf{Page d'accueil publique LexHub}}
+\end{column}
+
+\begin{column}{0.48\textwidth}
+  \centering
+  \IfFileExists{screenshots/11-dossiers.png}{%
+    \includegraphics[width=0.98\textwidth]{screenshots/11-dossiers.png}%
+  }{%
+    \fbox{\rule{0pt}{3cm}\rule{5cm}{0pt}}%
+  }
+  \par{\scriptsize\color{UAEDarkBlue}\textbf{Gestionnaire des dossiers judiciaires}}
+\end{column}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Démonstration : Atelier de Plaidoirie}
+\framesubtitle{De la dictée Fusha à la validation collaborative}
+
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.48\textwidth}
+  \centering
+  \IfFileExists{screenshots/14b-plaidoirie-workspace.png}{%
+    \includegraphics[width=0.98\textwidth]{screenshots/14b-plaidoirie-workspace.png}%
+  }{%
+    \fbox{\rule{0pt}{3cm}\rule{5cm}{0pt}}%
+  }
+  \par{\scriptsize\color{UAEDarkBlue}\textbf{Workspace en 5 étapes guidées}}
+\end{column}
+
+\begin{column}{0.48\textwidth}
+  \centering
+  \IfFileExists{screenshots/14c-transcription-fusha.png}{%
+    \includegraphics[width=0.98\textwidth]{screenshots/14c-transcription-fusha.png}%
+  }{%
+    \fbox{\rule{0pt}{3cm}\rule{5cm}{0pt}}%
+  }
+  \par{\scriptsize\color{UAEDarkBlue}\textbf{Transcription avec marques orange}}
+\end{column}
+\end{columns}
+\end{frame}
+
+\begin{frame}{Démonstration : Export Word \& Équipe}
+\framesubtitle{Livrable officiel pour audience et gouvernance d'équipe}
+
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.48\textwidth}
+  \centering
+  \IfFileExists{screenshots/19-export-document.png}{%
+    \includegraphics[width=0.98\textwidth]{screenshots/19-export-document.png}%
+  }{%
+    \fbox{\rule{0pt}{3cm}\rule{5cm}{0pt}}%
+  }
+  \par{\scriptsize\color{UAEDarkBlue}\textbf{Aperçu & Téléchargement Word (.docx)}}
+\end{column}
+
+\begin{column}{0.48\textwidth}
+  \centering
+  \IfFileExists{screenshots/16-equipe.png}{%
+    \includegraphics[width=0.98\textwidth]{screenshots/16-equipe.png}%
+  }{%
+    \fbox{\rule{0pt}{3cm}\rule{5cm}{0pt}}%
+  }
+  \par{\scriptsize\color{UAEDarkBlue}\textbf{Gestion des rôles de l'équipe}}
+\end{column}
+\end{columns}
+\end{frame}
+
+% =============================================================================
+% SECTION 7 : BILAN & PERSPECTIVES
+% =============================================================================
+\section{Bilan \& Perspectives}
+
+\begin{frame}{Bilan des Réalisations}
+\framesubtitle{Conformité totale avec les objectifs du PFA}
+
+\begin{table}
+\small
+\begin{tabular}{@{}llc@{}}
+\toprule
+\textbf{Objectif initial} & \textbf{Réalisation technique} & \textbf{Statut} \\
+\midrule
+Pipeline vocal en 5 étapes & Dossier $\rightarrow$ Dictée $\rightarrow$ Fusha $\rightarrow$ Rédaction $\rightarrow$ Word & \badgegreen{Conforme} \\
+Reconnaissance vocale native & Web Speech API W3C standard (zéro latence) & \badgegreen{Conforme} \\
+Export documentaire officiel & Format Microsoft Word (.docx) unique annoté & \badgegreen{Conforme} \\
+Collaboration étanche (RBAC) & Masquage strict des brouillons aux assistants & \badgegreen{Conforme} \\
+Sécurité et déontologie BDD & Adminer via tunnel SSH chiffré (Loi 28-08) & \badgegreen{Conforme} \\
+Modèle économique pérenne & Essai hybride, packs FIFO, qualification Entreprise & \badgegreen{Conforme} \\
+Mise en production réelle & Serveur VPS OVHcloud sous HTTPS (lexhub.space) & \badgegreen{Conforme} \\
+\bottomrule
+\end{tabular}
+\end{table}
+\end{frame}
+
+\begin{frame}{Perspectives d'Évolution Produit}
+\framesubtitle{Feuille de route pour les versions futures}
+
+\begin{columns}[T,onlytextwidth]
+\begin{column}{0.48\textwidth}
+  \begin{block}{Évolutions fonctionnelles}
+    \begin{itemize}
+      \item \textbf{Lexique sur mesure :} dictionnaire personnalisé des abréviations et formules propres à chaque cabinet.
+      \item \textbf{Connecteur Mahakim :} synchronisation automatique des dates d'audience depuis le portail du Ministère.
+    \end{itemize}
+  \end{block}
+\end{column}
+
+\begin{column}{0.48\textwidth}
+  \begin{exampleblock}{Évolutions techniques}
+    \begin{itemize}
+      \item \textbf{Paiement CMI / PayZone :} finalisation de la passerelle bancaire marocaine directe.
+      \item \textbf{Application mobile compagnon :} dictée nomade sur smartphone dès la sortie de la salle d'audience.
+    \end{itemize}
+  \end{exampleblock}
+\end{column}
+\end{columns}
+
+\medskip
+\begin{center}
+  \badgeblue{SaaS Souverain} \quad \badgegold{Impact Avocat Maroc}
+\end{center}
+\end{frame}
+
+% Diapositive finale
+\begin{frame}[plain,noframenumbering]
+  \begin{tikzpicture}[remember picture,overlay]
+    \fill[UAEDarkBlue] (current page.south west)
+      rectangle (current page.north east);
+  \end{tikzpicture}
+  \begin{center}
+    \vspace{2.2cm}
+    {\LARGE\bfseries\color{white} Merci pour votre attention}\\[0.5cm]
+    {\large\bfseries\color{UAEAccentGold} Place aux questions \& échanges}\\[0.8cm]
+    {\normalsize\color{white!90}\textbf{EL ASSAL Douae} · Cycle Ingénieur Génie Informatique}\\[0.15cm]
+    {\small\color{UAESkyBlue} École Nationale des Sciences Appliquées — Tétouan}\\[0.35cm]
+    {\footnotesize\color{white!80} Projet réalisé chez \textbf{WEBVOICE} (Tanger) · 2025–2026}\\[0.45cm]
+    {\footnotesize\color{white!90}\textbf{Plateforme live :} \url{https://lexhub.space}}\\[0.15cm]
+    {\scriptsize\color{white!70}\githubrepo}
+  \end{center}
+\end{frame}
+
+\end{document}

@@ -1,0 +1,49 @@
+\chapter{Tests, déploiement et résultats}
+\label{ch:tests}
+
+\section{Stratégie de test}
+
+Les scénarios suivent \url{https://lexhub.space} : inscription OTP et accès immédiat (sans approbation plateforme) ; atelier en cinq étapes UI ; assistant limité aux plaidoiries \textbf{validées} ou \textbf{finalisées} ; isolation entre cabinets ; packs masqués pendant l'essai ; invitation e-mail (pas de code d'adhésion en production) ; popups de quotas (repère du jour, forfait essai / mois épuisé) ; export PDF RTL (logo centré) et statut \textit{finalized}.
+
+\begin{table}[H]
+\centering
+\caption{Scénarios de validation (extrait)}
+\label{tab:scenarios}
+\small
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{@{}p{3.6cm}p{5.2cm}p{3.6cm}@{}}
+\toprule
+\textbf{Scénario} & \textbf{Attendu} & \textbf{Résultat} \\
+\midrule
+Inscription + OTP & Cabinet actif, connexion & Conforme \\
+Brouillon & Invisible assistant & Conforme \\
+Valider pour l'assistant & Visible de tous les assistants & Conforme \\
+Assigner & Validé + mise en avant & Conforme \\
+Export Word / PDF & RTL + logo centré ; finalisée & Conforme \\
+Isolation Rabat / Atlas & Aucune donnée croisée & Conforme \\
+Essai : pas de packs & Offre masquée & Conforme \\
+Repère IA du jour & Popup continuer / demain & Conforme \\
+Forfait essai / mois épuisé & Popup de guidance & Conforme \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Déploiement et intégration continue (CI/CD)}
+\label{sec:cicd}
+
+La production s'appuie sur Caddy, Docker Compose et Alembic. GitHub Actions publie les images \texttt{frontend}, \texttt{backend} et \texttt{celery} vers GHCR. Cette chaîne est livrée ; les perspectives du chapitre~\ref{ch:conclusion} concernent le produit.
+
+\section{Résultats obtenus}
+
+L'atelier en cinq étapes, l'export officiel, la règle « validé = visible par l'assistant », l'isolation multi-tenant et le modèle économique du chapitre~\ref{ch:economie} sont en production. Le paiement marchand réel n'est pas encore activé.
+
+\section{Risques et limites}
+\label{sec:limites}
+
+\begin{enumerate}[leftmargin=1.4em]
+  \item Un micro faible dégrade la transcription : la relecture (marques orange) reste obligatoire.
+  \item La dictée et la rédaction dépendent d'APIs cloud.
+  \item La correction de forme n'est pas une vérification juridique.
+  \item LexHub n'intègre pas Mahakim et n'est pas un ERP de facturation.
+  \item L'avocat reste responsable du contenu.
+\end{enumerate}

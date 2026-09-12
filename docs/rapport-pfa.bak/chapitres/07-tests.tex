@@ -1,0 +1,64 @@
+\chapter{Tests, déploiement et résultats}
+\label{ch:tests}
+
+\section{Stratégie de test}
+
+Les tests suivent les acteurs et les règles métier de la version déployée :
+
+\begin{itemize}[leftmargin=1.4em]
+  \item \textbf{Inscription OTP} puis connexion immédiate (cabinet actif) ; suspension admin plateforme.
+  \item \textbf{Pipeline plaidoirie} : dictée $\rightarrow$ transcription $\rightarrow$ correction de forme $\rightarrow$ composition $\rightarrow$ export.
+  \item \textbf{Visibilité} : l'assistant ne voit pas le brouillon ; il voit après validation / assignation.
+  \item \textbf{Équipe} : invitations, code d'adhésion, rôles.
+  \item \textbf{Isolation} : un utilisateur d'un cabinet A ne lit pas les données du cabinet B.
+  \item \textbf{Responsive} : parcours critique sur mobile.
+\end{itemize}
+
+Des tests automatisés couvrent notamment le nettoyage / la correction de forme du texte arabe et des contrôles de pipeline de dictée.
+
+\begin{table}[H]
+\centering
+\caption{Scénarios de validation (extrait)}
+\label{tab:scenarios}
+\small
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{@{}p{3.2cm}p{5.0cm}p{4.4cm}@{}}
+\toprule
+\textbf{Scénario} & \textbf{Attendu} & \textbf{Résultat} \\
+\midrule
+Inscription + OTP & Cabinet actif, login OK & Conforme \\
+Brouillon non validé & Invisible assistant & Conforme \\
+Validation / assignation & Visible + notification & Conforme \\
+Export Word/PDF & Document structuré AR & Conforme \\
+Filtre domaine dossiers & Recherche opérationnelle & Conforme \\
+Planning $\leftrightarrow$ dossier & Échéance rattachée & Conforme \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Déploiement}
+
+La production \url{https://lexhub.space} repose sur un reverse-proxy (Caddy), des conteneurs (interface, API, base, Redis, fichiers) et des migrations de schéma au démarrage. Le nom de domaine et les certificats TLS rendent l'usage acceptable pour un cabinet réel.
+
+\section{Résultats}
+
+\begin{itemize}[leftmargin=1.4em]
+  \item Pipeline voix $\rightarrow$ correction de forme $\rightarrow$ document opérationnel en production.
+  \item Collaboration avocat / assistant conforme à « validé (ou assigné) = visible ».
+  \item Export Word / PDF aligné sur la charte documentaire.
+  \item Espace cabinet complet : dossiers (domaine), pièces, planning, activité, équipe.
+  \item Supervision plateforme sans gate d'approbation à chaque inscription.
+\end{itemize}
+
+\section{Risques et limites réalistes}
+\label{sec:limites}
+
+Les limites ci-dessous sont formulées comme \textbf{risques opérationnels} connus, non comme excuses :
+
+\begin{enumerate}[leftmargin=1.4em]
+  \item \textbf{Qualité audio.} Micro faible, bruit de fond ou débit réseau dégradent la transcription ; l'avocat doit relire (marques orange) avant composition.
+  \item \textbf{Dépendance STT / LLM cloud.} Une indisponibilité ou un changement de quota du fournisseur dégrade le parcours ; des alternatives / modes dégradés sont prévus, mais une rupture prolongée reste un risque métier.
+  \item \textbf{Correction de forme.} Elle améliore la lisibilité ; elle ne remplace pas la vérification juridique humaine (articles, montants, noms).
+  \item \textbf{Périmètre produit.} LexHub n'est pas un ERP de facturation ni un substitut à Mahakim ; le cœur reste la plaidoirie vocale intégrée au cabinet.
+  \item \textbf{Responsabilité professionnelle.} L'avocat demeure seul responsable du contenu plaidé ou déposé.
+\end{enumerate}

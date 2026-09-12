@@ -7,8 +7,10 @@ from app.core.logging_config import get_correlation_id, set_correlation_id
 from app.core.timeouts import OperationTimeout
 from app.models import Document, DocumentStatus
 from app.services.extraction import (
+    arabic_char_ratio,
     extract_text,
     is_audio_document,
+    is_native_office_document,
     is_scrambled_arabic,
     safe_repair_arabic_text,
 )
@@ -17,16 +19,20 @@ from app.services.rag import index_document
 logger = logging.getLogger(__name__)
 
 _WHISPER_DISABLED_MSG = (
-    "Transcription impossible : Whisper est désactivé (WHISPER_ENABLED=false)."
+    "La transcription audio n’est pas activée sur le serveur. "
+    "Contactez l’administrateur LexHub ou joignez un document texte."
 )
 _WHISPER_EMPTY_MSG = (
-    "Transcription vide ou Whisper indisponible. Vérifiez le fichier audio."
+    "Aucune parole n’a pu être reconnue dans ce fichier audio. "
+    "Vérifiez le volume / la clarté, ou réessayez avec un extrait plus court."
 )
 _WHISPER_TIMEOUT_MSG = (
-    "Transcription Whisper interrompue (timeout). Réessayez ou découpez le fichier audio."
+    "La transcription a été interrompue (délai dépassé). "
+    "Réessayez avec un extrait audio plus court."
 )
 _OCR_TIMEOUT_MSG = (
-    "OCR interrompu (timeout). Réessayez ou réduisez le nombre de pages scannées."
+    "Lecture interrompue (délai dépassé). PDF scanné volumineux : réessayez avec moins de pages "
+    "ou exportez en Word/PDF natif. / انقطع الاستخراج — جرّب ملفاً أصغر أو PDF نصي."
 )
 
 
@@ -68,12 +74,29 @@ def process_document_record(doc: Document, content: bytes, db: Session) -> dict:
         )
         return {"status": "failed", "reason": "timeout", "ocr_score": None}
 
-    text = safe_repair_arabic_text(text or "")
-    # Si encore brouillé malgré OCR, baisser le score affiché (pas « OCR 100% »)
-    if text and is_scrambled_arabic(text) and (ocr_score is None or ocr_score >= 90):
-        # Pas de score OCR pour l'audio ; ne pas inventer un faux score
-        if not is_audio:
+    # DOCX / audio : texte déjà ordonné — ne pas appliquer les réparations BIDI PDF
+    is_docx = is_native_office_document(doc.original_name or "", doc.mime_type or "")
+    if is_docx or is_audio:
+        text = (text or "").strip()
+    else:
+        text = safe_repair_arabic_text(text or "")
+
+    # Ne pas inventer un faux score « 55% » sur un long texte juridique déjà utilisable
+    if (
+        text
+        and not is_audio
+        and not is_docx
+        and is_scrambled_arabic(text)
+        and (ocr_score is None or ocr_score >= 90)
+    ):
+        if len(text) >= 12000 and arabic_char_ratio(text) >= 0.4:
+            ocr_score = 78  # utilisable, légère réserve
+        else:
             ocr_score = 55
+
+    if is_docx or is_audio:
+        ocr_score = None
+
     doc.extracted_text = text
     doc.ocr_score = ocr_score
     # Persist the extracted text immediately so synthesis / Q&A work even if the
@@ -108,19 +131,24 @@ def process_document_record(doc: Document, content: bytes, db: Session) -> dict:
             doc.id,
         )
 
+    chunks = 0
     try:
-        chunks = index_document(
-            doc.cabinet_id,
-            doc.case_id,
-            doc.id,
-            doc.original_name,
-            text,
-        )
-    except Exception as exc:
-        # Indexing failure (e.g. embedding model unavailable) must not lose the
-        # extracted text: the document stays usable for synthesis and keyword Q&A.
-        logger.exception("Vector indexing failed for doc %s: %s", doc.id, exc)
-        chunks = 0
+        from app.services.tasks import index_document_vectors
+
+        index_document_vectors.delay(doc.id)
+        logger.info("Vector indexing queued", extra={"document_id": doc.id})
+    except Exception:
+        try:
+            chunks = index_document(
+                doc.cabinet_id,
+                doc.case_id,
+                doc.id,
+                doc.original_name,
+                text,
+            )
+        except Exception as exc:
+            logger.exception("Vector indexing failed for doc %s: %s", doc.id, exc)
+            chunks = 0
 
     db.commit()
     logger.info(

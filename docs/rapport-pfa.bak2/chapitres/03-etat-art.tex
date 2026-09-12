@@ -1,0 +1,69 @@
+\chapter{Étude comparative}
+\label{ch:etat-art}
+
+\section{Périmètre de l'étude}
+
+Cette étude positionne LexHub par rapport aux offres disponibles pour un cabinet marocain, selon la méthode retenue au premier suivi PFA : une \textbf{grille de critères} face aux applications existantes (cœur voix~$\rightarrow$~plaidoirie, gestion de cabinet, SaaS multi-tenant, équipe).
+
+Les sources du benchmarking sont notamment : \texttt{smartavocat.ma}, \texttt{avocato.ma}, \texttt{avocatpro.ma}, \texttt{legaliq.ma}, \texttt{kanoun.com}, \texttt{adala.ai}, \texttt{diskod.ma}.
+
+\section{Benchmarking --- offres existantes}
+\label{sec:benchmark}
+
+Le tableau~\ref{tab:benchmark} regroupe, pour chaque offre : les services principaux et ce qui manque face au besoin LexHub (flux plaidoirie vocale intégré au cabinet).
+
+\begin{table}[H]
+\centering
+\caption{Benchmarking marché --- applications existantes vs besoin LexHub}
+\label{tab:benchmark}
+\footnotesize
+\renewcommand{\arraystretch}{1.35}
+\begin{tabular}{@{}p{2.4cm}p{4.6cm}p{5.6cm}@{}}
+\toprule
+\textbf{Offre} & \textbf{Services offerts} & \textbf{Ce qui manque face à LexHub} \\
+\midrule
+SmartAvocat \newline {\scriptsize smartavocat.ma} &
+Gestion cabinet, dossiers bilingues &
+Pas de flux plaidoirie vocale \\
+\midrule
+Avocato \newline {\scriptsize avocato.ma} &
+Gestion + audiences / Mahakim &
+Pas de parcours dictée $\rightarrow$ document métier \\
+\midrule
+AvocatPro \newline {\scriptsize avocatpro.ma} &
+Gestion + Mahakim, organisation &
+Pas de cœur plaidoirie \\
+\midrule
+Legaliq \newline {\scriptsize legaliq.ma} &
+IA juridique / fiscale, documents &
+Pas un SaaS cabinet complet \\
+\midrule
+Kanoun \newline {\scriptsize kanoun.com} &
+IA droit marocain + OHADA &
+Pas multi-tenant cabinet \\
+\midrule
+Adala \newline {\scriptsize adala.ai} &
+Assistant IA, Q\&A, documents &
+Pas d'équipe cabinet \\
+\midrule
+Dragon Legal / Diskod \newline {\scriptsize diskod.ma} &
+Dictée desktop (Nuance) &
+Pas SaaS, pas dossiers LexHub \\
+\midrule
+\textbf{LexHub} \newline {\scriptsize lexhub.space} &
+Dictée $\rightarrow$ correction $\rightarrow$ document ; dossiers ; équipe ; SaaS multi-tenant &
+--- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Positionnement de LexHub}
+
+LexHub se situe à l'intersection :
+\begin{itemize}[leftmargin=1.4em]
+  \item d'un \textbf{SaaS cabinet} (inscription, isolation, équipe, dossiers, planning, activité) ;
+  \item d'un \textbf{atelier de plaidoirie} (cinq étapes guidées : dictée, transcription/correction, réglages, document, export) ;
+  \item d'un \textbf{export documentaire} (en-tête, typographie arabe, Word et PDF).
+\end{itemize}
+
+Le choix d'une \textbf{IA d'assistance} (transcription + structuration contrôlée) plutôt que d'une IA « auteur » est un parti pris scientifique et professionnel : on maximise la fidélité à la dictée, on refuse l'hallucination juridique. En une phrase : \emph{dicter $\rightarrow$ corriger $\rightarrow$ modifier $\rightarrow$ exporter (PDF/DOC) + dossiers + équipe}.

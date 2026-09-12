@@ -1,0 +1,50 @@
+\chapter{Introduction générale}
+\label{ch:intro}
+
+\section{Contexte et motivation}
+
+Le métier d'avocat au Maroc suppose une production écrite dense : mémoires, conclusions et surtout \textbf{plaidoiries} destinées à l'audience. Dans de nombreux cabinets, le circuit reste artisanal : notes manuscrites, dictée informelle, ressaisie par un collaborateur, mise en page Word tardive. Ce circuit est lent, source d'erreurs de copie, et peu traçable.
+
+Le Maroc compte plusieurs milliers d'avocats répartis sur dix-neuf barreaux. Le besoin n'est pas un « chatbot juridique » grand public : c'est un \textbf{outil de cabinet} qui accélère la transformation de la parole de l'avocat en document exploitable, tout en respectant la déontologie\footnote{L'avocat demeure seul responsable du contenu déposé ou plaidé. LexHub est un instrument d'aide à la rédaction, non un substitut au conseil juridique.}.
+
+C'est dans ce cadre que le stage s'est déroulé chez \textbf{WEBVOICE} (Tanger), sous tutelle de l'\textbf{ENSA Tétouan} (Université Abdelmalek Essaâdi). Encadrement professionnel : M.~Hatim Benhaddou. Tuteur pédagogique : M.~Mohammed Al Achhab.
+
+Le produit livré s'appelle \textbf{LexHub} (\url{https://lexhub.space}). Le sujet --- une plateforme d'assistance IA pour avocats --- se concrétise par un atelier de \textbf{plaidoirie vocale} au sein d'un espace cabinet sécurisé, complété par dossiers, documents, planning, activité et équipe.
+
+\section{L'entreprise d'accueil --- WebVoice}
+\label{sec:webvoice}
+
+\textbf{WebVoice} (\url{https://webvoice.pro}) est une société de Tanger spécialisée dans la \textbf{voix sur IP (VoIP)}, le développement \textbf{web} et \textbf{mobile}, ainsi que les sites e-commerce. Son positionnement --- téléphonie IP, applications métier, accompagnement de bout en bout --- explique naturellement l'accueil d'un projet LegalTech centré sur la \textbf{voix de l'avocat} et sa transformation en document.
+
+Selon sa présentation publique, l'entreprise structure ses prestations en quatre étapes : \textbf{Analyse} des besoins, \textbf{Concept}, \textbf{Mise en œuvre}, puis \textbf{Suivi}. Cette méthode a structuré le stage : cadrage du cœur plaidoirie, conception de l'espace cabinet, implémentation incrémentale, déploiement et consolidation.
+
+LexHub s'inscrit donc dans le prolongement de l'expertise WebVoice (voix, web, SaaS) appliquée au cabinet d'avocats marocain bilingue.
+
+\section{Problématique}
+
+Comment concevoir et déployer une plateforme SaaS \textbf{multi-cabinets} permettant à un avocat marocain de dicter sa plaidoirie en arabe, d'obtenir un texte structuré et un export officiel, de collaborer avec un stagiaire \emph{sans} lui exposer les brouillons non validés, le tout sans que l'IA n'invente le fond juridique ?
+
+\section{Objectifs}
+
+\begin{enumerate}[label=\textbf{O\arabic*.}]
+  \item Réaliser le pipeline \textbf{voix $\rightarrow$ texte $\rightarrow$ document} (cinq étapes guidées dans l'interface).
+  \item Offrir un espace cabinet : dossiers (domaine + filtre), documents, planning lié aux affaires, équipe, activité.
+  \item Isoler strictement les données par cabinet (\textit{multi-tenant}\footnote{Chaque cabinet est un locataire : ses dossiers, fichiers et plaidoiries sont invisibles des autres cabinets.}).
+  \item Distinguer les rôles : avocat, stagiaire / assistant, avocat admin, administrateur plateforme WebVoice.
+  \item Permettre l'\textbf{assignation} d'une plaidoirie à un assistant, l'épinglage et la validation explicite avant partage.
+  \item Mettre en production une version utilisable (TLS, e-mails, temps réel, export Word/PDF) sur \url{https://lexhub.space}.
+\end{enumerate}
+
+\section{Méthodologie}
+
+Travail en cycles courts : cadrage (cahier des charges, maquettes), implémentation incrémentale, tests par rôle, déploiement Docker sur VPS, retours des encadrants (premier suivi : recentrage sur voix~$\rightarrow$~plaidoirie, robustesse STT/LLM, benchmarking OK/Non~OK). Le présent rapport décrit \textbf{uniquement la version actuellement déployée}.
+
+\section{Plan du rapport}
+
+\begin{itemize}[leftmargin=1.4em]
+  \item Le chapitre~\ref{ch:etat-art} présente l'étude comparative (benchmarking) des solutions existantes.
+  \item Le chapitre~\ref{ch:analyse} formalise acteurs, cas d'utilisation UML et exigences.
+  \item Le chapitre~\ref{ch:conception} détaille architecture, pipelines et diagrammes UML (séquence, classes).
+  \item Le chapitre~\ref{ch:realisation} décrit la réalisation, le guide d'utilisation et la sécurité.
+  \item Les chapitres~\ref{ch:tests} et~\ref{ch:conclusion} traitent des tests, des risques/limites réalistes et des perspectives.
+\end{itemize}

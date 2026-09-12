@@ -3,18 +3,25 @@
 @tailwind utilities;
 
 :root {
-  /* Refonte Sanad — parchment / ink / gold / emerald */
-  --ink: #0e1526;
-  --ink-soft: #3b4459;
-  --parchment: #f7f5f0;
-  --card: #ffffff;
-  --gold: #c7973f;
-  --gold-soft: #e8c97c;
+  /* LexHub — bleu royal + aura */
+  --ink: #0a1228;
+  --ink-soft: #4a5568;
+  --parchment: #eef1f8;
+  --card: #fbfcfe;
+  --gold: #ff6a00; /* TEST orange vif */
+  --gold-soft: #ffb07a;
+  --gold-deep: #e85a00;
   --emerald: #1f6f54;
   --emerald-soft: #57a88c;
-  --line: rgba(14, 21, 38, 0.08);
-  --shadow: 0 20px 60px -20px rgba(14, 21, 38, 0.25);
-  --shadow-sm: 0 8px 24px -12px rgba(14, 21, 38, 0.18);
+  --royal-950: #071033;
+  --royal-900: #0b1a4d;
+  --royal-800: #12307a;
+  --royal-700: #1b3f9c;
+  --royal-glow: #4c7cff;
+  --royal-glow-soft: rgba(76, 124, 255, 0.28);
+  --line: rgba(10, 18, 40, 0.09);
+  --shadow: 0 20px 60px -20px rgba(7, 16, 51, 0.32);
+  --shadow-sm: 0 8px 24px -12px rgba(11, 26, 77, 0.2);
   --r-lg: 28px;
   --r-md: 18px;
   --r-sm: 12px;
@@ -24,9 +31,9 @@
   --sanad-navy: var(--ink);
   --sanad-ivory: var(--card);
   --sanad-gold: var(--gold);
-  --sanad-stone: #e9e6df;
+  --sanad-stone: #dce4f5;
   --sanad-cream: var(--parchment);
-  --sanad-logo: url("/logo-sanad-cube.png");
+  --sanad-logo: url("/logo-lexhub-cube.png");
   --hero-speed: 3.5s;
   --font-inter: "Inter", system-ui, sans-serif;
   --font-fraunces: "Fraunces", Georgia, serif;
@@ -59,6 +66,39 @@ h3,
 
 [dir="rtl"] body {
   font-family: var(--font-cairo), "IBM Plex Sans Arabic", Tahoma, sans-serif;
+}
+
+/* Texte arabe — direction explicite + isolation bidi (évite « .النص » après dates/chiffres) */
+.arabic-text,
+textarea.arabic-text,
+.arabic-text textarea {
+  direction: rtl;
+  unicode-bidi: isolate;
+  text-align: right;
+  font-family: var(--font-cairo), "IBM Plex Sans Arabic", Tahoma, sans-serif;
+}
+
+textarea.arabic-text,
+.arabic-text--editable {
+  unicode-bidi: plaintext;
+}
+
+.latin-text,
+textarea.latin-text {
+  direction: ltr;
+  unicode-bidi: isolate;
+  text-align: left;
+}
+
+[dir="ltr"] .arabic-text,
+[dir="ltr"] textarea.arabic-text {
+  direction: rtl;
+  unicode-bidi: isolate;
+}
+
+[dir="rtl"] .latin-text {
+  direction: ltr;
+  unicode-bidi: isolate;
 }
 
 [dir="rtl"] .hero-parallax-overlay {
@@ -342,7 +382,7 @@ h3,
 }
 
 .auth-hero-side {
-  background: linear-gradient(135deg, #0e1526 0%, #1c274a 50%, #0e1526 100%);
+  background: linear-gradient(135deg, #071033 0%, #12307a 50%, #0a1228 100%);
 }
 
 .auth-card-enter {
@@ -519,4 +559,15 @@ h3,
   .sanad-voice-wave .wave-bar {
     animation: none !important;
   }
+}
+
+
+/* LexHub aliases (tokens historiques conservés pour compat) */
+:root {
+  --lexhub-navy: var(--sanad-navy);
+  --lexhub-ivory: var(--sanad-ivory);
+  --lexhub-gold: var(--sanad-gold);
+  --lexhub-stone: var(--sanad-stone);
+  --lexhub-cream: var(--sanad-cream);
+  --lexhub-logo: var(--sanad-logo);
 }

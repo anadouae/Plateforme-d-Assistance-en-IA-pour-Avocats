@@ -4,7 +4,7 @@ import { Suspense, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/auth/password-input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AuthLayout } from "@/components/auth/auth-layout";
 import { api } from "@/lib/api";
@@ -32,7 +32,7 @@ function ActivateForm() {
     setLoading(true);
     try {
       await api.resetPassword(token, password);
-      router.push("/login?activated=1");
+      router.push("/login?reset=1");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Lien invalide ou expiré.");
     } finally {
@@ -46,22 +46,20 @@ function ActivateForm() {
         <CardHeader className="text-center">
           <CardTitle className="text-sanad-navy">Activer mon compte</CardTitle>
           <p className="mt-2 text-sm text-slate-500">
-            Choisissez votre mot de passe pour rejoindre le cabinet sur Sanad.
+            Choisissez votre mot de passe pour rejoindre le cabinet sur LexHub.
           </p>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <Input
+            <PasswordInput
               label="Mot de passe"
-              type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
               autoComplete="new-password"
             />
-            <Input
+            <PasswordInput
               label="Confirmer le mot de passe"
-              type="password"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
               required

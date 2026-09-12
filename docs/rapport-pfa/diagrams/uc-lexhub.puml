@@ -1,0 +1,76 @@
+@startuml uc-lexhub
+skinparam shadowing false
+skinparam actorStyle awesome
+skinparam packageStyle rectangle
+skinparam usecase {
+  BackgroundColor #F7F9FF
+  BorderColor #0B1A4D
+}
+skinparam rectangle {
+  BorderColor #0B1A4D
+  FontColor #0B1A4D
+  FontStyle bold
+}
+left to right direction
+
+actor "Avocat" as Avocat
+actor "Admin cabinet" as AdminCab
+actor "Assistant\njuridique" as Asst
+
+AdminCab --|> Avocat : même atelier\n+ administration
+
+rectangle "LexHub" {
+  package "Atelier de plaidoirie" {
+    usecase "Gérer le dossier\net les pièces" as UC1
+    usecase "Dicter ou importer\nun fichier audio" as UC2
+    usecase "Corriger la\ntranscription" as UC3
+    usecase "Rédiger la\nplaidoirie" as UC4
+    usecase "Valider le\nbrouillon" as UC5
+    usecase "Assigner un\nassistant" as UC6
+    usecase "Exporter\nWord / PDF" as UC7
+  }
+  package "Espace cabinet" {
+    usecase "Consulter les\nplaidoiries validées" as UC8
+    usecase "Inviter l'équipe\npar e-mail" as UC9
+    usecase "Gérer\nl'abonnement" as UC10
+    usecase "Gérer le\nplanning" as UC11
+  }
+  package "Supervision" {
+    usecase "Suspendre un\ncabinet" as UC12
+  }
+}
+
+actor "Admin plateforme\nWebVoice" as Plat
+actor "API vocale\ncloud" as STT
+actor "API de\nrédaction LLM" as LLM
+actor "Messagerie\n(e-mail)" as Mail
+
+Avocat --> UC1
+Avocat --> UC2
+Avocat --> UC3
+Avocat --> UC4
+Avocat --> UC5
+Avocat --> UC6
+Avocat --> UC7
+Avocat --> UC11
+
+UC2 ..> STT : <<include>>
+UC4 ..> LLM : <<include>>
+UC6 ..> UC5 : <<include>>
+
+Asst --> UC8
+Asst --> UC7
+Asst --> UC1
+
+AdminCab --> UC9
+AdminCab --> UC10
+UC9 ..> Mail : <<include>>
+
+Plat --> UC12
+
+legend right
+  Hors ellipse métier : connexion e-mail / mot de passe.
+  Cloudflare Turnstile (anti-robot) après 3 échecs de login.
+endlegend
+
+@enduml

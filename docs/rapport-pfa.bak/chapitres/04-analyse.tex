@@ -1,0 +1,152 @@
+\chapter{Analyse des besoins}
+\label{ch:analyse}
+
+\section{Acteurs}
+
+Un \textbf{acteur} est un rôle externe qui interagit avec le système. Le tableau~\ref{tab:acteurs} reprend les rôles de la version déployée sur \url{https://lexhub.space}.
+
+\begin{table}[H]
+\centering
+\caption{Acteurs de LexHub}
+\label{tab:acteurs}
+\begin{tabular}{@{}llp{7.2cm}@{}}
+\toprule
+\textbf{Acteur} & \textbf{Rôle applicatif} & \textbf{Intention principale} \\
+\midrule
+Cabinet & Locataire SaaS & Espace isolé, inscription OTP, charte graphique \\
+Avocat & \texttt{avocat} & Dicter, relire, valider, assigner, exporter, dossiers \\
+Stagiaire / assistant & \texttt{assistant\_juridique} & Consulter / imprimer les plaidoiries \emph{validées} ou assignées \\
+Avocat admin & \texttt{admin\_cabinet} & Équipe, invitations, paramètres, clôture du cabinet \\
+Admin plateforme & \texttt{admin\_webvoice} & Superviser / suspendre un cabinet (sans lire les dossiers) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Diagramme de cas d'utilisation (UML)}
+\label{sec:uc}
+
+La figure~\ref{fig:uc} présente un extrait UML : acteurs (stick figures), système (frontière), cas d'utilisation (ellipses). Les sources PlantUML équivalentes figurent dans \texttt{docs/rapport-pfa/diagrams/}.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\small, x=1cm, y=1cm]
+  \draw[royal!70, thick, rounded corners=4pt] (2.2,-3.4) rectangle (11.6,5.0);
+  \node[font=\bfseries\small,royal] at (6.9,4.65) {Système LexHub};
+
+  \umlactor{0.6}{3.2}{Avocat};
+  \umlactor{0.6}{0.6}{Assistant};
+  \umlactor{0.6}{-2.2}{Admin cabinet};
+  \umlactor{13.2}{1.5}{Admin plateforme};
+
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.6cm] (d) at (4.4,3.8) {Dicter /\\transcrire};
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.6cm] (c) at (7.4,3.8) {Composer\\document};
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.6cm] (v) at (4.4,2.2) {Valider\\plaidoirie};
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.6cm] (a) at (7.4,2.2) {Assigner /\\épingler};
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.6cm] (e) at (4.4,0.6) {Exporter\\Word/PDF};
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.6cm] (p) at (7.4,0.6) {Voir pièces\\validées};
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.6cm] (dos) at (4.4,-1.0) {Gérer\\dossiers};
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.6cm] (doc) at (7.4,-1.0) {Documents\\/ OCR};
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.6cm] (pl) at (10.0,2.2) {Planning};
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.6cm] (eq) at (10.0,0.6) {Gérer\\équipe};
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.6cm] (act) at (10.0,-1.0) {Activité};
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.6cm] (sus) at (10.0,3.8) {Suspendre\\cabinet};
+
+  \draw (1.2,3.0) -- (d.west);
+  \draw (1.2,3.0) -- (c.west);
+  \draw (1.2,3.0) -- (v.west);
+  \draw (1.2,3.0) -- (a.west);
+  \draw (1.2,3.0) -- (e.west);
+  \draw (1.2,3.0) -- (dos.west);
+  \draw (1.2,3.0) -- (doc.west);
+  \draw (1.2,3.0) -- (pl.west);
+  \draw (1.2,0.4) -- (p.west);
+  \draw (1.2,0.4) -- (e.south west);
+  \draw (1.2,0.4) -- (doc.west);
+  \draw (1.2,-2.4) -- (eq.west);
+  \draw (1.2,-2.4) -- (act.west);
+  \draw (12.6,1.3) -- (sus.east);
+\end{tikzpicture}
+\caption{Diagramme de cas d'utilisation UML (extrait LexHub)}
+\label{fig:uc}
+\end{figure}
+
+\section{Exigences fonctionnelles}
+
+\begin{table}[H]
+\centering
+\caption{Exigences fonctionnelles (version déployée)}
+\label{tab:ef}
+\small
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{@{}clp{9.6cm}@{}}
+\toprule
+\textbf{ID} & \textbf{Priorité} & \textbf{Description} \\
+\midrule
+EF-1 & Haute & Inscription cabinet : vérification e-mail par OTP, puis \textbf{accès immédiat} à l'espace (cabinet créé actif). L'admin plateforme peut ensuite \textbf{suspendre} / réactiver un cabinet, sans gate d'approbation à l'inscription. \\
+EF-2 & Haute & Connexion e-mail / mot de passe, session sécurisée, interface bilingue FR / AR. \\
+EF-3 & Haute & Atelier plaidoirie en \textbf{cinq étapes} : dictée, transcription \& correction de forme, réglages, document, export. \\
+EF-4 & Haute & Transcription audio (navigateur + STT serveur) ; correction de forme sans invention de faits ; marques orange sur substitutions STT à relire. \\
+EF-5 & Haute & Composition de plaidoirie \textbf{sans inventer} faits / articles / montants manquants. \\
+EF-6 & Haute & Validation explicite : l'assistant ne voit que les plaidoiries validées. \\
+EF-7 & Haute & Assignation d'une plaidoirie à un assistant (notification) ; épinglage (\textit{pin}) ; l'assignation valide le brouillon si besoin. \\
+EF-8 & Haute & Export Word et PDF au format officiel (en-tête, typographie arabe). \\
+EF-9 & Haute & Dossiers (domaine juridique, recherche / filtre), documents (OCR / synthèse sourcée), planning lié aux affaires. \\
+EF-10 & Moyenne & Équipe : invitations, code d'adhésion, rôles. \\
+EF-11 & Moyenne & Notifications, journal d'activité, synchronisation temps réel (WebSocket). \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Exigences non fonctionnelles}
+
+\begin{table}[H]
+\centering
+\caption{Exigences non fonctionnelles}
+\label{tab:enf}
+\small
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{@{}clp{9.8cm}@{}}
+\toprule
+\textbf{ID} & \textbf{Catégorie} & \textbf{Exigence} \\
+\midrule
+ENF-1 & Sécurité & Isolation stricte par \texttt{cabinet\_id} ; HTTPS / TLS ; mots de passe robustes ; JWT / sessions. \\
+ENF-2 & Audit & Journal d'audit des actions sensibles (auth, validation, assignation, admin). \\
+ENF-3 & Disponibilité & Déploiement production sur VPS avec reverse-proxy et conteneurs. \\
+ENF-4 & Usabilité & Interface responsive ; parcours plaidoirie guidé ; bilingue. \\
+ENF-5 & Intégrité IA & Pas d'invention de fond juridique ; contrôle de contradictions (faits). \\
+ENF-6 & Performance & Limitation de débit (\textit{rate limit}) sur auth et endpoints sensibles. \\
+ENF-7 & Observabilité & E-mails transactionnels ; notifications temps réel ; page Activité. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Règles métier clés (collaboration)}
+
+\begin{enumerate}[leftmargin=1.4em]
+  \item Un brouillon de plaidoirie reste invisible à l'assistant tant qu'il n'est pas \textbf{validé}.
+  \item L'\textbf{assignation} à un assistant (par un avocat ou admin cabinet) rattache le document et, si nécessaire, passe le statut à \textit{validated}, puis notifie l'assistant.
+  \item L'\textbf{épinglage} (\textit{pin}) met en avant une plaidoirie dans la liste (avocat, admin ou assistant sur pièce déjà validée).
+  \item L'admin plateforme peut \textbf{suspendre} un cabinet actif ; il ne lit pas le contenu des dossiers.
+\end{enumerate}
+
+\section{Périmètre fonctionnel retenu}
+
+Le premier suivi académique a recentré le PFA sur le parcours \textbf{voix $\rightarrow$ plaidoirie}. Les modules satellites (dossiers, documents, planning, équipe, activité) restent dans le périmètre livré, car ils rendent le cœur oratoire utilisable en cabinet : une plaidoirie sans dossier, sans droits clairs ni export n'aurait qu'une valeur de démonstration.
+
+\begin{table}[H]
+\centering
+\caption{Priorisation issue du cadrage}
+\label{tab:prio}
+\small
+\begin{tabular}{@{}clp{8.8cm}@{}}
+\toprule
+\textbf{Priorité} & \textbf{Thème} & \textbf{Décision} \\
+\midrule
+1 & Voix $\rightarrow$ document & Cœur produit ; 5 étapes guidées \\
+2 & Robustesse STT / LLM & Alternatives et modes dégradés \\
+3 & Gestion de cabinet & Isolation, équipe, rôles \\
+4 & Agenda $\leftrightarrow$ dossiers & Audiences / délais rattachés \\
+5 & Domaine + filtre & Classement et recherche des affaires \\
+\bottomrule
+\end{tabular}
+\end{table}

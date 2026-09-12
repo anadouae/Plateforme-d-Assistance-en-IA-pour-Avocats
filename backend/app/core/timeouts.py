@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 
-_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="sanad-timeout")
+_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="lexhub-timeout")
 
 
 class OperationTimeout(TimeoutError):

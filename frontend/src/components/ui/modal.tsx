@@ -75,7 +75,7 @@ export function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(14,21,38,0.42)] p-5 backdrop-blur-[6px] animate-[fade-in_0.35s_cubic-bezier(0.2,0.9,0.25,1)]"
+      className="fixed inset-0 z-[200] flex items-center justify-center bg-[rgba(14,21,38,0.42)] p-5 backdrop-blur-[6px] animate-[fade-in_0.35s_cubic-bezier(0.2,0.9,0.25,1)]"
       role="presentation"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();

@@ -14,6 +14,8 @@ from app.models import EmailOtp
 PURPOSE_REGISTER = "register"
 PURPOSE_MAGIC_LOGIN = "magic_login"
 PURPOSE_PASSWORD_CHANGE = "password_change"
+PURPOSE_ACCOUNT_DELETE = "account_delete"
+PURPOSE_EMAIL_CHANGE = "email_change"
 
 
 def _hash(value: str) -> str:

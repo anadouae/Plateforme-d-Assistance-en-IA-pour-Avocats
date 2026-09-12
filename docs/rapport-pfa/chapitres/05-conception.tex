@@ -1,0 +1,256 @@
+\chapter{Conception du système}
+\label{ch:conception}
+
+\section{Architecture générale}
+
+LexHub suit une architecture en couches, classique d'un SaaS web. L'\textbf{interface} (application Next.js dans le navigateur) n'établit \textbf{aucune connexion} vers PostgreSQL, Redis ou le stockage de fichiers. Toute lecture ou écriture transite par l'\textbf{API HTTP FastAPI} : le client envoie une requête authentifiée (jeton JWT), le serveur vérifie le rôle et le \texttt{cabinet\_id}, puis accède aux données. C'est cette API --- le backend LexHub --- que désigne la formule « tout transite par l'API ».
+
+La figure~\ref{fig:archi} présente les blocs de production.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  box/.style={draw=royal!65,fill=royal!6,rounded corners=4pt,align=center,minimum width=2.55cm,minimum height=1.12cm,font=\small},
+  ext/.style={draw=emerald!70,fill=emerald!8,rounded corners=4pt,align=center,minimum width=2.45cm,minimum height=1.12cm,font=\small}
+]
+  \node[box] (fe) at (0,0) {Navigateur\\Next.js};
+  \node[box] (caddy) at (3.5,0) {Caddy\\TLS};
+  \node[box] (api) at (7.0,0) {API FastAPI};
+  \node[box] (pg) at (10.5,0) {PostgreSQL};
+  \node[box] (stt) at (0,-2.15) {STT cloud};
+  \node[ext] (ocr) at (3.5,-2.15) {OCR cloud};
+  \node[box] (rd) at (7.0,-2.15) {Redis\\tâches + temps réel};
+  \node[box] (io) at (10.5,-2.15) {Fichiers\\(MinIO)};
+  \node[ext] (llm) at (3.5,-4.2) {LLM\\rédaction};
+  \node[box] (cel) at (7.0,-4.2) {Celery\\workers};
+  \node[ext] (mail) at (10.5,-4.2) {E-mail\\transactionnel};
+  \draw[-{Stealth},thick,royal] (fe) -- (caddy);
+  \draw[-{Stealth},thick,royal] (caddy) -- (api);
+  \draw[-{Stealth},thick,royal] (api) -- (pg);
+  \draw[-{Stealth},thick,royal] (api) -- (stt);
+  \draw[-{Stealth},thick,royal] (api) -- (ocr);
+  \draw[-{Stealth},thick,royal] (api) -- (rd);
+  \draw[-{Stealth},thick,royal] (api) -- (io);
+  \draw[-{Stealth},thick,royal] (api) -- (llm);
+  \draw[-{Stealth},thick,royal] (api) -- (cel);
+  \draw[-{Stealth},thick,royal] (api) -- (mail);
+\end{tikzpicture}
+\caption{Architecture déployée --- vue logique (\texttt{lexhub.space})}
+\label{fig:archi}
+\end{figure}
+
+\paragraph{Rôle de chaque bloc.}
+Caddy termine TLS et répartit vers le frontend et l'API. FastAPI orchestre métier, droits et appels sortants. PostgreSQL conserve le modèle relationnel. Redis sert les files Celery et le canal temps réel. MinIO (stockage objet) conserve pièces et exports. La dictée et l'OCR passent par des API cloud ; le modèle de langage structure la plaidoirie sans inventer le fond. Les e-mails (OTP, invitation, rappels) sont transactionnels. La page de connexion s'appuie, après trois échecs, sur Cloudflare Turnstile (vérification du jeton par l'API, pas par le navigateur seul).
+
+\section{Données, stockage et isolation}
+\label{sec:bdd}
+
+Une application de cabinet n'existe pas sans un modèle de données explicite. LexHub s'appuie sur trois supports complémentaires.
+
+\paragraph{PostgreSQL.}
+La base relationnelle est la source de vérité : cabinets, utilisateurs, dossiers, brouillons de plaidoirie, invitations, abonnements, journaux. Chaque table métier porte un \texttt{cabinet\_id}. Les requêtes API filtrent systématiquement sur ce locataire : un avocat de Rabat ne peut pas lire un dossier d'un cabinet de Tanger, même s'il devine un identifiant. Les évolutions de schéma passent par Alembic (migrations versionnées).
+
+\paragraph{Stockage objet.}
+Les fichiers (pièces scannées, logos, exports) ne sont pas stockés dans PostgreSQL. Ils sont chiffrés côté application puis déposés dans un magasin d'objets (MinIO en production). La base ne conserve que les métadonnées et le chemin.
+
+\paragraph{Redis.}
+Files d'attente (Celery : OCR, e-mails, rappels) et notifications temps réel. Redis n'est pas la base métier.
+
+\paragraph{Ce que le navigateur ne voit jamais.}
+Le client web ne reçoit ni chaîne de connexion, ni mot de passe SQL. Visualiser la base n'est pas une fonction produit : c'est un geste d'exploitation. En production, PostgreSQL, Redis et MinIO n'écoutent pas sur l'Internet public ; leurs ports sont liés à \texttt{127.0.0.1} sur le VPS. L'admin plateforme ne « ouvre » pas les dossiers depuis l'UI.
+
+\paragraph{Visualisation et audit sécurisé de la base de données (exploitation).}
+La base de données relationnelle \emph{est} PostgreSQL. Les données hébergées étant couvertes par le secret professionnel le plus strict (article~30 de la loi n$^\circ$~28-08 régissant la profession d'avocat au Maroc), l'exposition directe d'une interface de gestion sur le Web public (\url{https://lexhub.space/_ops/db/}) a été \textbf{totalement coupée} au niveau du reverse-proxy Caddy (toute requête renvoie 404/308).
+
+Pour l'audit et l'évaluation, la solution retenue en production est le gestionnaire web ultra-léger \textbf{Adminer}, conteneurisé sur le VPS :
+\begin{itemize}[leftmargin=1.4em]
+  \item \textbf{Pourquoi Adminer plutôt que pgAdmin :} pgAdmin exige une installation desktop lourde, des dépendances système complexes ou un conteneur Docker client local sur le poste de l'évaluateur. À l'inverse, Adminer ne nécessite strictement aucune installation ni conteneur local : il tourne directement dans le navigateur.
+  \item \textbf{Tunnel SSH chiffré en 1 clic :} Un script automatisé \texttt{Ouvrir\_Adminer.bat} (ou \texttt{python scripts/open\_adminer\_tunnel.py}) monte une redirection de port chiffrée (\texttt{127.0.0.1:8088} vers le conteneur Adminer du VPS).
+  \item \textbf{Authentification stricte de production :} Connexion sur \texttt{http://127.0.0.1:8088} avec le système PostgreSQL, serveur interne \texttt{postgres}, utilisateur \texttt{lexhub} et base \texttt{lexhub}.
+  \item \textbf{Révocation immédiate :} La simple fermeture du terminal coupe instantanément la passerelle.
+\end{itemize}
+
+\paragraph{Sauvegardes planifiées.}
+La continuité d'exploitation n'est pas laissée au hasard. Un \textbf{ordonnancement quotidien} (tâche planifiée sur le VPS) produit une copie de PostgreSQL et du magasin de fichiers, conservée plusieurs jours. Ce dispositif est distinct du déploiement continu (CI/CD) : l'un publie le code, l'autre protège les \emph{données} du cabinet. Les identifiants et le détail opératoire restent dans le dossier de passation interne, pas dans ce rapport.
+
+\paragraph{Risques et mesures.}
+Un port base ouvert sur $0.0.0.0$ serait un risque d'énumération. La composition de production force l'écoute locale. Les identifiants vivent dans les variables d'environnement du VPS, pas dans le dépôt. Un code de parrainage n'est \textbf{pas} un jeton d'accès : il n'authentifie personne et n'ouvre aucun dossier (section~\ref{sec:parrainage}).
+
+\section{Pipeline de traitement de la plaidoirie}
+
+Les cinq traitements correspondent aux cinq étapes de l'atelier :
+
+\begin{enumerate}[label=\textbf{P\arabic*.}]
+  \item Dossier et pièces : métadonnées judiciaires et documents versés ; aucun fond n'est inventé.
+  \item Capture : reconnaissance vocale native intégrée au navigateur (Web Speech API) sans latence de téléversement, ou fichier audio importé.
+  \item Correction de \textbf{forme} (bouton Corriger) : arabe standard, surlignage orange des substitutions STT, contrôle de contradictions factuelles, puis clarification des manques.
+  \item Rédaction assistée du document, chat de révision, validation ou assignation.
+  \item Export officiel Word (.docx) : document d'audience 100\,\% éditable, avec armoiries officielles du Royaume et en-tête bilingue de cabinet.
+\end{enumerate}
+
+\section{Diagrammes UML retenus}
+
+Trois familles suffisent à documenter LexHub sans noyer le lecteur dans des parcours communs à tout SaaS (login, CRUD). Sont retenus : un diagramme de \textbf{cas d'utilisation} (chapitre~\ref{ch:analyse}) ; deux diagrammes de \textbf{séquence} (voix~$\rightarrow$~texte ; validation / visibilité assistant) ; un diagramme d'\textbf{activité} (atelier) ; un diagramme de \textbf{classes} (extrait persistant) ; un diagramme de \textbf{déploiement}.
+
+\subsection{Séquence --- de la voix au texte corrigé}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize, x=2.4cm, y=-0.52cm]
+  \foreach \x/\lab in {0/Avocat, 1/Navigateur, 2/{API FastAPI}, 3/STT cloud, 4/PostgreSQL} {
+    \node[align=center,font=\small\bfseries] at (\x,0) {\lab};
+    \draw[linegray,thick] (\x,0.35) -- (\x,12.0);
+  }
+  \draw[-{Stealth}] (0,1) -- node[above,font=\tiny]{parole ou fichier} (1,1);
+  \draw[-{Stealth}] (1,2.2) -- node[above,font=\tiny]{audio + JWT} (2,2.2);
+  \draw[-{Stealth}] (2,3.4) -- node[above,font=\tiny]{fichier} (3,3.4);
+  \draw[-{Stealth}] (3,4.6) -- node[above,font=\tiny]{texte brut} (2,4.6);
+  \draw[-{Stealth}] (2,5.8) -- node[above,font=\tiny]{audit} (4,5.8);
+  \draw[-{Stealth}] (2,7.0) -- node[above,font=\tiny]{transcription} (1,7.0);
+  \draw[-{Stealth}] (1,8.4) -- node[above,font=\tiny]{Corriger (forme)} (2,8.4);
+  \draw[-{Stealth}] (2,9.6) -- node[above,font=\tiny]{texte + marques STT} (1,9.6);
+  \node[align=left,font=\tiny] at (2.2,11.0) {Puis rédaction, édition,\\validation / assignation.};
+\end{tikzpicture}
+\caption{Séquence : dictée ou fichier audio, transcription, correction de forme}
+\label{fig:seq-stt}
+\end{figure}
+
+\subsection{Séquence --- validation et visibilité assistant}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize, x=2.35cm, y=-0.52cm]
+  \foreach \x/\lab in {0/Avocat, 1/{API FastAPI}, 2/PostgreSQL, 3/{Temps réel}, 4/Assistant} {
+    \node[align=center,font=\small\bfseries] at (\x,0) {\lab};
+    \draw[linegray,thick] (\x,0.35) -- (\x,11.2);
+  }
+  \draw[-{Stealth}] (0,1.1) -- node[above,font=\tiny]{valider \emph{ou} assigner} (1,1.1);
+  \draw[-{Stealth}] (1,2.3) -- node[above,font=\tiny]{statut = validated} (2,2.3);
+  \draw[-{Stealth}] (1,3.5) -- node[above,font=\tiny]{assigned\_to (opt.)} (2,3.5);
+  \draw[-{Stealth}] (1,4.7) -- node[above,font=\tiny]{événement} (3,4.7);
+  \draw[-{Stealth}] (3,5.9) -- node[above,font=\tiny]{rafraîchir liste} (4,5.9);
+  \draw[-{Stealth}] (1,7.3) -- node[above,font=\tiny]{notification / e-mail} (4,7.3);
+  \draw[-{Stealth}] (4,9.0) -- node[above,font=\tiny]{export / impression} (1,9.0);
+\end{tikzpicture}
+\caption{Séquence : validation, assignation et visibilité de l'assistant}
+\label{fig:seq-val}
+\end{figure}
+
+\subsection{Modèle de données (extrait)}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  cls/.style={draw=royal,fill=royal!4,align=left,font=\scriptsize,inner sep=5pt,rounded corners=1pt}
+]
+  \node[cls] (c) at (0,0) {\textbf{Cabinet}\\id / nom / statut\\logo / referral\_code};
+  \node[cls] (u) at (5.0,0.8) {\textbf{User}\\email / rôle\\cabinet\_id / actif};
+  \node[cls] (k) at (0,-2.8) {\textbf{Case}\\titre / domaine\\identité judiciaire};
+  \node[cls] (p) at (5.0,-2.6) {\textbf{PlaidoirieDraft}\\texte / draft$\vert$validated$\vert$finalized\\assigned\_to / pinned};
+  \node[cls] (d) at (9.6,-0.6) {\textbf{Document}\\métadonnées + objet\\OCR};
+  \node[cls] (inv) at (9.6,-2.8) {\textbf{CabinetInvite}\\e-mail / jeton\\rôle / expiration};
+  \draw[-{Stealth}] (u) -- node[above,font=\tiny]{1..*} (c);
+  \draw[-{Stealth}] (k) -- (c);
+  \draw[-{Stealth}] (p) -- (c);
+  \draw[-{Stealth}] (d) -- (c);
+  \draw[-{Stealth}] (p) -- node[right,font=\tiny]{0..1} (k);
+  \draw[-{Stealth}] (p.east) -- node[above,font=\tiny]{assigné} (u.south);
+  \draw[-{Stealth}] (inv) -- (c);
+\end{tikzpicture}
+\caption{Classes persistantes (extrait) --- isolation par \texttt{cabinet\_id}}
+\label{fig:classes}
+\end{figure}
+
+\subsection{Activité --- atelier plaidoirie}
+\label{sec:activite}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  font=\small,
+  startstop/.style={ellipse, draw=royal, thick, fill=royal!8, minimum width=1.6cm, align=center},
+  process/.style={rectangle, rounded corners=3pt, draw=royal, thick, fill=white, align=center, minimum width=3.5cm, minimum height=0.68cm},
+  decision/.style={diamond, draw=royal, thick, fill=gold!15, align=center, aspect=2.2, inner sep=1pt, font=\scriptsize}
+]
+  \node[startstop] (s) at (0,0) {Début};
+  \node[process] (dos) at (0,-1.25) {Dossier et pièces};
+  \node[process] (d) at (0,-2.5) {Dicter ou importer l'audio};
+  \node[process] (t) at (0,-3.75) {Transcrire (STT cloud)};
+  \node[process] (c) at (0,-5.0) {Corriger la forme};
+  \node[decision] (q1) at (0,-6.6) {Faits OK ?};
+  \node[process] (r) at (4.35,-6.6) {Relire / trancher};
+  \node[process] (comp) at (0,-8.25) {Rédiger le document};
+  \node[decision] (q2) at (0,-9.85) {Valider ?};
+  \node[process] (exp) at (0,-11.4) {Exporter Word (.docx)};
+  \node[startstop] (e) at (0,-12.55) {Fin};
+  \draw[-{Stealth},thick] (s) -- (dos);
+  \draw[-{Stealth},thick] (dos) -- (d);
+  \draw[-{Stealth},thick] (d) -- (t);
+  \draw[-{Stealth},thick] (t) -- (c);
+  \draw[-{Stealth},thick] (c) -- (q1);
+  \draw[-{Stealth},thick] (q1) -- node[above,font=\tiny]{non} (r);
+  \draw[-{Stealth},thick] (r) |- (c);
+  \draw[-{Stealth},thick] (q1) -- node[right,font=\tiny]{oui} (comp);
+  \draw[-{Stealth},thick] (comp) -- (q2);
+  \draw[-{Stealth},thick] (q2) -- node[right,font=\tiny]{oui} (exp);
+  \draw[-{Stealth},thick] (exp) -- (e);
+\end{tikzpicture}
+\caption{Diagramme d'activité --- atelier plaidoirie}
+\label{fig:activite}
+\end{figure}
+
+\subsection{Déploiement}
+\label{sec:deploy-uml}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  node/.style={draw=royal, thick, rounded corners=3pt, align=center, fill=royal!5, font=\small, minimum width=2.7cm, minimum height=0.95cm},
+  ext/.style={draw=emerald, thick, rounded corners=3pt, align=center, fill=emerald!8, font=\small, minimum width=2.5cm}
+]
+  \node[node] (user) at (0,2.35) {Navigateur};
+  \node[node] (caddy) at (4.15,2.35) {Caddy\\TLS};
+  \node[node] (fe) at (2.05,0.45) {Conteneur\\frontend};
+  \node[node] (be) at (6.25,0.45) {Conteneur\\API FastAPI};
+  \node[node] (wk) at (8.85,0.45) {Celery};
+  \node[node] (pg) at (2.05,-1.55) {PostgreSQL};
+  \node[node] (rd) at (5.05,-1.55) {Redis};
+  \node[node] (io) at (8.05,-1.55) {MinIO};
+  \node[ext] (stt) at (11.35,0.45) {STT / OCR\\cloud};
+  \node[ext] (llm) at (11.35,-1.55) {LLM cloud};
+  \draw[-{Stealth},thick] (user) -- (caddy);
+  \draw[-{Stealth},thick] (caddy) -- (fe);
+  \draw[-{Stealth},thick] (caddy) -- (be);
+  \draw[-{Stealth},thick] (be) -- (pg);
+  \draw[-{Stealth},thick] (be) -- (rd);
+  \draw[-{Stealth},thick] (be) -- (io);
+  \draw[-{Stealth},thick] (be) -- (wk);
+  \draw[-{Stealth},thick] (be) -- (stt);
+  \draw[-{Stealth},thick] (be) -- (llm);
+\end{tikzpicture}
+\caption{Déploiement production --- VPS, Caddy, Docker, services cloud}
+\label{fig:deploy}
+\end{figure}
+
+Les images d'application (\texttt{frontend}, \texttt{backend}, \texttt{celery}) sont publiées par GitHub Actions vers GHCR, puis tirées sur le VPS. Caddy sert \texttt{lexhub.space} en HTTPS.
+
+Les images d'application (\texttt{frontend}, \texttt{backend}, \texttt{celery}) sont publiées par GitHub Actions vers GHCR, puis tirées sur le VPS. Caddy sert \texttt{lexhub.space} en HTTPS.
+
+\section{Organisation fonctionnelle du produit}
+
+Plutôt qu'une liste de « modules » techniques, le produit se lit comme un cabinet numérique.
+
+\paragraph{Atelier de plaidoirie.}
+Cœur du métier. L'avocat relie une affaire, dicte ou importe un audio, relit la transcription, corrige la forme, complète les manques, obtient un acte structuré, l'édite, le valide, l'exporte.
+
+\paragraph{Mémoire du dossier.}
+Identité judiciaire, pièces OCR, synthèse à la demande, fiche orale d'audience. Ces éléments nourrissent la rédaction ; ils ne la remplacent pas.
+
+\paragraph{Travail d'équipe.}
+L'avocat décide ce qui sort du brouillon. L'assistant travaille sur du \textbf{validé}. L'admin cabinet invite par e-mail, paie, brandit le logo.
+
+\paragraph{Pilotage.}
+Planning, journal d'activité, notifications. Côté plateforme : suspension d'un cabinet sans lecture des pièces.
+
+\paragraph{Économie.}
+Plans, essai, crédits, parrainage --- chapitre~\ref{ch:economie}.

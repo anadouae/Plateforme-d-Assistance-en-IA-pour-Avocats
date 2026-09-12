@@ -1,0 +1,18 @@
+@startuml seq-dictation
+!theme plain
+actor Avocat
+participant Navigateur
+participant "API LexHub" as API
+participant STT
+database Base
+
+Avocat -> Navigateur : parole (micro)
+Navigateur -> API : audio + JWT
+API -> STT : fichier
+STT --> API : texte brut
+API -> Base : audit
+API --> Navigateur : transcription
+Navigateur -> API : Corriger (forme)
+API --> Navigateur : texte + marques orange
+note over Avocat, Base : Puis composition, édition,\nvalidation ou assignation, export
+@enduml

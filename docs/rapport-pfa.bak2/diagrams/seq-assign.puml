@@ -1,0 +1,16 @@
+@startuml seq-assign
+!theme plain
+actor Avocat
+participant "API LexHub" as API
+database Base
+participant "Temps réel" as RT
+actor Assistant
+
+Avocat -> API : valider ou assigner
+API -> Base : statut = validated
+API -> Base : assigned_to (optionnel)
+API -> RT : événement WebSocket
+RT --> Assistant : rafraîchir liste
+API --> Assistant : notification / e-mail
+Assistant -> API : export / impression
+@enduml

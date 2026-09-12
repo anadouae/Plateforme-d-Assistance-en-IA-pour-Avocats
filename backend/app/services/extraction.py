@@ -1,7 +1,9 @@
 import logging
 import re
+import zipfile
 from io import BytesIO
 from pathlib import Path
+from xml.etree import ElementTree as ET
 
 import fitz
 from docx import Document as DocxDocument
@@ -9,9 +11,14 @@ from PIL import Image
 
 logger = logging.getLogger(__name__)
 
+_W_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+
 ALLOWED_EXTENSIONS = {
     ".pdf",
     ".docx",
+    ".txt",
+    ".md",
+    ".markdown",
     ".png",
     ".jpg",
     ".jpeg",
@@ -30,6 +37,10 @@ AUDIO_EXTENSIONS = {".webm", ".wav", ".mp3", ".m4a", ".ogg", ".mp4", ".mpeg", ".
 ALLOWED_MIMES = {
     "application/pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "text/plain",
+    "text/txt",
+    "text/markdown",
+    "text/x-markdown",
     "image/png",
     "image/jpeg",
     "image/tiff",
@@ -49,7 +60,31 @@ ALLOWED_MIMES = {
 }
 
 OCR_LANG = "fra+ara"
-MAX_PDF_OCR_PAGES = 20
+
+
+def _ocr_settings():
+    from app.core.config import settings
+
+    return settings
+
+
+def _max_pdf_ocr_pages() -> int:
+    return int(_ocr_settings().MAX_PDF_OCR_PAGES or 80)
+
+
+def _max_tesseract_pages() -> int:
+    return int(_ocr_settings().MAX_PDF_TESSERACT_PAGES or 40)
+
+
+def _ocr_dpi() -> int:
+    return int(_ocr_settings().OCR_DPI or 300)
+
+
+def _ocr_quality_ok(text: str, *, min_len: int = 40) -> bool:
+    """Résultat OCR assez complet pour synthétiser (qualité, pas un aperçu)."""
+    if not text or len(text.strip()) < min_len:
+        return False
+    return not is_scrambled_arabic(text)
 
 _ARABIC_RE = re.compile(r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]")
 # Mots / particules souvent en DÉBUT de phrase arabe (ordre logique)
@@ -183,29 +218,85 @@ def safe_repair_arabic_text(text: str) -> str:
 
 
 def is_scrambled_arabic(text: str) -> bool:
-    """Détecte une couche PDF arabe illisible (BIDI cassé / mots coupés)."""
+    """
+    Détecte une couche PDF/OCR arabe illisible (BIDI cassé / mots coupés).
+    Doit rester CONSERVATEUR : un texte Word juridique fluide ne doit PAS être flaggé.
+    """
     if not text or arabic_char_ratio(text) < 0.2:
         return False
-    # Fragments typiques des PDF arabes mal encodés
+
+    # Fragments typiques des PDF arabes mal encodés (éviter les vrais mots: عقارية، قضائية…)
     if re.search(
-        r"(العقا\b|،?\s*رية\b|المعامالت|المعامﻼت|صصُخ|زّويمي|قّالموث|الّوفع)",
+        r"(العقا\b|المعامالت|المعامﻼت|صصُخ|زّويمي|قّالموث|الّوفع)",
         text,
     ):
         return True
+
+    words = [_strip_word(w) for w in text.split()]
+    words = [w for w in words if w]
+    if len(words) >= 25:
+        # Trop de « mots » d'une lettre = OCR cassé
+        tiny = sum(1 for w in words if len(w) <= 1)
+        if tiny / len(words) >= 0.22:
+            return True
+
     lines = [ln.strip() for ln in text.splitlines() if len(ln.split()) >= 4]
-    if not lines:
-        return _arabic_quality_score(text) < 12
-    bad = 0
-    for ln in lines:
-        if ln[:1] in "،.؛!?ًٌٍَُِّْ":
-            bad += 1
-        elif ln.split()[0] in ("سواء", "جانب", "و", "أو") and "مقدمة" not in ln[:20]:
-            # Souvent la fin de phrase placée en tête
-            if arabic_char_ratio(ln) > 0.5:
-                bad += 0.5
-    if bad / max(len(lines), 1) >= 0.25:
-        return True
-    return _arabic_quality_score(text) < 12
+    if lines:
+        bad_start = sum(1 for ln in lines if ln[:1] in "،.؛!?ًٌٍَُِّْ")
+        if bad_start / len(lines) >= 0.35:
+            return True
+        legal = sum(
+            1
+            for m in (
+                "القانون",
+                "الظهير",
+                "مدونة",
+                "المحكمة",
+                "المقاولة",
+                "المادة",
+                "الفصل",
+                "المشرع",
+                "المسطرة",
+                "التنفيذ",
+            )
+            if m in text
+        )
+        # Long mémoire / PDF juridique majoritairement lisible → ne pas crier au BIDI
+        if len(words) >= 200 and arabic_char_ratio(text) >= 0.4 and legal >= 2:
+            return False
+        # Si inverser les mots améliore FORTEMENT le score → texte inversé
+        orig = sum(_line_reading_score(ln.split()) for ln in lines)
+        rev = sum(
+            _line_reading_score(list(reversed(ln.split()))) for ln in lines
+        )
+        if rev > orig + max(10, len(lines) * 3):
+            # Sur un long document, exiger un écart plus net (quelques lignes inversées ≠ tout le PDF)
+            if len(text) >= 12000 and rev < orig * 1.35:
+                return False
+            return True
+        if len(words) >= 40 and arabic_char_ratio(text) >= 0.45 and legal >= 1:
+            return False
+        return False
+
+    # Texte court sans structure de lignes : seuil bas uniquement
+    return len(words) < 30 and _arabic_quality_score(text) < 5
+
+
+def looks_like_native_arabic_prose(text: str) -> bool:
+    """Heuristique positive : prose arabe cohérente (Word / texte propre)."""
+    if not text or arabic_char_ratio(text) < 0.4:
+        return False
+    words = text.split()
+    if len(words) < 25:
+        return False
+    if is_scrambled_arabic(text):
+        return False
+    legal = sum(
+        1
+        for m in ("القانون", "الظهير", "مدونة", "المحكمة", "المقاولة", "المادة", "الفصل")
+        if m in text
+    )
+    return legal >= 1 or len(words) >= 60
 
 
 def _arabic_quality_score(text: str) -> int:
@@ -263,15 +354,17 @@ def _page_text_reading_order(page) -> str:
     return "\n".join(lines_out)
 
 
-def _ocr_image(image: Image.Image) -> tuple[str, int]:
+def _ocr_image(image: Image.Image, *, fast: bool = False) -> tuple[str, int]:
     import pytesseract
 
-    # Essai arabe-prioritaire puis bilingue
-    configs = [
-        ("ara+fra", "--psm 6"),
-        ("fra+ara", "--psm 6"),
-        (OCR_LANG, "--psm 4"),
-    ]
+    if fast:
+        configs = [("ara+fra", "--psm 6")]
+    else:
+        configs = [
+            ("ara+fra", "--psm 6"),
+            ("fra+ara", "--psm 6"),
+            (OCR_LANG, "--psm 4"),
+        ]
     best_text = ""
     best_score = -10**9
     for lang, cfg in configs:
@@ -295,13 +388,14 @@ def _ocr_image(image: Image.Image) -> tuple[str, int]:
     return best_text, score
 
 
-def _ocr_image_timed(image: Image.Image) -> tuple[str, int]:
+def _ocr_image_timed(image: Image.Image, *, fast: bool = False) -> tuple[str, int]:
     from app.core.config import settings
     from app.core.timeouts import run_with_timeout
 
+    per_page = min(90.0, float(settings.OCR_TESSERACT_TIMEOUT_SEC or 480) / 4)
     return run_with_timeout(
-        lambda: _ocr_image(image),
-        float(settings.OCR_TIMEOUT_SEC or 300),
+        lambda: _ocr_image(image, fast=fast),
+        per_page,
         label="ocr_image",
     )
 
@@ -312,11 +406,12 @@ def _ocr_pdf_pymupdf(content: bytes, *, arabic: bool = True) -> tuple[str, int |
         doc = fitz.open(stream=content, filetype="pdf")
         parts: list[str] = []
         lang = "ara" if arabic else "fra+ara"
-        n_pages = min(len(doc), MAX_PDF_OCR_PAGES)
+        dpi = _ocr_dpi()
+        n_pages = min(len(doc), _max_pdf_ocr_pages())
         for i in range(n_pages):
             page = doc[i]
             try:
-                tp = page.get_textpage_ocr(language=lang, dpi=280, full=True)
+                tp = page.get_textpage_ocr(language=lang, dpi=dpi, full=True)
                 t = page.get_text(textpage=tp) or ""
             except Exception:
                 t = page.get_text() or ""
@@ -333,18 +428,42 @@ def _ocr_pdf_pymupdf(content: bytes, *, arabic: bool = True) -> tuple[str, int |
         return "", 0
 
 
+def _ocr_pdf_pymupdf_timed(content: bytes, *, arabic: bool = True) -> tuple[str, int | None]:
+    from app.core.config import settings
+    from app.core.timeouts import run_with_timeout
+
+    try:
+        return run_with_timeout(
+            lambda: _ocr_pdf_pymupdf(content, arabic=arabic),
+            float(settings.OCR_PYMUPDF_TIMEOUT_SEC or 90),
+            label="ocr_pdf_pymupdf",
+        )
+    except Exception as exc:
+        from app.core.timeouts import OperationTimeout
+
+        if isinstance(exc, OperationTimeout):
+            raise
+        logger.warning("PyMuPDF OCR timed wrapper failed: %s", exc)
+        return "", 0
+
+
 def _ocr_pdf_scanned(content: bytes) -> tuple[str, int | None]:
     from app.core.config import settings
     from app.core.timeouts import run_with_timeout
 
+    max_pages = _max_tesseract_pages()
+    dpi = _ocr_dpi()
+
     def _run() -> tuple[str, int | None]:
         from pdf2image import convert_from_bytes
 
-        images = convert_from_bytes(content, dpi=280, first_page=1, last_page=MAX_PDF_OCR_PAGES)
+        images = convert_from_bytes(
+            content, dpi=dpi, first_page=1, last_page=max_pages,
+        )
         parts: list[str] = []
         scores: list[int] = []
         for img in images:
-            page_text, page_score = _ocr_image(img)
+            page_text, page_score = _ocr_image(img, fast=False)
             if page_text:
                 parts.append(page_text)
                 scores.append(page_score)
@@ -357,7 +476,7 @@ def _ocr_pdf_scanned(content: bytes) -> tuple[str, int | None]:
     try:
         return run_with_timeout(
             _run,
-            float(settings.OCR_TIMEOUT_SEC or 300),
+            float(settings.OCR_TESSERACT_TIMEOUT_SEC or 120),
             label="ocr_pdf_scanned",
         )
     except Exception as exc:
@@ -385,6 +504,7 @@ def _pick_best_text(*candidates: str) -> str:
 
 def extract_from_pdf(content: bytes) -> tuple[str, int | None]:
     doc = fitz.open(stream=content, filetype="pdf")
+    page_count = len(doc)
     naive_parts: list[str] = []
     ordered_parts: list[str] = []
     for page in doc:
@@ -402,25 +522,85 @@ def extract_from_pdf(content: bytes) -> tuple[str, int | None]:
     text = _pick_best_text(ordered_fixed, naive_fixed, ordered, naive)
     ar_heavy = arabic_char_ratio(text) > 0.25 or arabic_char_ratio(naive) > 0.25
 
-    # Couche texte arabe corrompue → OCR obligatoire (ne pas renvoyer OCR 100% faux)
-    must_ocr = (not text or len(text) < 50) or (ar_heavy and is_scrambled_arabic(text))
+    # PDF numérique avec couche texte propre → extraction native (qualité max)
+    if looks_like_native_arabic_prose(text) and len(text) >= 80:
+        return text, 100
+    if text and len(text) > 80 and not is_scrambled_arabic(text) and not ar_heavy:
+        return text, 100
+
+    thin_scan = page_count >= 2 and len(text) < page_count * 40
+    must_ocr = (
+        (not text or len(text) < 50)
+        or (ar_heavy and is_scrambled_arabic(text))
+        or thin_scan
+    )
 
     if must_ocr:
-        logger.info("Arabic/scrambled PDF → forcing OCR (pymupdf + tesseract)")
-        ocr_a, score_a = _ocr_pdf_pymupdf(content, arabic=ar_heavy)
-        ocr_b, score_b = _ocr_pdf_scanned(content)
-        best = _pick_best_text(ocr_a, ocr_b, text)
-        if best and not is_scrambled_arabic(best):
-            sc = score_a if best == ocr_a else (score_b if best == ocr_b else 70)
+        from app.services.cloud_ocr import ocr_document_cloud
+
+        logger.info("PDF scan/arabe → OCR cloud (qualité max)")
+        cloud_text, cloud_score = ocr_document_cloud(
+            content, filename="document.pdf", mime="application/pdf"
+        )
+        # Faire confiance à Mistral/Gemini : ne pas relancer Tesseract (8+ min)
+        if cloud_text and len(cloud_text.strip()) >= 80:
+            return cloud_text, cloud_score or 96
+
+        logger.info("OCR cloud indisponible → PyMuPDF puis Tesseract haute qualité")
+        ocr_a, score_a = "", 0
+        try:
+            ocr_a, score_a = _ocr_pdf_pymupdf_timed(content, arabic=ar_heavy)
+        except Exception as exc:
+            from app.core.timeouts import OperationTimeout
+
+            if isinstance(exc, OperationTimeout):
+                logger.warning("PyMuPDF OCR timeout — Tesseract haute qualité")
+            else:
+                logger.warning("PyMuPDF OCR error: %s", exc)
+
+        ocr_b, score_b = "", 0
+        try:
+            ocr_b, score_b = _ocr_pdf_scanned(content)
+        except Exception as exc:
+            from app.core.timeouts import OperationTimeout
+
+            if isinstance(exc, OperationTimeout):
+                logger.warning("Tesseract OCR timeout — meilleur texte obtenu")
+            else:
+                logger.warning("Tesseract OCR error: %s", exc)
+
+        best = _pick_best_text(cloud_text, ocr_a, ocr_b, text)
+        # Ne jamais préférer une couche PDF arabe inversée si un OCR existe
+        if ar_heavy and text and is_scrambled_arabic(text):
+            best = _pick_best_text(cloud_text, ocr_a, ocr_b) or best
+        if best and _ocr_quality_ok(best, min_len=40):
+            sc = cloud_score if best == cloud_text else (
+                score_a if best == ocr_a else (score_b if best == ocr_b else 70)
+            )
+            if best == text and ar_heavy and is_scrambled_arabic(text):
+                sc = min(sc or 55, 45)
             return best, sc or 75
-        if best and len(best) > len(text):
-            return best, max(score_a or 0, score_b or 0, 55)
-        if text:
-            return text, 55  # couche texte, qualité douteuse
-        return best, 40
+        if best and len(best) > len(text or ""):
+            return best, max(cloud_score or 0, score_a or 0, score_b or 0, 55)
+        # Couche native arabe brouillée sans OCR utilisable → score bas (pas 100)
+        if text and len(text) > 50:
+            if ar_heavy and is_scrambled_arabic(text):
+                return text, 40
+            return text, 55
+        if best:
+            return best, max(cloud_score or 0, score_a or 0, score_b or 0, 40)
+        return best or text, 40
 
     if len(text) > 50:
         return text, 100
+
+    from app.services.cloud_ocr import ocr_document_cloud
+
+    cloud_text, cloud_score = ocr_document_cloud(
+        content, filename="document.pdf", mime="application/pdf"
+    )
+    if cloud_text and len(cloud_text.strip()) >= 80:
+        return cloud_text, cloud_score or 96
 
     ocr_text, ocr_score = _ocr_pdf_scanned(content)
     if len(ocr_text) > 20:
@@ -429,16 +609,126 @@ def extract_from_pdf(content: bytes) -> tuple[str, int | None]:
     return text, (85 if text else 0)
 
 
+def _docx_xml_text(el: ET.Element) -> str:
+    bits: list[str] = []
+    for node in el.iter(f"{_W_NS}t"):
+        if node.text:
+            bits.append(node.text)
+        if node.tail:
+            bits.append(node.tail)
+    return "".join(bits).strip()
+
+
+def _extract_docx_footnotes(content: bytes) -> list[str]:
+    """Lit word/footnotes.xml (python-docx ignore souvent les notes)."""
+    try:
+        with zipfile.ZipFile(BytesIO(content)) as zf:
+            if "word/footnotes.xml" not in zf.namelist():
+                return []
+            root = ET.fromstring(zf.read("word/footnotes.xml"))
+    except Exception:
+        return []
+    notes: list[str] = []
+    for fn in root.findall(f"{_W_NS}footnote"):
+        fid = fn.get(f"{_W_NS}id") or fn.get("id") or ""
+        if fid in {"-1", "0"}:  # séparateurs Word
+            continue
+        text = _docx_xml_text(fn)
+        if text and len(text) > 1:
+            notes.append(f"[{fid}] {text}" if fid else text)
+    return notes
+
+
 def extract_from_docx(content: bytes) -> tuple[str, int | None]:
+    """
+    Extraction native Word (pas d'OCR).
+    Paragraphes + tableaux + notes de bas de page.
+    Pas d'inversion BIDI (le DOCX numérique est déjà dans le bon ordre).
+    """
+    from app.services.arabic_text_fix import repair_arabic_stt
+
+    # Garde anti zip-bomb (DOCX = ZIP)
+    try:
+        with zipfile.ZipFile(BytesIO(content)) as zf:
+            infos = zf.infolist()
+            if len(infos) > 4000:
+                raise ValueError("DOCX trop complexe (trop d’entrées ZIP).")
+            uncompressed = sum(max(0, int(i.file_size or 0)) for i in infos)
+            if uncompressed > 180 * 1024 * 1024:
+                raise ValueError("DOCX décompressé trop volumineux.")
+            compressed = max(1, len(content))
+            if uncompressed / compressed > 200 and uncompressed > 20 * 1024 * 1024:
+                raise ValueError("DOCX compression anormale (zip-bomb).")
+    except zipfile.BadZipFile as exc:
+        raise ValueError("Fichier Word invalide (ZIP).") from exc
+
     doc = DocxDocument(BytesIO(content))
-    text = "\n".join(p.text for p in doc.paragraphs if p.text.strip()).strip()
-    return repair_arabic_extracted_text(text), None
+    parts: list[str] = []
+
+    for p in doc.paragraphs:
+        t = (p.text or "").strip()
+        if t:
+            parts.append(t)
+
+    for table in doc.tables:
+        for row in table.rows:
+            cells = []
+            for cell in row.cells:
+                ct = (cell.text or "").strip()
+                if ct and ct not in cells:
+                    cells.append(ct)
+            if cells:
+                parts.append(" | ".join(cells))
+
+    footnotes = _extract_docx_footnotes(content)
+    if footnotes:
+        parts.append("")  # séparateur
+        parts.append("— Notes —" if arabic_char_ratio("\n".join(parts)) < 0.2 else "— الهوامش —")
+        parts.extend(footnotes)
+
+    text = "\n".join(parts).strip()
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+
+    # Lexique ة / nettoyage STT-like uniquement — JAMAIS reverse de mots
+    if text and arabic_char_ratio(text) >= 0.12:
+        text = repair_arabic_stt(text)
+
+    return text, None
+
+
+def is_native_office_document(filename: str, mime_type: str = "") -> bool:
+    name = (filename or "").lower()
+    mime = (mime_type or "").lower()
+    return name.endswith(".docx") or "wordprocessingml" in mime
 
 
 def extract_from_image(content: bytes) -> tuple[str, int | None]:
+    from app.services.cloud_ocr import ocr_document_cloud
+
+    mime = "image/png"
     try:
-        image = Image.open(BytesIO(content))
-        return _ocr_image_timed(image)
+        img = Image.open(BytesIO(content))
+        fmt = (img.format or "PNG").upper()
+        mime = {
+            "JPEG": "image/jpeg",
+            "JPG": "image/jpeg",
+            "PNG": "image/png",
+            "TIFF": "image/tiff",
+            "TIF": "image/tiff",
+        }.get(fmt, "image/png")
+    except Exception:
+        img = None
+
+    cloud_text, cloud_score = ocr_document_cloud(
+        content, filename="scan.png", mime=mime
+    )
+    if cloud_text and len(cloud_text.strip()) >= 40:
+        return cloud_text, cloud_score or 96
+
+    try:
+        image = img if img is not None else Image.open(BytesIO(content))
+        return _ocr_image_timed(image, fast=False)
     except Exception:
         return "", 35
 
@@ -447,27 +737,53 @@ def extract_from_audio(content: bytes, filename: str) -> tuple[str, int | None]:
     """
     Transcription Whisper (même moteur que la dictée).
     Retourne (texte, ocr_score=None) — pas de score OCR pour l'audio.
-    Si Whisper désactivé / échec : ("", None) ; le pipeline marque FAILED.
-    Lève OperationTimeout si Whisper dépasse WHISPER_TIMEOUT_SEC.
+    Langue : arabe d’abord (cabinet marocain), puis français si vide.
+    Post-traitement : réparation STT + polish fusḥā (comme la dictée).
     """
     from app.core.config import settings
     from app.core.timeouts import OperationTimeout
+    from app.services.arabic_text_fix import repair_arabic_stt
     from app.services.whisper_stt import transcribe_audio_bytes
 
     if not settings.WHISPER_ENABLED:
         return "", None
-    # Auto-detect FR/AR (fixtures FR + dictées cabinet) — plus fiable que forcer ar
-    text, provider = transcribe_audio_bytes(
-        content,
-        filename=filename or "audio.webm",
-        language="auto",
-    )
+
+    name = filename or "audio.webm"
+    text, provider = transcribe_audio_bytes(content, filename=name, language="ar")
+    used_lang = "ar"
+    if not (text or "").strip():
+        # Secours FR si l’audio est clairement français
+        text, provider = transcribe_audio_bytes(content, filename=name, language="fr")
+        used_lang = "fr"
+
     if provider == "whisper:timeout":
         raise OperationTimeout(
-            f"Transcription Whisper dépassée ({settings.WHISPER_TIMEOUT_SEC:.0f}s)."
+            f"Transcription dépassée ({settings.WHISPER_TIMEOUT_SEC:.0f}s)."
         )
-    # repair_arabic_stt déjà appliqué dans whisper_stt pour l'arabe
-    return (text or "").strip(), None
+
+    text = (text or "").strip()
+    if not text:
+        return "", None
+
+    # Lexique / artefacts STT
+    if used_lang == "ar" or arabic_char_ratio(text) >= 0.25:
+        text = repair_arabic_stt(text)
+        # Polish conservateur (interdit d'inventer villes / noms à partir du phonétique)
+        try:
+            from app.services.dictation import polish_dictation
+
+            sample = text if len(text) <= 6000 else text[:6000]
+            polished, prov = polish_dictation(sample, language="ar", source="audio")
+            if polished and len(polished.strip()) >= max(30, int(len(sample) * 0.35)):
+                if len(text) <= 6000:
+                    text = polished.strip()
+                else:
+                    text = (polished.strip() + "\n\n" + text[6000:]).strip()
+                logger.info("Audio AR polished via %s (%d chars)", prov, len(text))
+        except Exception as exc:
+            logger.warning("Audio AR polish skipped: %s", exc)
+
+    return text, None
 
 
 def extract_text(content: bytes, filename: str, mime_type: str) -> tuple[str, int | None]:
@@ -481,6 +797,18 @@ def extract_text(content: bytes, filename: str, mime_type: str) -> tuple[str, in
         return extract_from_pdf(content)
     if ext == "docx" or "wordprocessingml" in mime_type:
         return extract_from_docx(content)
+    if ext in {"txt", "md", "markdown"} or mime_type in {
+        "text/plain",
+        "text/txt",
+        "text/markdown",
+        "text/x-markdown",
+    }:
+        for enc in ("utf-8-sig", "utf-8", "cp1256", "latin-1"):
+            try:
+                return content.decode(enc).strip(), 100
+            except UnicodeDecodeError:
+                continue
+        return content.decode("utf-8", errors="replace").strip(), 80
     if ext in ("png", "jpg", "jpeg", "tiff", "tif") or mime_type.startswith("image/"):
         return extract_from_image(content)
     return "", None
@@ -492,20 +820,56 @@ def extract_parties(text: str) -> list[str]:
         r"(?:locataire|bailleur|vendeur|acheteur|employeur|salarié)\s*:?\s*([^\n,;]+)",
     ]
     found = []
+    noise = re.compile(
+        r"^(prise|entre|et le stagiaire|cette obligation|d['’]information)\b|"
+        r"obligation demeure|expiration du stage",
+        re.IGNORECASE,
+    )
     for pattern in patterns:
         for match in re.finditer(pattern, text, re.IGNORECASE):
-            val = match.group(1).strip()
-            if 3 < len(val) < 80 and val not in found:
+            val = re.sub(r"\s+", " ", match.group(1)).strip(" .;,-")
+            if len(val) < 4 or len(val) > 70:
+                continue
+            if noise.search(val):
+                continue
+            if val.upper().rstrip(".") in {"PRISE", "ENTRE", "ET"}:
+                continue
+            if val not in found:
                 found.append(val)
     return found[:5]
 
 
 def extract_dates(text: str) -> list[str]:
-    dates = re.findall(
+    """Dates calendaires — exclut les numéros de lois (1.74.447, 39.08, etc.)."""
+    raw = re.findall(
         r"\b\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}\b|\b\d{4}[/.-]\d{1,2}[/.-]\d{1,2}\b",
         text,
     )
-    return list(dict.fromkeys(dates))[:10]
+    out: list[str] = []
+    for d in raw:
+        # Exclure motifs type numéro de dahir / loi (1.74.447, 14.07)
+        if re.fullmatch(r"\d\.\d{2}\.\d{3}", d.replace("/", ".").replace("-", ".")):
+            continue
+        # Exclure années isolées collées en faux format
+        parts = re.split(r"[/.-]", d)
+        if len(parts) == 3:
+            try:
+                a, b, c = (int(x) for x in parts)
+            except ValueError:
+                continue
+            # jour/mois/année ou année/mois/jour plausibles
+            if max(a, b) > 31 and c < 1000:
+                continue
+            year = c if c > 31 else (a if a > 31 else None)
+            if year is not None and (year < 1900 or year > 2100) and year > 99:
+                continue
+            if year is not None and year < 100:
+                year = 1900 + year if year >= 50 else 2000 + year
+            if year is not None and not (1950 <= year <= 2035):
+                continue
+        if d not in out:
+            out.append(d)
+    return out[:10]
 
 
 def extract_amounts(text: str) -> list[str]:
@@ -517,16 +881,57 @@ def extract_amounts(text: str) -> list[str]:
     return list(dict.fromkeys(amounts))[:10]
 
 
+def _looks_like_broken_arabic_snippet(snippet: str) -> bool:
+    """Rejette les bouts BIDI inversés / mots coupés (بنود المخاطر pourries)."""
+    s = (snippet or "").strip()
+    if len(s) < 25:
+        return True
+    if "$^{" in s or "\\" in s or s.startswith("#"):
+        return True
+    # Questions / titres de plan ≠ clauses à risque
+    if "؟" in s or s.endswith("?") or "المبحث" in s or "الفقرة" in s:
+        return True
+    ar = sum(1 for c in s if "\u0600" <= c <= "\u06FF")
+    if ar / max(1, len(s)) < 0.35:
+        return False
+    words = s.split()
+    if not words:
+        return True
+    tiny = sum(1 for w in words if len(re.sub(r"[^\u0600-\u06FF]", "", w)) <= 1)
+    if tiny / len(words) >= 0.15:
+        return True
+    # Mot coupé en fin (المشتر، مبا، ق…)
+    last_ar = re.sub(r"[^\u0600-\u06FF]", "", words[-1])
+    if 1 <= len(last_ar) <= 3 and last_ar not in {"في", "من", "إلى", "على", "عن", "أو", "لا", "ما", "قد", "كل"}:
+        # fin tronquée fréquente sur fragments PDF
+        if not s.endswith((".", "۔", ":", "؛")):
+            return True
+    if len(words[0]) <= 2 and words[0][:1] in "ةهيوكفبلمن":
+        return True
+    orig = _line_reading_score(words)
+    rev = _line_reading_score(list(reversed(words)))
+    if rev > orig + 3:
+        return True
+    # Indices forts d'arabe inversé (finale de phrase au début)
+    if re.search(r"^(ومنعاً|صيانةً|برمتها|به الإخلال|على ويترتب)", s):
+        return True
+    if "به الإخلال على ويترتب" in s or "بطلان به الإخلال" in s:
+        return True
+    return False
+
+
 def extract_risk_clauses(text: str) -> list[str]:
     keywords = (
         r"résiliation|résilier|pénalité|amende|responsabilité|garantie|caution|"
         r"indemnité|clause\s+pénale|force\s+majeure|exclusivité|"
-        r"فسخ|غرامة|مسؤولية|ضمان|تعويض"
+        r"فسخ|غرامة|مسؤولية|ضمان|تعويض|بطلان|حجز|مزاد"
     )
     found = []
     for m in re.finditer(rf"([^\n.!?…]{{0,80}}(?:{keywords})[^\n.!?…]{{0,80}})", text, re.IGNORECASE):
-        snippet = re.sub(r"\s+", " ", m.group(1)).strip()
-        if 20 < len(snippet) < 200 and snippet not in found:
+        snippet = re.sub(r"\s+", " ", m.group(1)).strip(" ،,.-")
+        if _looks_like_broken_arabic_snippet(snippet):
+            continue
+        if 25 < len(snippet) < 180 and snippet not in found:
             found.append(snippet)
     return found[:8]
 

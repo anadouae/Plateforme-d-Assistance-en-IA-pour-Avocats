@@ -1,14 +1,14 @@
 /* Glassmorphism — écran مرافعة (point de départ) */
 
 :root {
-  --ink: #0e1526;
+  --ink: #0a1228;
   --ink-soft: #3b4459;
-  --gold: #c7973f;
-  --gold-bright: #e8c97c;
+  --gold: #ff6a00;
+  --gold-bright: #ffb07a;
   --wax: #7e2a2a;
   --wax-bright: #c4534e;
   --teal: #1f6f54;
-  --charcoal: #0e1526;
+  --charcoal: #0a1228;
   --glass-bg: rgba(255, 255, 255, 0.72);
   --glass-border: rgba(14, 21, 38, 0.08);
   --glass-shadow: rgba(14, 21, 38, 0.18);

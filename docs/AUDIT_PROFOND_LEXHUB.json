@@ -1,0 +1,51 @@
+{
+  "when": "2026-08-24T23:12:27.509146+00:00",
+  "host": "51.38.78.23",
+  "checks": {
+    "containers": {
+      "sanad-backend-1": "Up 29 minutes",
+      "sanad-celery-worker-1": "Up 4 hours",
+      "sanad-frontend-1": "Up 3 hours",
+      "sanad-minio-1": "Up 6 days (healthy)",
+      "sanad-postgres-1": "Up 6 days (healthy)",
+      "sanad-redis-1": "Up 6 days (healthy)"
+    },
+    "config": {
+      "ENCRYPTION_KEY": "True",
+      "GROQ_API_KEY": "True",
+      "MISTRAL_API_KEY": "True",
+      "GEMINI_API_KEY": "True",
+      "KIMI_API_KEY": "True",
+      "DEEPSEEK_API_KEY": "True",
+      "WHISPER_ENABLED": "True",
+      "DICTATION_STT_PREFER_GROQ": "True",
+      "DICTATION_LOCAL_ONLY": "False",
+      "DICTATION_POLISH_USE_LLM": "False",
+      "OCR_CLOUD_ENABLED": "True",
+      "LLM_USE_FREE_ROUTER": "True",
+      "LLM_CHAT_USE_OLLAMA": "False",
+      "GROQ_MODEL": "llama-3.1-8b-instant",
+      "GROQ_WHISPER_MODEL": "whisper-large-v3",
+      "GEMINI_MODEL": "gemini-2.0-flash",
+      "MISTRAL_MODEL": "mistral-medium-latest",
+      "WHISPER_MODEL": "small"
+    },
+    "encryption_sync": "same True\nb_len 44 w_len 44\nb_prefix hCeR w_prefix hCeR",
+    "target_pdf": "warning: The `fitz` API is deprecated and will be removed in future. Use `import pymupdf` instead.\ndoc_status indexed\nocr_score 92\nchars 60308\nmagic b'%PDF-1.7'\nis_pdf True\nis_fernet_raw False\npages 37",
+    "llm_ping": "ok True\nprovider mistral\nreply OK\nms 285",
+    "synthesis": "warning: The `fitz` API is deprecated and will be removed in future. Use `import pymupdf` instead.\nsummary_len 2320\nis_fallback False\nrisks 8 broken_risks 0\ndates ['4/1/2018']\nms 52371\nhead # **تلخيص ذكي: البيوعات العقارية القضائية**  ## **المحور الرئيسي** تناول البحث **البيوعات العقارية القضائية** كآلية تنفي",
+    "stt": "prefer_groq True\nlocal_only False\ngroq_key True\nwhisper_enabled True\nwhisper_model small\ngroq_whisper_model whisper-large-v3\nstt_provider none\nstt_text_len 0\nstt_ok True",
+    "https": "200",
+    "recent_errors": "backend-1  | INFO:     172.18.0.1:34296 - \"GET /api/team/requests HTTP/1.1\" 401 Unauthorized\nbackend-1  | INFO:     172.18.0.1:34296 - \"POST /api/auth/refresh HTTP/1.1\" 200 OK\nbackend-1  | INFO:     172.18.0.1:34296 - \"GET /api/auth/me HTTP/1.1\" 200 OK\n---"
+  },
+  "verdict": {
+    "stack_up": true,
+    "encryption_ok": true,
+    "pdf_decrypt_ok": true,
+    "llm_ok": true,
+    "synth_ok": true,
+    "stt_pipeline_reachable": true,
+    "site_200": true
+  },
+  "scorecard": "7/7"
+}

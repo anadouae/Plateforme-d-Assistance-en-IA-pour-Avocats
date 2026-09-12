@@ -1,6 +1,6 @@
 {
-  "name": "سند — Sanad",
-  "short_name": "سند",
+  "name": "LexHub",
+  "short_name": "LexHub",
   "description": "LegalTech pour cabinets marocains — dictée, documents, dossiers.",
   "start_url": "/dashboard",
   "scope": "/",
@@ -8,17 +8,17 @@
   "orientation": "any",
   "background_color": "#F7F5F0",
   "theme_color": "#0E1526",
-  "lang": "ar",
-  "dir": "rtl",
+  "lang": "fr",
+  "dir": "ltr",
   "icons": [
     {
-      "src": "/logo-sanad-cube.png",
+      "src": "/logo-lexhub-cube.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/logo-sanad-cube.png",
+      "src": "/logo-lexhub-cube.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"

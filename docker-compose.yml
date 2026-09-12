@@ -2,20 +2,19 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: sanad
-      POSTGRES_PASSWORD: sanad_secret
-      POSTGRES_DB: sanad
+      POSTGRES_USER: ${POSTGRES_USER:-lexhub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lexhub_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-lexhub}
     ports:
       # Port hôte hors plages Hyper-V (55383–55482 exclus sur cette machine)
       - "15432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U sanad"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lexhub}"]
       interval: 5s
       timeout: 5s
       retries: 5
-
   redis:
     image: redis:7-alpine
     ports:
@@ -29,8 +28,8 @@ services:
     image: minio/minio:latest
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: sanad_minio
-      MINIO_ROOT_PASSWORD: sanad_minio_secret
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-lexhub_minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-lexhub_minio_secret}
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -79,8 +78,8 @@ services:
         ollama pull mistral
         echo "Pulling base model llama3.1:8b..."
         ollama pull llama3.1:8b
-        echo "Creating sanad-legal..."
-        cd /models && ollama create sanad-legal -f Modelfile
+        echo "Creating lexhub-legal..."
+        cd /models && ollama create lexhub-legal -f Modelfile
         echo "models ready"
         ollama list
     environment:
@@ -93,7 +92,7 @@ services:
       - "8001:8000"
     environment:
       # Postgres Docker = défaut VPS/dev (ignore Neon du .env hôte)
-      DATABASE_URL: postgresql://sanad:sanad_secret@postgres:5432/sanad
+      DATABASE_URL: postgresql://${POSTGRES_USER:-lexhub}:${POSTGRES_PASSWORD:-lexhub_secret}@postgres:5432/${POSTGRES_DB:-lexhub}
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
@@ -103,13 +102,13 @@ services:
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-hCeRRvr67dcQN5XmoTWEJ_ccj889oCLztQnEP0xRqok=}
       USE_MINIO: "true"
       MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: sanad_minio
-      MINIO_SECRET_KEY: sanad_minio_secret
-      MINIO_BUCKET: sanad-documents
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-lexhub_minio}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-lexhub_minio_secret}
+      MINIO_BUCKET: ${MINIO_BUCKET:-lexhub-documents}
       MINIO_SECURE: "false"
       SMTP_HOST: mailhog
       SMTP_PORT: 1025
-      SMTP_FROM: Sanad <noreply@sanad.ma>
+      SMTP_FROM: LexHub <noreply@lexhub.space>
       CHROMA_PERSIST_DIR: /app/data/chromadb
       EMBEDDING_MODEL: BAAI/bge-m3
       SEED_DEMO_DATA: ${SEED_DEMO_DATA:-true}
@@ -137,18 +136,25 @@ services:
       TOGETHER_MODEL: ${TOGETHER_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
       SAMBANOVA_API_KEY: ${SAMBANOVA_API_KEY:-}
       SAMBANOVA_MODEL: ${SAMBANOVA_MODEL:-Meta-Llama-3.3-70B-Instruct}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o}
+      LLM_FORCE_OPENAI: ${LLM_FORCE_OPENAI:-true}
+      LLM_OPENAI_STRICT: ${LLM_OPENAI_STRICT:-false}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-sanad-legal}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-lexhub-legal}
       OLLAMA_SYNTHESIS_MODEL: ${OLLAMA_SYNTHESIS_MODEL:-mistral}
       LLM_CHAT_USE_OLLAMA: ${LLM_CHAT_USE_OLLAMA:-false}
-      LLM_USE_GROQ_FOR_WEB: ${LLM_USE_GROQ_FOR_WEB:-true}
-      LLM_USE_GROQ_FOR_CHAT: ${LLM_USE_GROQ_FOR_CHAT:-true}
+      LLM_USE_GROQ_FOR_WEB: ${LLM_USE_GROQ_FOR_WEB:-false}
+      LLM_USE_GROQ_FOR_CHAT: ${LLM_USE_GROQ_FOR_CHAT:-false}
       OLLAMA_NUM_PREDICT: ${OLLAMA_NUM_PREDICT:-512}
       OLLAMA_CHAT_TIMEOUT: ${OLLAMA_CHAT_TIMEOUT:-300}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-      # Cloudflare Turnstile (CAPTCHA login) — laisser vide en local
-      TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
-      TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
+      # Cloudflare Turnstile — clés de test (toujours pass) pour démo locale
+      # Prod : définir TURNSTILE_SITE_KEY / TURNSTILE_SECRET_KEY réels dans .env
+      TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-1x00000000000000000000AA}
+      TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-1x0000000000000000000000000000000AA}
+      CAPTCHA_AFTER_FAILURES: ${CAPTCHA_AFTER_FAILURES:-3}
       HF_HOME: /root/.cache/huggingface
     depends_on:
       postgres:
@@ -169,15 +175,25 @@ services:
   celery-worker:
     build: ./backend
     environment:
-      DATABASE_URL: postgresql://sanad:sanad_secret@postgres:5432/sanad
+      DATABASE_URL: postgresql://${POSTGRES_USER:-lexhub}:${POSTGRES_PASSWORD:-lexhub_secret}@postgres:5432/${POSTGRES_DB:-lexhub}
+      REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-hCeRRvr67dcQN5XmoTWEJ_ccj889oCLztQnEP0xRqok=}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      SMTP_HOST: ${SMTP_HOST:-mailhog}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-LexHub <noreply@lexhub.space>}
+      SMTP_TLS: ${SMTP_TLS:-false}
       USE_MINIO: "true"
       MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: sanad_minio
-      MINIO_SECRET_KEY: sanad_minio_secret
-      MINIO_BUCKET: sanad-documents
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-lexhub_minio}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-lexhub_minio_secret}
+      MINIO_BUCKET: ${MINIO_BUCKET:-lexhub-documents}
       CHROMA_PERSIST_DIR: /app/data/chromadb
       EMBEDDING_MODEL: BAAI/bge-m3
       OCR_QUALITY_THRESHOLD: "70"
@@ -205,12 +221,17 @@ services:
       TOGETHER_MODEL: ${TOGETHER_MODEL:-meta-llama/Llama-3.3-70B-Instruct-Turbo}
       SAMBANOVA_API_KEY: ${SAMBANOVA_API_KEY:-}
       SAMBANOVA_MODEL: ${SAMBANOVA_MODEL:-Meta-Llama-3.3-70B-Instruct}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o}
+      LLM_FORCE_OPENAI: ${LLM_FORCE_OPENAI:-true}
+      LLM_OPENAI_STRICT: ${LLM_OPENAI_STRICT:-false}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://ollama:11434}
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-sanad-legal}
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-lexhub-legal}
       OLLAMA_SYNTHESIS_MODEL: ${OLLAMA_SYNTHESIS_MODEL:-mistral}
       LLM_CHAT_USE_OLLAMA: ${LLM_CHAT_USE_OLLAMA:-false}
-      LLM_USE_GROQ_FOR_WEB: ${LLM_USE_GROQ_FOR_WEB:-true}
-      LLM_USE_GROQ_FOR_CHAT: ${LLM_USE_GROQ_FOR_CHAT:-true}
+      LLM_USE_GROQ_FOR_WEB: ${LLM_USE_GROQ_FOR_WEB:-false}
+      LLM_USE_GROQ_FOR_CHAT: ${LLM_USE_GROQ_FOR_CHAT:-false}
       OLLAMA_NUM_PREDICT: ${OLLAMA_NUM_PREDICT:-512}
       OLLAMA_CHAT_TIMEOUT: ${OLLAMA_CHAT_TIMEOUT:-300}
       HF_HOME: /root/.cache/huggingface
@@ -225,6 +246,31 @@ services:
       - chroma_data:/app/data/chromadb
       - hf_cache:/root/.cache/huggingface
     command: celery -A app.services.celery_app worker --loglevel=info --concurrency=2
+
+  celery-beat:
+    image: sanad-celery-worker
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-lexhub}:${POSTGRES_PASSWORD:-lexhub_secret}@postgres:5432/${POSTGRES_DB:-lexhub}
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-hCeRRvr67dcQN5XmoTWEJ_ccj889oCLztQnEP0xRqok=}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      SMTP_TLS: ${SMTP_TLS:-true}
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      - postgres
+      - redis
+      - backend
+    volumes:
+      - ./backend:/app
+    command: celery -A app.services.celery_app beat --loglevel=info
 
   frontend:
     build: ./frontend

@@ -1,0 +1,161 @@
+\appendix
+
+\chapter{Structure du dépôt logiciel}
+
+\begin{verbatim}
+frontend/              interface LexHub (Next.js)
+backend/               API, pipelines, export, auth, équipe
+backend/tests/         tests pipeline dictée / forme
+docs/rapport-pfa/      rapport LaTeX PFA
+docs/rapport-pfa/diagrams/   sources PlantUML
+deploy/                Caddy, compose production
+.github/workflows/     publication d'images (base CI)
+docker-compose*.yml    stack locale / production
+\end{verbatim}
+
+\chapter{Cartographie des diagrammes}
+\label{ch:diagrammes}
+
+Un rapport d'ingénieur complet pour LexHub doit couvrir les vues UML suivantes. Le tableau indique ce qui est \textbf{présent dans ce mémoire} et ce qui peut être exporté depuis PlantUML / Visual Paradigm.
+
+\begin{table}[H]
+\centering
+\caption{Diagrammes attendus --- couverture du rapport}
+\label{tab:diagrammes}
+\footnotesize
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{@{}p{4.4cm}p{2.4cm}p{5.8cm}@{}}
+\toprule
+\textbf{Diagramme} & \textbf{Statut} & \textbf{Où / fichier} \\
+\midrule
+Cas d'utilisation & Présent & Fig.~\ref{fig:uc} ; \texttt{diagrams/uc-lexhub.puml} \\
+Séquence dictée & Présent & Fig.~\ref{fig:seq-stt} ; \texttt{seq-dictation.puml} \\
+Séquence validation / assignation & Présent & Fig.~\ref{fig:seq-val} ; \texttt{seq-assign.puml} \\
+Séquence inscription OTP & Présent & Fig.~\ref{fig:seq-otp} \\
+Classes (extrait) & Présent & Fig.~\ref{fig:classes} ; \texttt{class-lexhub.puml} \\
+Activité plaidoirie & Présent & Fig.~\ref{fig:activite} \\
+Déploiement production & Présent & Fig.~\ref{fig:deploy} \\
+Architecture logique & Présent & Fig.~\ref{fig:archi} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Pour Visual Paradigm : importer les fichiers \texttt{.puml} du dossier \texttt{diagrams/}, ou redessiner à l'identique les figures TikZ du chapitre conception.
+
+\chapter{Matrice de complétude PFA}
+\label{ch:completude}
+
+\begin{table}[H]
+\centering
+\caption{Livrable PFA --- ce qui est couvert à 100\,\% du sujet}
+\label{tab:completude}
+\small
+\renewcommand{\arraystretch}{1.22}
+\begin{tabular}{@{}p{5.5cm}p{2.2cm}p{5.0cm}@{}}
+\toprule
+\textbf{Exigence du sujet / encadrants} & \textbf{Couvert} & \textbf{Preuve} \\
+\midrule
+Voix $\rightarrow$ texte plaidoirie & Oui & Atelier 5 étapes, prod \\
+Correction sans invention & Oui & Forme locale + contradictions \\
+Export Word / PDF officiel & Oui & Backend export \\
+Espace cabinet multi-tenant & Oui & \texttt{cabinet\_id}, rôles \\
+Collaboration avocat / assistant & Oui & Validation, assignation, pin \\
+Dossiers / domaine / planning & Oui & Modules déployés \\
+Benchmarking marché & Oui & Ch.~\ref{ch:etat-art} \\
+UML (UC, séq., classes, activité, déploiement) & Oui & Ch.~\ref{ch:conception} \\
+Production HTTPS & Oui & lexhub.space \\
+CI/CD (GitHub Actions $\rightarrow$ GHCR) & Oui & \texttt{publish-images.yml} \\
+Facturation SaaS / signature eID & Non (évolution) & Perspectives produit \\
+STT temps réel + WER mesuré & Partiel & Perspectives performance \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\chapter{Captures --- version déployée}
+\label{ch:captures}
+
+Les figures ci-dessous correspondent aux écrans de la \textbf{version actuelle} de LexHub (production \url{https://lexhub.space}).
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.62\textwidth]{01-accueil.png}
+\caption{Accueil public}
+\label{fig:accueil}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.88\textwidth]{02-connexion.png}
+\caption{Connexion}
+\label{fig:login}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.88\textwidth]{10-tableau-de-bord.png}
+\caption{Tableau de bord}
+\label{fig:dashboard}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.88\textwidth]{14b-plaidoirie-workspace.png}
+\caption{Atelier plaidoirie --- les cinq étapes guidées (version déployée)}
+\label{fig:plaidoirie}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.88\textwidth]{14c-transcription-fusha.png}
+\caption{Étape Transcription : texte brut, correction de forme, marques orange, contradictions}
+\label{fig:transcription}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.88\textwidth]{11-dossiers.png}
+\caption{Dossiers}
+\label{fig:cases}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.88\textwidth]{13-documents.png}
+\caption{Documents}
+\label{fig:documents}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.88\textwidth]{15-planning.png}
+\caption{Planning}
+\label{fig:agenda}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.81\textwidth]{16-equipe.png}
+\caption{Équipe}
+\label{fig:equipe}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.65\textwidth]{17-parametres.png}
+\caption{Paramètres}
+\label{fig:settings}
+\end{figure}
+
+\begin{thebibliography}{99}
+\bibitem{loi2808} Loi n$^{\circ}$ 28-08 portant organisation de la profession d'avocat (Maroc).
+\bibitem{cpc} Dahir 1-74-447 --- Code de procédure civile.
+\bibitem{webvoice} WEBVOICE --- \url{https://webvoice.pro}.
+\bibitem{lexhub} LexHub --- \url{https://lexhub.space}.
+\bibitem{ensa} ENSA Tétouan --- \url{https://ensa-tetouan.ac.ma}.
+\bibitem{uae} Université Abdelmalek Essaâdi --- \url{https://www.uae.ma}.
+\bibitem{github} Dépôt projet --- \url{https://github.com/anadouae/Plateforme-d-Assistance-en-IA-pour-Avocats}.
+\bibitem{smartavocat} SmartAvocat --- \url{https://smartavocat.ma}.
+\bibitem{avocato} Avocato --- \url{https://avocato.ma}.
+\bibitem{next} Documentation Next.js --- \url{https://nextjs.org/docs}.
+\bibitem{fastapi} Documentation FastAPI --- \url{https://fastapi.tiangolo.com}.
+\end{thebibliography}

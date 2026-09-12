@@ -6,12 +6,28 @@ import { api } from "@/lib/api";
 /** Whisper : arabe ou français. */
 export type WhisperLang = "ar" | "fr";
 
-/** Segment court : texte Whisper progressif (~3 s). Le live instantané vient de Chrome. */
-const SEGMENT_MS = 3_000;
-const TRANSCRIBE_TIMEOUT_MS = 600_000;
+const FINAL_TRANSCRIBE_TIMEOUT_MS = 1_800_000;
+const FILE_TRANSCRIBE_TIMEOUT_MS = 1_800_000;
+const RECORDER_STOP_TIMEOUT_MS = 3_500;
+
+/** Nom fichier cohérent avec le MIME (iOS = audio/mp4 → .m4a). */
+function blobUploadName(mime: string): string {
+  const m = (mime || "").toLowerCase();
+  if (m.includes("mp4") || m.includes("aac") || m.includes("m4a")) return "dictation.m4a";
+  if (m.includes("mpeg") || m.includes("mp3")) return "dictation.mp3";
+  if (m.includes("ogg")) return "dictation.ogg";
+  if (m.includes("wav")) return "dictation.wav";
+  return "dictation.webm";
+}
+
+function isIosDevice(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return /iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
 
 /**
- * Dictée Whisper (AR/FR) : micro + segments périodiques + fichier audio.
+ * Dictée : MediaRecorder → Whisper à l’arrêt.
+ * Capture micro renforcée (gain, bitrate) pour éviter silence → hallucinations.
  */
 export function useWhisperDictation(initialLang: WhisperLang = "ar") {
   const [recording, setRecording] = useState(false);
@@ -21,6 +37,9 @@ export function useWhisperDictation(initialLang: WhisperLang = "ar") {
   const [language, setLanguageState] = useState<WhisperLang>(initialLang);
   const [analyser, setAnalyser] = useState<AnalyserNode | null>(null);
   const [livePartial, setLivePartial] = useState("");
+  /** 0–100 : niveau micro moyen pendant l’enregistrement */
+  const [micLevel, setMicLevel] = useState(0);
+  const [micTooQuiet, setMicTooQuiet] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -28,21 +47,25 @@ export function useWhisperDictation(initialLang: WhisperLang = "ar") {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const mimeRef = useRef("audio/webm");
   const languageRef = useRef<WhisperLang>(initialLang);
-  const segmentTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const onSegmentTextRef = useRef<((text: string) => void) | null>(null);
   const recordingRef = useRef(false);
-  const livePartialRef = useRef("");
+  const stopGenRef = useRef(0);
+  const levelRafRef = useRef(0);
+  const peakLevelRef = useRef(0);
 
   const setLanguage = useCallback((lang: WhisperLang) => {
     languageRef.current = lang;
     setLanguageState(lang);
   }, []);
 
-  const stopTracks = () => {
-    if (segmentTimerRef.current) {
-      clearInterval(segmentTimerRef.current);
-      segmentTimerRef.current = null;
+  const stopLevelMonitor = () => {
+    if (levelRafRef.current) {
+      cancelAnimationFrame(levelRafRef.current);
+      levelRafRef.current = 0;
     }
+  };
+
+  const stopTracks = () => {
+    stopLevelMonitor();
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     try {
@@ -52,249 +75,285 @@ export function useWhisperDictation(initialLang: WhisperLang = "ar") {
     }
     audioCtxRef.current = null;
     setAnalyser(null);
+    setMicLevel(0);
   };
 
   const pickMime = () => {
     if (typeof MediaRecorder === "undefined") return "";
+    const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
+    const ios = /iPhone|iPad|iPod/i.test(ua);
+    if (ios) {
+      if (MediaRecorder.isTypeSupported("audio/mp4")) return "audio/mp4";
+      if (MediaRecorder.isTypeSupported("audio/aac")) return "audio/aac";
+    }
     if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
       return "audio/webm;codecs=opus";
     }
     if (MediaRecorder.isTypeSupported("audio/webm")) return "audio/webm";
-    // iOS Safari
     if (MediaRecorder.isTypeSupported("audio/mp4")) return "audio/mp4";
     if (MediaRecorder.isTypeSupported("audio/aac")) return "audio/aac";
     return "";
   };
 
-  const transcribeBlob = useCallback(async (blob: Blob, name: string) => {
-    const file = new File([blob], name, { type: blob.type || mimeRef.current });
-    return api.transcribeDictation(file, languageRef.current, TRANSCRIBE_TIMEOUT_MS);
-  }, []);
+  const transcribeBlob = useCallback(
+    async (blob: Blob, name?: string, timeoutMs = FINAL_TRANSCRIBE_TIMEOUT_MS) => {
+      const mime = blob.type || mimeRef.current;
+      const file = new File([blob], name || blobUploadName(mime), { type: mime });
+      return api.transcribeDictation(file, languageRef.current, timeoutMs);
+    },
+    [],
+  );
 
-  const flushSegment = useCallback(async () => {
-    const recorder = mediaRecorderRef.current;
-    const stream = streamRef.current;
-    if (!recorder || !stream || recorder.state !== "recording") return;
-
-    const blob: Blob = await new Promise((resolve) => {
-      const prev = chunksRef.current;
+  const startRecording = useCallback(async (_onSegmentText?: (text: string) => void) => {
+    setError(null);
+    setProvider("");
+    setLivePartial("");
+    setMicTooQuiet(false);
+    peakLevelRef.current = 0;
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError("Micro non disponible sur cet appareil.");
+      return false;
+    }
+    try {
+      let stream: MediaStream;
+      try {
+        // echoCancellation OFF : coupe souvent les consonnes arabes
+        // noiseSuppression OFF : mange les mots faibles
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: true,
+            channelCount: 1,
+            sampleRate: 48000,
+          },
+        });
+      } catch {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
+      streamRef.current = stream;
       chunksRef.current = [];
+
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const ctx = new AudioCtx({ sampleRate: 48000 });
+      audioCtxRef.current = ctx;
+      try {
+        if (ctx.state === "suspended") await ctx.resume();
+      } catch {
+        /* ignore */
+      }
+      const source = ctx.createMediaStreamSource(stream);
+      // Analyseur SEULEMENT pour le niveau — on enregistre le micro BRUT (plus fiable)
+      const anal = ctx.createAnalyser();
+      anal.fftSize = 512;
+      anal.smoothingTimeConstant = 0.65;
+      source.connect(anal);
+      setAnalyser(anal);
+
+      // Moniteur niveau micro → alerte « trop faible »
+      const timeData = new Uint8Array(anal.fftSize);
+      const tickLevel = () => {
+        anal.getByteTimeDomainData(timeData);
+        let sum = 0;
+        for (let i = 0; i < timeData.length; i++) {
+          const v = (timeData[i] - 128) / 128;
+          sum += v * v;
+        }
+        const rms = Math.sqrt(sum / timeData.length);
+        const level = Math.min(100, Math.round(rms * 350));
+        peakLevelRef.current = Math.max(peakLevelRef.current, level);
+        setMicLevel(level);
+        setMicTooQuiet(peakLevelRef.current < 8 && recordingRef.current);
+        levelRafRef.current = requestAnimationFrame(tickLevel);
+      };
+      levelRafRef.current = requestAnimationFrame(tickLevel);
+
+      const mime = pickMime();
+      mimeRef.current = mime || "audio/webm";
+      // Micro brut → Whisper/Groq (MediaStreamDestination déformait l'arabe)
+      const recorder = mime
+        ? new MediaRecorder(stream, {
+            mimeType: mime,
+            audioBitsPerSecond: 256_000,
+          })
+        : new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
-      recorder.onstop = () => {
-        resolve(new Blob(prev, { type: recorder.mimeType || mimeRef.current }));
-      };
-      try {
-        recorder.requestData();
-      } catch {
-        /* ignore */
-      }
-      try {
-        recorder.stop();
-      } catch {
-        resolve(new Blob());
-      }
-    });
-
-    if (recordingRef.current && stream.active) {
-      const mime = mimeRef.current;
-      const next = mime
-        ? new MediaRecorder(stream, { mimeType: mime })
-        : new MediaRecorder(stream);
-      mediaRecorderRef.current = next;
-      chunksRef.current = [];
-      next.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
-      };
-      next.start(250);
-    }
-
-    if (!blob.size || blob.size < 2000) return;
-
-    // Ne pas basculer `transcribing` ici : ça bloquait le bouton « Arrêter »
-    // et donnait l’impression que rien n’était écrit pendant la dictée.
-    try {
-      const res = await transcribeBlob(blob, "segment.webm");
-      const text = res.text?.trim() || "";
-      if (text && recordingRef.current) {
-        setProvider(res.provider);
-        livePartialRef.current = livePartialRef.current
-          ? `${livePartialRef.current} ${text}`
-          : text;
-        setLivePartial(livePartialRef.current);
-        onSegmentTextRef.current?.(text);
-      }
+      // iOS Safari : timeslice court → chunks vides ; 1 s est plus fiable.
+      recorder.start(isIosDevice() ? 1000 : 250);
+      recordingRef.current = true;
+      setRecording(true);
+      return true;
     } catch {
-      /* segment failed — continue recording */
-    }
-  }, [transcribeBlob]);
-
-  const startRecording = useCallback(
-    async (onSegmentText?: (text: string) => void) => {
-      setError(null);
-      setProvider("");
-      livePartialRef.current = "";
-      setLivePartial("");
-      onSegmentTextRef.current = onSegmentText || null;
-      if (!navigator.mediaDevices?.getUserMedia) {
-        setError("Micro non disponible sur cet appareil.");
-        return false;
-      }
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            channelCount: 1,
-          },
-        });
-        streamRef.current = stream;
-        chunksRef.current = [];
-
-        const AudioCtx =
-          window.AudioContext ||
-          (window as unknown as { webkitAudioContext: typeof AudioContext })
-            .webkitAudioContext;
-        const ctx = new AudioCtx();
-        audioCtxRef.current = ctx;
-        const source = ctx.createMediaStreamSource(stream);
-        const anal = ctx.createAnalyser();
-        anal.fftSize = 256;
-        anal.smoothingTimeConstant = 0.75;
-        source.connect(anal);
-        setAnalyser(anal);
-
-        const mime = pickMime();
-        mimeRef.current = mime || "audio/webm";
-        const recorder = mime
-          ? new MediaRecorder(stream, { mimeType: mime })
-          : new MediaRecorder(stream);
-        mediaRecorderRef.current = recorder;
-        recorder.ondataavailable = (e) => {
-          if (e.data.size > 0) chunksRef.current.push(e.data);
-        };
-        recorder.start(250);
-        recordingRef.current = true;
-        setRecording(true);
-
-        segmentTimerRef.current = setInterval(() => {
-          void flushSegment();
-        }, SEGMENT_MS);
-
-        return true;
-      } catch {
-        setError("Micro bloqué — autorisez l'accès (navigateur / réglages téléphone).");
-        stopTracks();
-        return false;
-      }
-    },
-    [flushSegment],
-  );
-
-  const stopRecordingAndTranscribe = useCallback(async (): Promise<{
-    text: string;
-    provider: string;
-  } | null> => {
-    if (segmentTimerRef.current) {
-      clearInterval(segmentTimerRef.current);
-      segmentTimerRef.current = null;
-    }
-    recordingRef.current = false;
-
-    const recorder = mediaRecorderRef.current;
-    if (!recorder || recorder.state === "inactive") {
-      setRecording(false);
+      setError("Micro bloqué — autorisez l'accès (navigateur / réglages téléphone).");
       stopTracks();
-      const already = livePartialRef.current.trim();
-      if (already) return { text: already, provider: provider || "whisper" };
-      return null;
+      return false;
     }
+  }, []);
 
-    setRecording(false);
-    setTranscribing(true);
-    setError(null);
-
-    const blob: Blob = await new Promise((resolve) => {
-      recorder.onstop = () => {
-        resolve(new Blob(chunksRef.current, { type: recorder.mimeType || mimeRef.current }));
-      };
-      try {
-        recorder.requestData();
-      } catch {
-        /* ignore */
-      }
-      try {
-        recorder.stop();
-      } catch {
-        resolve(new Blob());
-      }
-    });
-    stopTracks();
-    mediaRecorderRef.current = null;
-
-    const prior = livePartialRef.current.trim();
-    if ((!blob.size || blob.size < 1200) && prior) {
-      setTranscribing(false);
-      return { text: prior, provider: provider || "whisper" };
-    }
-    if (!blob.size || blob.size < 1200) {
-      setTranscribing(false);
-      setError("Aucun audio capturé.");
-      return null;
-    }
-
+  const pauseRecording = useCallback(() => {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state !== "recording") return;
     try {
-      const res = await transcribeBlob(blob, "dictation.webm");
-      setProvider(res.provider);
-      setTranscribing(false);
-      const text = res.text?.trim() || "";
-      const merged = [prior, text].filter(Boolean).join(" ").trim();
-      livePartialRef.current = merged;
-      setLivePartial(merged);
-      if (!merged) {
-        setError("Aucune parole détectée.");
+      recorder.pause();
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const resumeRecording = useCallback(() => {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state !== "paused") return;
+    try {
+      recorder.resume();
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const stopRecordingAndTranscribe = useCallback(
+    async (_opts?: { skipFinalTranscribe?: boolean }): Promise<{
+      text: string;
+      provider: string;
+    } | null> => {
+      const skipFinal = !!_opts?.skipFinalTranscribe;
+      const gen = ++stopGenRef.current;
+      recordingRef.current = false;
+
+      const recorder = mediaRecorderRef.current;
+      if (!recorder || recorder.state === "inactive") {
+        setRecording(false);
+        stopTracks();
         return null;
       }
-      return { text: merged, provider: res.provider };
-    } catch (e) {
-      setTranscribing(false);
-      if (prior) return { text: prior, provider: provider || "whisper" };
-      setError(e instanceof Error ? e.message : "Transcription indisponible.");
-      return null;
-    }
-  }, [provider, transcribeBlob]);
 
-  const transcribeFile = useCallback(
-    async (file: File): Promise<{ text: string; provider: string } | null> => {
-      setError(null);
-      setTranscribing(true);
-      livePartialRef.current = "";
-      setLivePartial("");
-      try {
-        const res = await api.transcribeDictation(
-          file,
-          languageRef.current,
-          TRANSCRIBE_TIMEOUT_MS,
-        );
-        setProvider(res.provider);
+      setRecording(false);
+      setMicTooQuiet(false);
+
+      if (skipFinal) {
+        try {
+          if (recorder.state !== "inactive") recorder.stop();
+        } catch {
+          /* ignore */
+        }
+        stopTracks();
+        mediaRecorderRef.current = null;
         setTranscribing(false);
+        return null;
+      }
+
+      setTranscribing(true);
+      setError(null);
+
+      const blob: Blob = await new Promise((resolve) => {
+        const timer = window.setTimeout(() => {
+          resolve(new Blob(chunksRef.current, { type: recorder.mimeType || mimeRef.current }));
+        }, RECORDER_STOP_TIMEOUT_MS);
+        recorder.onstop = () => {
+          window.clearTimeout(timer);
+          resolve(new Blob(chunksRef.current, { type: recorder.mimeType || mimeRef.current }));
+        };
+        try {
+          recorder.requestData();
+        } catch {
+          /* ignore */
+        }
+        try {
+          recorder.stop();
+        } catch {
+          window.clearTimeout(timer);
+          resolve(new Blob(chunksRef.current, { type: recorder.mimeType || mimeRef.current }));
+        }
+      });
+      const peak = peakLevelRef.current;
+      stopTracks();
+      mediaRecorderRef.current = null;
+      chunksRef.current = [];
+
+      if (gen !== stopGenRef.current) {
+        setTranscribing(false);
+        return null;
+      }
+
+      if (!blob.size || blob.size < 400) {
+        setTranscribing(false);
+        setError("Aucun audio capturé — vérifiez le micro et rapprochez-vous.");
+        return null;
+      }
+
+      if (peak < 6) {
+        setError(
+          "Micro trop faible : rapprochez-vous et parlez plus fort, puis réessayez.",
+        );
+      }
+
+      try {
+        const res = await transcribeBlob(blob, undefined, FINAL_TRANSCRIBE_TIMEOUT_MS);
+        if (gen !== stopGenRef.current) return null;
+        setProvider(res.provider);
         const text = res.text?.trim() || "";
-        livePartialRef.current = text;
         setLivePartial(text);
         if (!text) {
-          setError("Aucune parole détectée dans ce fichier.");
+          setError(
+            peak < 10
+              ? "Aucune parole claire — micro trop faible ou trop loin."
+              : "Aucune parole détectée.",
+          );
           return null;
         }
         return { text, provider: res.provider };
       } catch (e) {
-        setTranscribing(false);
-        setError(e instanceof Error ? e.message : "Échec de la transcription.");
+        if (gen !== stopGenRef.current) return null;
+        setError(e instanceof Error ? e.message : "Transcription indisponible.");
         return null;
+      } finally {
+        if (gen === stopGenRef.current) setTranscribing(false);
       }
     },
-    [],
+    [transcribeBlob],
   );
+
+  const cancelTranscribing = useCallback(() => {
+    stopGenRef.current += 1;
+    setTranscribing(false);
+    recordingRef.current = false;
+    try {
+      const r = mediaRecorderRef.current;
+      if (r && r.state !== "inactive") r.stop();
+    } catch {
+      /* ignore */
+    }
+    mediaRecorderRef.current = null;
+    chunksRef.current = [];
+    stopTracks();
+    setRecording(false);
+    setMicTooQuiet(false);
+  }, []);
+
+  const transcribeFile = useCallback(async (file: File) => {
+    setTranscribing(true);
+    setError(null);
+    try {
+      const res = await api.transcribeDictation(file, languageRef.current, FILE_TRANSCRIBE_TIMEOUT_MS);
+      setProvider(res.provider);
+      const text = res.text?.trim() || "";
+      if (!text) {
+        setError("Aucune parole détectée dans le fichier.");
+        return null;
+      }
+      setLivePartial(text);
+      return { text, provider: res.provider };
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Transcription fichier impossible.");
+      return null;
+    } finally {
+      setTranscribing(false);
+    }
+  }, []);
 
   return {
     recording,
@@ -305,12 +364,17 @@ export function useWhisperDictation(initialLang: WhisperLang = "ar") {
     setLanguage,
     analyser,
     livePartial,
-    startRecording,
-    stopRecordingAndTranscribe,
-    transcribeFile,
+    micLevel,
+    micTooQuiet,
     supported:
       typeof window !== "undefined" &&
       !!navigator.mediaDevices?.getUserMedia &&
       typeof MediaRecorder !== "undefined",
+    startRecording,
+    pauseRecording,
+    resumeRecording,
+    stopRecordingAndTranscribe,
+    cancelTranscribing,
+    transcribeFile,
   };
 }

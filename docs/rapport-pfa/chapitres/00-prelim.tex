@@ -1,0 +1,78 @@
+\chapter*{Dédicace}
+\addcontentsline{toc}{chapter}{Dédicace}
+
+À mes parents, pour leur soutien constant et la confiance qu'ils m'accordent.\\[0.4em]
+À mes enseignants de l'ENSA Tétouan, qui m'ont transmis la rigueur de l'ingénieur.\\[0.4em]
+À l'équipe \textbf{WebVoice}, qui m'a accueillie et confiée un projet réel, destiné à un usage professionnel.
+
+\chapter*{Remerciements}
+\addcontentsline{toc}{chapter}{Remerciements}
+
+Je tiens à exprimer ma gratitude à toutes les personnes qui ont rendu ce projet de fin d'année possible.
+
+Je remercie \textbf{Monsieur Khalid Merini Laarossi}, gérant de WEBVOICE, pour m'avoir accueillie au sein de l'entreprise et pour la confiance accordée autour du sujet : la mise en place d'une plateforme d'assistance IA pour avocats.
+
+Mes remerciements s'adressent à \textbf{Monsieur Hatim Benhaddou}, encadrant entreprise, pour le suivi technique quotidien, les arbitrages produit et l'exigence de livrer un système utilisable en production.
+
+Je remercie \textbf{Monsieur Mohammed Al Achhab}, tuteur pédagogique à l'ENSA Tétouan, pour l'encadrement académique, les séances de suivi et les orientations méthodologiques (cadrage, benchmarking, exigence de robustesse).
+
+Enfin, je remercie ma famille et mes proches pour leur soutien durant ces deux mois de conception, de réalisation et de déploiement.
+
+\chapter*{Résumé}
+\addcontentsline{toc}{chapter}{Résumé}
+
+\textbf{Mots-clés :} LegalTech, SaaS, plaidoirie, reconnaissance vocale, multi-tenant, Maroc.
+
+Ce rapport présente \textbf{LexHub} (\url{https://lexhub.space}), SaaS pour cabinets d'avocats marocains, conçu et déployé chez WEBVOICE (stage PFA, ENSA Tétouan).
+
+Le cœur métier est l'atelier de plaidoirie \textbf{en cinq étapes} déployé sur \url{https://lexhub.space} : dossier et pièces, dictée vocale native en arabe, transcription et correction de forme, rédaction assistée (sans invention de faits), export officiel Word (.docx). L'assistant juridique ne voit que les \textbf{plaidoiries validées} du cabinet. L'espace cabinet isole dossiers, documents, planning et équipe par locataire.
+
+Le modèle économique --- essai hybride, repère IA du jour (choix continuer / demain), popups de forfait épuisé, abonnements Solo / Cabinet / Entreprise, packs prépayés, sièges à la carte --- est détaillé au chapitre~\ref{ch:economie}.
+
+\chapter*{Abstract}
+\addcontentsline{toc}{chapter}{Abstract}
+
+\textbf{Keywords:} LegalTech, SaaS, legal pleading, speech-to-text, multi-tenant, Morocco.
+
+This report presents \textbf{LexHub} (\url{https://lexhub.space}), a SaaS for Moroccan law firms, designed and deployed at WEBVOICE (PFA internship, ENSA Tétouan).
+
+The core product is the \textbf{five-step} pleading workshop live at \url{https://lexhub.space}: case file and exhibits, native Arabic speech recognition, transcription and form correction, AI-assisted drafting without inventing facts, then official Word (.docx) export. A legal intern only sees \textbf{validated pleadings}. Firm data are isolated per tenant.
+
+The business model (hybrid trial, daily AI soft-cap with informed choice, exhausted-quota guidance, plans, prepaid packs, add-on seats) is covered in chapter~\ref{ch:economie}.
+
+\chapter*{Liste des abréviations}
+\addcontentsline{toc}{chapter}{Liste des abréviations}
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{@{}lp{10.6cm}@{}}
+\toprule
+\textbf{Sigle} & \textbf{Signification} \\
+\midrule
+API & \textit{Application Programming Interface} --- interface de programmation \\
+CI/CD & Intégration et déploiement continus \\
+FIFO & \textit{First In, First Out} --- premier entré, premier sorti (lots de packs) \\
+IA / LLM & Intelligence artificielle / \textit{Large Language Model} \\
+JWT & \textit{JSON Web Token} --- jeton d'authentification \\
+OCR & \textit{Optical Character Recognition} --- reconnaissance de texte dans une pièce \\
+OTP & \textit{One-Time Password} --- code à usage unique (e-mail) \\
+PAYG & \textit{Pay As You Go} --- usage à la demande, hors forfait \\
+RBAC & \textit{Role-Based Access Control} --- droits selon le rôle \\
+SaaS & \textit{Software as a Service} --- logiciel hébergé, facturé par abonnement \\
+STT & \textit{Speech-To-Text} --- reconnaissance vocale \\
+TLS & \textit{Transport Layer Security} --- chiffrement HTTPS \\
+UML & \textit{Unified Modeling Language} --- modélisation (cas d'utilisation, séquences, etc.) \\
+VPS & \textit{Virtual Private Server} --- serveur de production \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\clearpage
+\tableofcontents
+\clearpage
+\addcontentsline{toc}{chapter}{Liste des figures}
+\listoffigures
+\clearpage
+\addcontentsline{toc}{chapter}{Liste des tableaux}
+\listoftables

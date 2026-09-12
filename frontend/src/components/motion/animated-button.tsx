@@ -26,10 +26,10 @@ export function AnimatedButton({
     "relative inline-flex items-center justify-center gap-2 overflow-hidden rounded-full font-serif font-semibold transition-colors";
   const sizes = size === "lg" ? "px-8 py-3.5 text-base" : "px-5 py-2.5 text-sm";
   const variants = {
-    gold: "bg-gradient-to-r from-sanad-cream via-white to-sanad-cream text-sanad-navy shadow-[0px_2px_0px_0px_rgba(255,255,255,0.7)_inset]",
+    gold: "bg-gradient-to-r from-[#4C7CFF] via-[#1B3F9C] to-[#0B1A4D] text-white shadow-[0_0_28px_rgba(76,124,255,0.4)]",
     outline:
-      "border border-sanad-gold/45 bg-white/5 text-sanad-ivory backdrop-blur-md hover:bg-sanad-gold/15",
-    ghost: "text-sanad-gold hover:bg-sanad-gold/10",
+      "border border-[rgba(140,170,255,0.4)] bg-white/5 text-[#F4F6FC] backdrop-blur-md hover:bg-[rgba(76,124,255,0.15)]",
+    ghost: "text-[#A8C0FF] hover:bg-[rgba(76,124,255,0.12)]",
   };
 
   const button = (

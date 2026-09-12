@@ -11,15 +11,18 @@ export function passwordStrength(pw: string): number {
   return score;
 }
 
+export function passwordRules(pw: string) {
+  return {
+    length: pw.length >= MIN_PASSWORD_LENGTH && pw.length <= 72,
+    upperLower: /[A-Z]/.test(pw) && /[a-z]/.test(pw),
+    digit: /[0-9]/.test(pw),
+    symbol: /[^A-Za-z0-9]/.test(pw),
+  };
+}
+
 export function isPasswordStrong(pw: string): boolean {
-  return (
-    pw.length >= MIN_PASSWORD_LENGTH &&
-    pw.length <= 72 &&
-    /[A-Z]/.test(pw) &&
-    /[a-z]/.test(pw) &&
-    /[0-9]/.test(pw) &&
-    /[^A-Za-z0-9]/.test(pw)
-  );
+  const r = passwordRules(pw);
+  return r.length && r.upperLower && r.digit && r.symbol;
 }
 
 export function normalizeEmail(email: string): string {

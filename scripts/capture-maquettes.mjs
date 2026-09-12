@@ -30,10 +30,12 @@ const appPages = [
   { slug: "11-dossiers", url: "/cases", name: "Dossiers" },
   { slug: "12-nouveau-dossier", url: "/cases/new", name: "Nouveau dossier" },
   { slug: "13-documents", url: "/documents", name: "Documents" },
-  { slug: "14-plaidoirie", url: "/redaction", name: "Plaidoirie" },
+  { slug: "14-plaidoirie", url: "/redaction", name: "Plaidoirie — choix modèle" },
+  { slug: "14b-plaidoirie-workspace", url: "/redaction/libre", name: "Plaidoirie — dictée & document" },
   { slug: "15-planning", url: "/agenda", name: "Planning" },
   { slug: "16-equipe", url: "/team", name: "Équipe" },
   { slug: "17-parametres", url: "/settings", name: "Paramètres" },
+  { slug: "02b-connexion-actuelle", url: "/login", name: "Connexion (actuelle)" },
 ];
 
 async function shot(page, slug, name, index, total) {

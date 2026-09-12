@@ -42,7 +42,7 @@ export function VoiceMeter({
         const y = (height - h) / 2;
         const grad = ctx.createLinearGradient(0, y, 0, y + h);
         grad.addColorStop(0, "#D2B589");
-        grad.addColorStop(1, "#0B1F4A");
+        grad.addColorStop(1, "#0B1A4D");
         ctx.fillStyle = grad;
         ctx.fillRect(x, y, Math.max(2, barW - 2), h);
       }

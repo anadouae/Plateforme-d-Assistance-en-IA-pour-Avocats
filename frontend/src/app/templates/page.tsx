@@ -58,7 +58,7 @@ function TemplatesPageInner() {
             Modèles de contrats
           </h1>
           <p className="mt-1 text-sm text-slate-500">
-            Génération de documents juridiques marocains — style Adala, intégré à Sanad.
+            Génération de documents juridiques marocains — style Adala, intégré à LexHub.
           </p>
         </div>
 

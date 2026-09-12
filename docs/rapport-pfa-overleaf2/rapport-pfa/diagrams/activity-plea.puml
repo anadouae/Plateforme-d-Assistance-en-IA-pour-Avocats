@@ -1,0 +1,17 @@
+@startuml activity-plea
+skinparam shadowing false
+start
+:Dicter (arabe);
+repeat
+  :Transcrire (STT) si besoin;
+  :Corriger la forme;
+  :Contrôle contradictions;
+repeat while (Relire encore ?) is (oui)
+->non;
+:Composer le document;
+if (Valider ou assigner ?) then (oui)
+  :Notifier assistant;
+endif
+:Exporter Word/PDF;
+stop
+@enduml

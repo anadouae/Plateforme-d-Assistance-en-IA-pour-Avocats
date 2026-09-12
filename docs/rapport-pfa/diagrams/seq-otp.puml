@@ -1,0 +1,17 @@
+@startuml seq-otp
+skinparam shadowing false
+actor Avocat
+participant Navigateur
+participant "API LexHub" as API
+participant Email
+database Base
+
+Avocat -> Navigateur : e-mail
+Navigateur -> API : demander OTP
+API -> Email : envoyer code
+Email --> Avocat : code
+Avocat -> Navigateur : OTP + infos cabinet
+Navigateur -> API : inscription
+API -> Base : cabinet ACTIVE + user
+API --> Navigateur : session / accès immédiat
+@enduml

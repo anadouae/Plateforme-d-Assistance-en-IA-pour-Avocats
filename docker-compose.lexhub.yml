@@ -1,0 +1,159 @@
+# Déploiement production lexhub.space
+# STT = API vocale cloud (OpenAI Whisper). LLM = cloud. OCR = cloud.
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.lexhub.yml --env-file .env.vps up -d
+#
+# NOTE RAM: Dockerfile.prod (next build) peut saturer un VPS 2 Go.
+# Préférer CI / machine ≥4 Go pour l’image prod. Ici: volume + next start si .next existe.
+
+services:
+  backend:
+    depends_on: !override
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    ports: !override
+      - "127.0.0.1:8001:8000"
+    environment:
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      DEBUG: "false"
+      # Même clé que celery — sinon DOCX → BadZipFile à l'extraction
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      CORS_ORIGINS: https://lexhub.space,http://lexhub.space,https://www.lexhub.space
+      FRONTEND_URL: https://lexhub.space
+      SEED_DEMO_DATA: ${SEED_DEMO_DATA:-false}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-LexHub <noreply@lexhub.space>}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-LexHub <noreply@lexhub.space>}
+      SMTP_TLS: ${SMTP_TLS:-true}
+      TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:-}
+      TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-}
+      WHISPER_ENABLED: "false"
+      WHISPER_MODEL: ${WHISPER_MODEL:-small}
+      WHISPER_DEVICE: cpu
+      WHISPER_COMPUTE_TYPE: int8
+      # STT = API OpenAI uniquement (même clé ChatGPT) — pas Groq / Whisper local
+      DICTATION_LOCAL_ONLY: "false"
+      DICTATION_STT_PREFER_GROQ: "false"
+      DICTATION_OPENAI_ONLY: "true"
+      OPENAI_WHISPER_MODEL: "whisper-1"
+      DICTATION_POLISH_LOCAL_ONLY: "false"
+      # Correction ChatGPT (gpt-4o) — sens + grammaire, sans inventer de faits
+      DICTATION_POLISH_USE_LLM: "true"
+      WHISPER_DENOISE: "false"
+      WHISPER_GAIN_DB: "10.0"
+      LLM_CHAT_USE_OLLAMA: "false"
+      LLM_FORCE_OPENAI: "true"
+      LLM_OPENAI_STRICT: "true"
+      LLM_USE_FREE_ROUTER: "false"
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o}
+      OLLAMA_BASE_URL: http://127.0.0.1:11434
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    ports: !override
+      - "127.0.0.1:3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: https://lexhub.space
+      NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      NODE_OPTIONS: --max-old-space-size=1024
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    command: ["npm", "run", "dev", "--", "--hostname", "0.0.0.0", "--port", "3000"]
+    restart: unless-stopped
+
+  celery-worker:
+    depends_on: !override
+      - postgres
+      - redis
+      - minio
+      - backend
+    environment:
+      FRONTEND_URL: https://lexhub.space
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-LexHub <noreply@lexhub.space>}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-LexHub <noreply@lexhub.space>}
+      SMTP_TLS: ${SMTP_TLS:-true}
+    volumes: !override
+      - chroma_data:/app/data/chromadb
+      - hf_cache:/root/.cache/huggingface
+    command: celery -A app.services.celery_app worker --loglevel=info --concurrency=1
+    restart: unless-stopped
+
+  celery-beat:
+    depends_on: !override
+      - postgres
+      - redis
+      - backend
+    environment:
+      FRONTEND_URL: https://lexhub.space
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-LexHub <noreply@lexhub.space>}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-LexHub <noreply@lexhub.space>}
+      SMTP_TLS: ${SMTP_TLS:-true}
+    volumes: !override
+      - ./backend:/app
+    command: celery -A app.services.celery_app beat --loglevel=info
+    restart: unless-stopped
+
+  postgres:
+    restart: unless-stopped
+    ports: !override
+      - "127.0.0.1:15432:5432"
+
+  redis:
+    restart: unless-stopped
+    ports: !override
+      - "127.0.0.1:6379:6379"
+
+  minio:
+    restart: unless-stopped
+    ports: !override
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+
+  # Accès base Postgres (entrepreneur / support) — localhost VPS uniquement.
+  # Tunnel SSH : ssh -L 8088:127.0.0.1:8088 root@51.38.78.23
+  # Puis http://127.0.0.1:8088 — Système PostgreSQL, serveur=postgres, user/mdp/db = .env.vps
+  adminer:
+    image: adminer:4
+    ports:
+      - "127.0.0.1:8088:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+      ADMINER_DESIGN: pepa-linha-dark
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  mailhog:
+    profiles: ["dev-mail"]
+
+  ollama:
+    profiles: ["disabled"]
+
+  ollama-init:
+    profiles: ["disabled"]

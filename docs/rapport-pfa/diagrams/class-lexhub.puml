@@ -1,0 +1,58 @@
+@startuml class-lexhub
+!theme plain
+skinparam classAttributeIconSize 0
+
+class Cabinet {
+  +id
+  +name
+  +status
+  +logo
+  +referral_code
+}
+
+class User {
+  +email
+  +role
+  +cabinet_id
+  +is_active
+}
+
+class Case {
+  +title
+  +domain
+  +cabinet_id
+  +responsible_id
+}
+
+class PlaidoirieDraft {
+  +title
+  +text
+  +status
+  +assigned_to_user_id
+  +pinned
+  +cabinet_id
+  +case_id
+}
+
+class Document {
+  +file
+  +ocr_text
+  +cabinet_id
+  +case_id
+}
+
+class CabinetInvite {
+  +email
+  +token
+  +role
+  +expires_at
+}
+
+Cabinet "1" <-- "*" User
+Cabinet "1" <-- "*" Case
+Cabinet "1" <-- "*" PlaidoirieDraft
+Cabinet "1" <-- "*" Document
+Cabinet "1" <-- "*" CabinetInvite
+Case "0..1" <-- "*" PlaidoirieDraft
+User "0..1" <-- "assigned" PlaidoirieDraft
+@enduml

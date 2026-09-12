@@ -7,7 +7,11 @@ import { useRouter } from "next/navigation";
 export default function RegisterRedirectPage() {
   const router = useRouter();
   useEffect(() => {
-    router.replace("/login?tab=register");
+    const sp = new URLSearchParams(
+      typeof window !== "undefined" ? window.location.search : "",
+    );
+    sp.set("tab", "register");
+    router.replace(`/login?${sp.toString()}`);
   }, [router]);
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#F6EFDD]">

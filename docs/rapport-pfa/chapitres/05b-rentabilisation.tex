@@ -1,0 +1,186 @@
+\chapter{Modèle économique et stratégie de rentabilisation}
+\label{ch:economie}
+
+LexHub est un SaaS facturable. Ce chapitre décrit ce qui est vendu, comment l'essai fonctionne, comment recharger des crédits, comment le client est informé de son usage, et qui a le droit de payer. Les tarifs publics sont ceux de l'API \texttt{/api/billing/plans} (production : \url{https://lexhub.space}). Les choix ne sont pas arbitraires : ils s'appuient sur des méthodes du domaine SaaS / gestion de projet et sur des relations chiffrées dérivées du code déployé.
+
+\section{Méthodes professionnelles et fondements}
+\label{sec:methodes-eco}
+
+\begin{table}[H]
+\centering
+\caption{Méthodes mobilisées (économie SaaS et gestion de projet)}
+\label{tab:methodes-eco}
+\small
+\renewcommand{\arraystretch}{1.12}
+\begin{tabular}{@{}p{3.8cm}p{4.2cm}p{4.4cm}@{}}
+\toprule
+\textbf{Méthode} & \textbf{Domaine} & \textbf{LexHub} \\
+\midrule
+Product-Led Growth + Freemium &
+Acquisition produit &
+Plan Découverte limité \\
+Good--Better--Best &
+Packaging tarifaire &
+4 plans (+ Sur mesure) \\
+Hybrid pricing &
+Abo + usage &
+Forfait + packs + PAYG \\
+Usage-based metering &
+Crédits / coût LLM &
+Barème 1$\ldots$10 \\
+Hybrid trial &
+Essai durée + quota &
+14/30~j, quotas réduits \\
+Fair-use / soft cap &
+Anti-abus informé &
+Repère du jour + choix \\
+Unit economics / COGS &
+Marge variable &
+Cible $\sim$10--20\,\% du prix \\
+Land \& expand &
+Expansion compte &
+Sièges, packs, upgrade \\
+Referral B2B &
+Acquisition virale &
++14\,j / +30\,j \\
+Lean + itération Agile &
+Conduite de projet &
+MVP $\rightarrow$ prod lexhub.space \\
+Gestion des risques &
+Coût OpenAI &
+Double frein + slots \\
+FIFO &
+Lots de crédits &
+Packs 12~mois \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Relations retenues (notations : $P$ prix mensuel, $N$ crédits inclus, $c_{\mathrm{payg}}=0{,}25$~MAD/crédit, $w$ poids d'une action, $Q_p$ plafond plaidoiries) :
+\begin{itemize}[leftmargin=*]
+  \item $V = N \times c_{\mathrm{payg}}$ (valeur indicative du forfait au tarif PAYG) --- Solo : $V=150$~MAD pour $P=299$~MAD ;
+  \item $n_{\mathrm{red}} \le \min(\lfloor N/w\rfloor, Q_p)$ --- Solo : $\min(60,35)=35$ ;
+  \item ratios essai/payant (crédits) : Solo $\approx 67\,\%$, Cabinet $50\,\%$, Entreprise $36\,\%$ ;
+  \item packs : prix unitaire $0{,}22$ / $0{,}20$ / $0{,}18$ $< c_{\mathrm{payg}}$.
+\end{itemize}
+
+\section{Plans et essai hybride}
+
+\begin{table}[H]
+\centering
+\caption{Plans LexHub (production)}
+\label{tab:plans}
+\small
+\begin{tabular}{@{}lrrrl@{}}
+\toprule
+\textbf{Plan} & \textbf{MAD/mois} & \textbf{MAD/an} & \textbf{Essai} & \textbf{Plaidoiries / crédits} \\
+\midrule
+Découverte & 0 & 0 & --- & 3 / 50 \\
+Solo & 299 & 2\,990 & 14~j & 35 / 600 \\
+Cabinet & 699 & 6\,990 & 30~j & 120 / 2\,000 \\
+Entreprise & 1\,290 & 12\,900 & 30~j & 350 / 5\,000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+L'\textbf{essai hybride} ne facture pas ($0$~MAD) mais n'ouvre \textbf{pas} le forfait plein. Les plafonds d'essai sont inférieurs aux quotas payants : Solo $400$ crédits / $25$ plaidoiries ; Cabinet $1\,000$ / $60$ ; Entreprise $1\,800$ / $120$. Les \textbf{packs} ne sont pas proposés pendant l'essai (pas de vente de recharge). En revanche, si le forfait d'essai est épuisé, le client peut \textbf{souscrire} via les tarifs pour continuer immédiatement, ou attendre la date de fin d'essai.
+
+\section{Repère IA du jour (tous les plans)}
+\label{sec:repere-jour}
+
+Indépendamment de l'essai ou de l'abonnement payant, chaque cabinet dispose d'un \textbf{repère de crédits IA par jour} (anti-abus). Ce n'est \textbf{pas} un impayé et ce n'est \textbf{pas} la fin de l'essai : c'est une information d'usage. La même logique s'applique à Découverte, Solo, Cabinet et Entreprise.
+
+\begin{table}[H]
+\centering
+\caption{Repère IA du jour (essai vs abonnement payé)}
+\label{tab:daily-cap}
+\small
+\begin{tabular}{@{}lrr@{}}
+\toprule
+\textbf{Plan} & \textbf{Essai} & \textbf{Payé} \\
+\midrule
+Découverte & --- & 12 \\
+Solo & 35 & 50 \\
+Cabinet & 90 & 180 \\
+Entreprise & 105 & 300 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Lorsque l'action suivante ferait dépasser ce repère, une popup indique clairement le contexte (\textit{essai} ou \textit{abonnement}, nom du plan, compteur du type $33/35$) et propose deux choix : \textbf{Continuer maintenant} (l'IA part ; les crédits du mois ou de l'essai restent débités) ou \textbf{Attendre demain} (compteur du jour remis à zéro). Après « Continuer », la session se souvient pour le reste de la journée. Une pastille UI (crédits restants $\cdot$ aujourd'hui) et la barre \emph{IA aujourd'hui} dans Paramètres $\rightarrow$ Plan \& usage complètent l'information.
+
+\section{Packs, sièges et usage à la demande}
+
+Trois objets restent distincts. L'\textbf{abonnement} donne l'accès et le forfait du mois. Les \textbf{packs} (500 crédits / $110$~MAD, $1\,000$ / $200$~MAD, $2\,500$ / $450$~MAD) ne s'achètent que si l'abonnement est \textbf{actif et payant} ; chaque lot expire au bout de $12$~mois (consommation FIFO). L'\textbf{usage à la demande} (PAYG) est désactivé par défaut ($\approx 0{,}25$~MAD par crédit) et indisponible sur Découverte.
+
+Ordre de consommation : forfait du mois (ou quotas d'essai), puis packs, puis PAYG s'il est activé ; sinon popup de résolution (section suivante).
+
+Sur le plan Cabinet, $0$ à $5$ sièges avocats supplémentaires coûtent $99$~MAD par siège et par mois.
+
+Le paiement carte marocain (CMI / PayZone) dispose d'un \textbf{environnement technique prêt}. En production actuelle, le parcours de paiement reste une \textbf{simulation} (activation opérateur / identifiant marchand non finalisée) : aucun débit réel n'est présenté comme déjà en service.
+
+\section{Quand le forfait est épuisé --- popups de guidance}
+\label{sec:forfait-epuise}
+
+Deux situations se distinguent du repère du jour. Ici le forfait (essai ou mois) est vraiment terminé : l'action IA est refusée tant que le client n'a pas choisi une issue.
+
+\begin{table}[H]
+\centering
+\caption{Guidance client lorsque le forfait est épuisé}
+\label{tab:quota-guidance}
+\small
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}p{3.4cm}p{4.4cm}p{4.6cm}@{}}
+\toprule
+\textbf{Situation} & \textbf{Popup} & \textbf{Choix proposés} \\
+\midrule
+Forfait d'essai épuisé &
+« Forfait d'essai épuisé » + date de fin &
+Attendre la fin d'essai (pas de packs) \textbf{ou} souscrire (voir les tarifs) \\
+Forfait du mois (abonné) épuisé &
+« Forfait du mois épuisé » &
+(1) Activer le PAYG \newline
+(2) Acheter un pack \newline
+(3) Passer au plan supérieur \newline
+sinon attendre le mois suivant \\
+Découverte épuisée &
+Blocage quota &
+Upgrade Solo / Cabinet (pas de packs, pas de PAYG) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Des toasts (solde bas / crédits épuisés) et la bannière d'abonnement (essai bientôt fini, renouvellement, \texttt{past\_due}) renforcent cette guidance sans remplacer les popups.
+
+\section{Parrainage cabinet $\rightarrow$ cabinet}
+\label{sec:parrainage}
+
+Chaque cabinet a un code (\texttt{LH-\ldots}) et un lien \texttt{?ref=}. Le filleul reçoit $14$ jours d'essai supplémentaires au démarrage Solo ou Cabinet. Le parrain reçoit $30$ jours lorsque l'abonnement payant du filleul commence après l'essai. L'auto-parrainage est interdit (plafond : $12$ filleuls par an). Ce mécanisme n'est pas une invitation d'équipe : il ne donne aucun accès aux dossiers du parrain.
+
+\section{Répartition payeur / consommateur}
+
+Seul l'\textbf{admin cabinet} change de plan, paie, achète des packs, active le PAYG ou ajoute des sièges. Les avocats et les assistants consomment le forfait et voient les quotas en lecture seule, sans débiter une carte. Une résiliation prend effet à la fin de la période déjà payée.
+
+\section{Qualification commerciale Entreprise et protection anti-abus}
+\label{sec:qualif-entreprise}
+
+L'offre \textbf{Entreprise} ($1\,290$~MAD HT / mois ou $12\,900$~MAD / an) ouvre des ressources massives : jusqu'à $25$ collaborateurs ($15$ avocats + $10$ assistants) et $5\,000$ crédits IA mensuels ($\sim 350$ plaidoiries rédigées par GPT-4o).
+
+\paragraph{Rupture du libre-service (Self-Service).}
+En libre-service instantané par carte bancaire, le risque financier de consommation API incontrôlée causée par des faux comptes jetables ou des robots serait critique. Par décision d'architecture produit, le plan Entreprise ne peut \textbf{jamais} être activé en libre-service direct. Les boutons d'action sur \texttt{/tarifs} redirigent obligatoirement vers le parcours commercial qualifié sur \url{https://lexhub.space/commercial?intent=enterprise}.
+
+\paragraph{Formulaire de qualification commerciale.}
+Le formulaire recueille sept données professionnelles vérifiables : nom complet du demandeur, e-mail professionnel vérifiable (filtrage des domaines temporaires), numéro de téléphone direct, nom du cabinet ou de la SCPA, ville et barreau de rattachement, nombre d'avocats, et message de cadrage. La soumission n'ouvre aucun compte automatique : elle consigne la demande dans la table PostgreSQL \texttt{commercial\_leads} avec le statut \textit{NOUVEAU}, notifiée instantanément dans la console d'administration plateforme (\texttt{/admin/leads}).
+
+\paragraph{Les deux piliers de protection mathématique et déontologique contre les faux comptes :}
+\begin{enumerate}[leftmargin=1.4em]
+  \item \textbf{Pilier 1 --- Vérification d'authenticité par l'Ordre du Barreau (KYC déontologique) :} Au Maroc, la profession d'avocat est strictement encadrée par la loi n$^\circ$~28-08. Tout avocat en exercice est obligatoirement inscrit au tableau officiel de l'Ordre des Avocats de son barreau (Casablanca, Rabat, Fès, Tanger, etc.). Dès réception d'un lead, l'équipe commerciale LexHub vérifie en quelques instants l'existence réelle du cabinet et de l'avocat sur le tableau officiel. Si l'identité ne correspond à aucun avocat en exercice, la demande est rejetée sans qu'aucun compte ne soit ouvert ni aucun crédit IA consommé.
+  \item \textbf{Pilier 2 --- Le « Double Verrou » Anti-Abus (7 jours + Plafond strict Fair-Use) :}
+  \begin{itemize}[leftmargin=1.2em]
+    \item \emph{Durée resserrée à 7 jours :} En SaaS B2B juridique, les études de Product-Led Growth prouvent qu'un essai de 30 jours entraîne une forte procrastination et divise par trois le taux de conversion. Une fenêtre resserrée de 7 jours (renouvelable à 14 jours sur demande motivée) crée une saine dynamique d'évaluation dès la première semaine sur 2 à 3 dossiers réels.
+    \item \emph{Plafond strict de crédits IA de test :} Pendant l'essai pilote Entreprise, l'accès n'est jamais illimité. Le compte est bridé à un quota Fair-Use de $1\,800$ crédits maximum (au lieu de $5\,000$). Dès que ce seuil est atteint, l'IA se bloque et invite à activer l'abonnement payant. Le coût d'infrastructure maximal absorbé par LexHub reste ainsi strictement borné à quelques dirhams.
+  \end{itemize}
+\end{enumerate}
+
+\paragraph{Palier « Sur mesure ».}
+Pour les structures dépassant 15 avocats (grands cabinets d'affaires, implantations multi-villes), une 5\textsuperscript{e} option « Sur mesure / Appelez-nous » sans prix public est affichée sur la grille tarifaire. Le dimensionnement et le devis contractuel s'effectuent manuellement via \url{https://lexhub.space/commercial?intent=custom}.

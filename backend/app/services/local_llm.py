@@ -1,4 +1,4 @@
-"""Sanad local LLM — Ollama primary (sanad-legal). Groq optional fallback only."""
+"""LexHub local LLM — Ollama primary (sanad-legal). Groq optional fallback only."""
 
 from __future__ import annotations
 
@@ -20,10 +20,10 @@ from app.services.language import (
 logger = logging.getLogger(__name__)
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
-GROQ_MODEL = "llama-3.3-70b-versatile"
+GROQ_MODEL = "llama-3.1-8b-instant"
 
 SYSTEM_PROMPT = (
-    "Tu es Sanad-Legal, assistant juridique ouvert (niveau Mistral/Gemini). "
+    "Tu es LexHub-Legal, assistant juridique ouvert (niveau Mistral/Gemini). "
     "Réponds de façon utile et structurée. Les extraits enrichissent ta réponse — "
     "tu n'es pas limité à les recopier. N'invente pas de numéros précis absents des extraits. "
     "Structure : réponse, fondement légal, points d'attention. "
@@ -31,14 +31,14 @@ SYSTEM_PROMPT = (
 )
 
 SYNTHESIS_PROMPT = (
-    "Tu es Sanad-Legal. Produis une synthèse structurée du document juridique marocain. "
+    "Tu es LexHub-Legal. Produis une synthèse structurée du document juridique marocain. "
     "Inclure : objet du document, parties, faits essentiels, enjeux juridiques, "
     "délais éventuels, risques. Cite uniquement le texte fourni. "
     "Termine par : « Ceci ne constitue pas un avis juridique. »"
 )
 
 CASE_ANALYSIS_PROMPT = (
-    "Tu es Sanad-Legal. Analyse le dossier juridique à partir des pièces fournies. "
+    "Tu es LexHub-Legal. Analyse le dossier juridique à partir des pièces fournies. "
     "Structure ta réponse en : 1) Faits 2) Pièces clés 3) Enjeux juridiques "
     "4) Risques / délais 5) Points à vérifier. Ne invente aucun fait absent des extraits. "
     "Termine par : « Ceci ne constitue pas un avis juridique. »"
@@ -162,12 +162,15 @@ def _call_kimi(prompt: str, system: str = SYSTEM_PROMPT) -> str | None:
 
 
 def _normalize_chat_provider(llm_provider: str | None = None) -> str:
-    """Résout mistral | groq | kimi | gemini | deepseek | together | sambanova | auto."""
+    """Résout openai | mistral | groq | kimi | gemini | deepseek | together | sambanova | auto."""
+    if getattr(settings, "LLM_FORCE_OPENAI", True) and (settings.OPENAI_API_KEY or "").strip():
+        return "openai"
     raw = (llm_provider or settings.LLM_PROVIDER or "auto").strip().lower()
-    if raw in ("mistral", "kimi", "groq", "gemini", "deepseek", "together", "sambanova", "auto"):
+    if raw in ("openai", "mistral", "kimi", "groq", "gemini", "deepseek", "together", "sambanova", "auto"):
         return raw
     if settings.LLM_CHAT_CLOUD_FIRST and (
-        settings.MISTRAL_API_KEY
+        settings.OPENAI_API_KEY
+        or settings.MISTRAL_API_KEY
         or settings.GROQ_API_KEY
         or settings.KIMI_API_KEY
         or settings.GEMINI_API_KEY
@@ -185,7 +188,7 @@ def _call_chat_cloud(
     provider_override: str | None = None,
     prior_messages: list[dict[str, str]] | None = None,
 ) -> str | None:
-    """Multi free-tiers (router) + repli Groq/Kimi classiques."""
+    """ChatGPT (OpenAI) en priorité via free router ; secours free-tiers si autorisé."""
     provider = _normalize_chat_provider(provider_override)
 
     if settings.LLM_USE_FREE_ROUTER:
@@ -194,15 +197,18 @@ def _call_chat_cloud(
         text, used = chat_free_tier(
             prompt,
             system,
-            preferred=provider,
-            allow_ollama=bool(settings.LLM_ALLOW_CLOUD_FALLBACK),
+            preferred=provider if provider != "auto" else "openai",
+            allow_ollama=bool(settings.LLM_ALLOW_CLOUD_FALLBACK)
+            and not bool(getattr(settings, "LLM_FORCE_OPENAI", True)),
             prior_messages=prior_messages,
         )
         if text:
             logger.info("chat_cloud via free_router/%s", used)
             return text
 
-    # Secours minimal si router désactivé
+    # Secours minimal si router désactivé / OpenAI KO
+    if getattr(settings, "LLM_OPENAI_STRICT", False):
+        return None
     if provider == "kimi":
         return _call_kimi(prompt, system) or _call_groq(prompt, system)
     if provider == "groq":
@@ -211,7 +217,14 @@ def _call_chat_cloud(
 
 
 def generate_with_prompt(prompt: str, system: str = SYSTEM_PROMPT) -> str | None:
-    """Generate text: Ollama first (default), optional Groq only if provider=groq or ollama fails and key set."""
+    """ChatGPT d'abord si forcé ; sinon Ollama / Groq selon LLM_PROVIDER."""
+    if getattr(settings, "LLM_FORCE_OPENAI", True) and (settings.OPENAI_API_KEY or "").strip():
+        raw = _call_chat_cloud(prompt, system, provider_override="openai")
+        if raw:
+            return raw
+        if getattr(settings, "LLM_OPENAI_STRICT", False):
+            return None
+
     provider = _provider()
     if provider == "ollama":
         result = _call_ollama(prompt, system)
@@ -466,14 +479,14 @@ def generate_synthesis_text(
     body = _sample_document_text(document_text or "", max_chars=16000)
     prose_system = {
         "fr": (
-            "Tu es Sanad-Legal (niveau Claude). "
+            "Tu es LexHub-Legal (niveau Claude). "
             "Rédige une synthèse intelligente Markdown pour un avocat : "
             "adapte les titres au type réel du document (contrat, jugement, lettre…). "
             "280–500 mots. N'invente rien. Français uniquement. "
             "Termine par une section « Suite utile »."
         ),
         "ar": (
-            "أنت Sanad-Legal بمستوى Claude. "
+            "أنت LexHub-Legal بمستوى Claude. "
             "اكتب تلخيصاً ذكياً Markdown للمحامي مكيّفاً مع نوع الوثيقة. "
             "280–500 كلمة. لا تختلق. بالعربية. اختم بـ «ما يُستحسن فعله»."
         ),
@@ -547,7 +560,7 @@ def _llm_synthesis_chat(prompt: str, system: str) -> str | None:
     if not raw and settings.KIMI_API_KEY:
         raw = _call_kimi(prompt, system)
     if not raw:
-        raw = _call_ollama(prompt, system)
+        logger.info("Synthesis: cloud unavailable — skip Ollama CPU fallback")
     return raw.strip() if raw else None
 
 
@@ -555,18 +568,25 @@ def generate_synthesis_structured(
     document_name: str,
     document_text: str,
     language: str | None = None,
+    *,
+    assume_native: bool = False,
+    source_kind: str = "file",
+    transcript_quality: str | None = None,
 ) -> dict | None:
     """Synthèse intelligente LLM (tout type de pièce) — JSON riche, pas de squelette vide."""
     from app.services.extraction import is_scrambled_arabic, safe_repair_arabic_text
-    from app.services.ollama_summarize import summarize_long
 
     locale = normalize_locale(language)
-    cleaned = safe_repair_arabic_text(document_text or "")
+    # Word / prose native : ne pas « réparer » BIDI ni injecter un hint OCR faux.
+    if assume_native:
+        cleaned = (document_text or "").strip()
+    else:
+        cleaned = safe_repair_arabic_text(document_text or "")
     if len(cleaned.strip()) < 20:
         return None
 
     scramble_hint = ""
-    if is_scrambled_arabic(cleaned):
+    if not assume_native and is_scrambled_arabic(cleaned):
         scramble_hint = (
             "\nATTENTION : OCR arabe partiellement désordonné. "
             "Synthétise uniquement les faits clairement lisibles. "
@@ -574,33 +594,38 @@ def generate_synthesis_structured(
             "Si le sens est trop douteux, indique-le dans attention_points.\n"
         )
 
-    # 1) Pour les longs textes : notes map-reduce (pas un résumé final figé)
-    working_notes = ""
-    if len(cleaned) > 9000:
-        notes, _, _ = summarize_long(cleaned, language=locale)
-        if notes and len(notes.strip()) >= 60:
-            working_notes = notes.strip()
+    audio_hint = ""
+    if source_kind == "audio" or (document_name or "").lower().endswith(
+        (".ogg", ".wav", ".mp3", ".m4a", ".webm", ".mpeg")
+    ):
+        q = (transcript_quality or "medium").lower()
+        if q == "poor":
+            audio_hint = (
+                "\nATTENTION CRITIQUE — TRANSCRIPTION AUDIO FAIBLE : "
+                "Le texte est un déchiffrage Whisper approximatif. "
+                "INTERDIT d'interpréter un mot déformé comme une ville "
+                "(ex. inventer مكناس), un nom de juge, une accusation précise. "
+                "Dans summary : dis clairement que le déchiffrage est peu fiable, "
+                "cite seulement les fragments sûrs entre guillemets, "
+                "et mets dans attention_points : « إعادة التفريغ أو الإملاء المباشر موصى به ». "
+                "Listes parties/dates/amounts vides si non explicites.\n"
+            )
+        else:
+            audio_hint = (
+                "\nSOURCE AUDIO : transcription automatique. "
+                "N'invente pas de lieux ni d'identités absents du texte. "
+                "Si un mot est ambigu, signale-le dans attention_points.\n"
+            )
 
     body = _sample_document_text(cleaned, max_chars=24000)
-    if working_notes:
-        prompt = (
-            f"DOCUMENT : {document_name}\n\n"
-            f"NOTES ISSUES DU DOCUMENT (map-reduce, à croiser) :\n{working_notes[:12000]}\n\n"
-            f"EXTRAITS DU TEXTE SOURCE :\n{body[:14000]}\n\n"
-            f"{scramble_hint}"
-            "Produis le JSON de synthèse INTELLIGENTE demandé. "
-            "Le summary doit être une vraie analyse de cabinet, adaptée au type de pièce, "
-            "pas un template vide. Listes = uniquement ce qui figure dans le texte/notes."
-        )
-    else:
-        prompt = (
-            f"DOCUMENT : {document_name}\n\n"
-            f"TEXTE COMPLET / ÉCHANTILLON REPRÉSENTATIF :\n{body}\n\n"
-            f"{scramble_hint}"
-            "Produis le JSON de synthèse INTELLIGENTE demandé. "
-            "Comprends d'abord le type de document, puis rédige un summary utile à l'avocat. "
-            "N'invente rien."
-        )
+    prompt = (
+        f"DOCUMENT : {document_name}\n\n"
+        f"TEXTE COMPLET / ÉCHANTILLON REPRÉSENTATIF :\n{body}\n\n"
+        f"{scramble_hint}{audio_hint}"
+        "Produis le JSON de synthèse INTELLIGENTE demandé. "
+        "Comprends d'abord le type de document, puis rédige un summary utile à l'avocat. "
+        "N'invente rien."
+    )
 
     system = get_synthesis_prompt(locale)
     raw = _llm_synthesis_chat(prompt, system)
@@ -621,18 +646,18 @@ def generate_synthesis_structured(
     if not data:
         prose_system = {
             "fr": (
-                "Tu es Sanad-Legal. Rédige une synthèse intelligente Markdown "
+                "Tu es LexHub-Legal. Rédige une synthèse intelligente Markdown "
                 "pour un avocat (280–500 mots), adaptée au type réel du document. "
                 "N'invente rien. Français uniquement."
             ),
             "ar": (
-                "أنت Sanad-Legal. اكتب تلخيصاً ذكياً Markdown للمحامي (280–500 كلمة) "
+                "أنت LexHub-Legal. اكتب تلخيصاً ذكياً Markdown للمحامي (280–500 كلمة) "
                 "مكيّفاً مع نوع الوثيقة. لا تختلق. بالعربية فقط."
             ),
         }.get(locale, "Write an intelligent legal Markdown synthesis. Do not invent.")
         prose = _llm_synthesis_chat(
             f"DOCUMENT : {document_name}\n\nTEXTE :\n{body[:16000]}\n\n"
-            f"{scramble_hint}Rédige la synthèse.",
+            f"{scramble_hint}{audio_hint}Rédige la synthèse.",
             prose_system,
         )
         if prose and len(prose.strip()) >= 120 and prose.strip()[:80] not in cleaned[:800]:
@@ -686,13 +711,29 @@ def generate_case_analysis_text(
     sources_text: str,
     language: str | None = None,
 ) -> str | None:
+    """
+    Analyse dossier via LLM — timeout HTTP court (ne pas utiliser OLLAMA_CHAT_TIMEOUT=600).
+    En échec / lenteur → None (l'appelant fournit un résumé extractif).
+    """
     locale = normalize_locale(language)
     prompt = (
         f"DOSSIER : {case_reference}\n\n"
-        f"PIÈCES / EXTRAITS :\n{sources_text}\n\n"
-        "Produis l'analyse complète du dossier."
+        f"PIÈCES / EXTRAITS :\n{(sources_text or '')[:5000]}\n\n"
+        "Analyse concise du dossier (faits, enjeux, points d'attention). "
+        "400 mots max. N'invente rien."
     )
-    return generate_with_prompt(prompt, get_case_analysis_prompt(locale))
+    system = get_case_analysis_prompt(locale)
+
+    # Cloud uniquement. Ollama CPU bloque l'UI plusieurs minutes.
+    try:
+        if settings.MISTRAL_API_KEY or settings.GROQ_API_KEY or settings.KIMI_API_KEY:
+            raw = _call_chat_cloud(prompt, system)
+            if raw and len(raw.strip()) > 40:
+                return raw.strip()
+    except Exception as exc:
+        logger.warning("Case analysis cloud failed: %s", exc)
+    logger.info("Case analysis: skip Ollama — extractive fallback")
+    return None
 
 
 def generate_stream_chunks(

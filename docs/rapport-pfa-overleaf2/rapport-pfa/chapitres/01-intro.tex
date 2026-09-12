@@ -1,0 +1,72 @@
+\chapter{Introduction générale}
+\label{ch:intro}
+
+\section{Contexte et motivation}
+
+La plaidoirie est un acte oral préparé à l'écrit. Dans beaucoup de cabinets marocains, le circuit reste artisanal : notes manuscrites, dictée au collaborateur, ressaisie, mise en page Word peu avant l'audience. Ce circuit est lent, source d'erreurs de copie, et peu traçable.
+
+Les outils génériques (messagerie, traitement de texte, chatbots d'IA) n'apportent pas un \textbf{espace cabinet} : isolation des dossiers, rôles avocat / stagiaire, pièces du dossier, export officiel bilingue. Inversement, les logiciels de gestion d'affaires ne transforment pas la \textbf{voix} de l'avocat en document de plaidoirie.
+
+Le besoin, validé avec les encadrants, n'est donc pas un « ChatGPT juridique ». C'est un \textbf{outil de cabinet} qui part de la dictée, s'appuie sur le dossier et les pièces, produit un acte relisible, et ne montre au stagiaire que ce que l'avocat a \textbf{validé}\footnote{L'avocat demeure seul responsable du contenu plaidé ou déposé. LexHub assiste la rédaction ; il ne se substitue pas au conseil juridique.}.
+
+Le stage PFA s'est déroulé du 1\textsuperscript{er} juillet au 31 août 2026 chez \textbf{WEBVOICE} (Tanger), sous tutelle de l'\textbf{ENSA Tétouan} (Université Abdelmalek Essaâdi). Encadrant entreprise : M.~Hatim Benhaddou. Tuteur pédagogique : Prof.~Mohammed Al Achhab. Le livrable est \textbf{LexHub}, en production à l'adresse \url{https://lexhub.space}.
+
+\section{Présentation de l'organisme d'accueil --- WebVoice}
+\label{sec:webvoice}
+
+\textbf{WebVoice} (\url{https://webvoice.pro}) est une société de Tanger dont le siège est indiqué publiquement au 29, rue Amr Ibn Ass, étage 3, n$^\circ$26. Gérant : M.~Khalid Merini Laarossi. Encadrant du présent stage : M.~Hatim Benhaddou (\texttt{hatim@webvoice.pro}).
+
+D'après sa présentation officielle, l'entreprise se définit comme partenaire \textbf{informatique} et se spécialise dans trois métiers complémentaires :
+
+\begin{itemize}[leftmargin=1.4em]
+  \item la \textbf{voix sur IP (VoIP)} : téléphonie IP, IPBX, IVR, audit et reprise de projets voix pour les entreprises ;
+  \item le \textbf{développement web} sur mesure, y compris des sites e-commerce ;
+  \item les \textbf{applications mobiles}.
+\end{itemize}
+
+Le déroulement projet annoncé par l'entreprise compte quatre étapes : \textbf{analyse} des besoins, \textbf{concept}, \textbf{mise en œuvre}, puis \textbf{suivi}. Ce cadre a structuré le PFA : cadrage du cœur plaidoirie, conception de l'espace cabinet, implémentation incrémentale, déploiement et consolidation en production.
+
+\subsection{Pourquoi ce sujet chez WebVoice}
+
+Le sujet --- \emph{mise en place d'une plateforme d'assistance IA pour avocats} --- n'est pas un exercice scolaire détaché de l'entreprise. Il prolonge le métier de WebVoice :
+
+\begin{enumerate}[leftmargin=1.4em]
+  \item la \textbf{voix} (cœur VoIP) devient ici la \textbf{dictée} de l'avocat, captée dans le navigateur puis transcrite ;
+  \item le \textbf{web} devient un \textbf{SaaS multi-cabinets} (inscription, rôles, dossiers, export), pas un site vitrine ;
+  \item l'\textbf{IA} n'est pas le produit vendu comme chatbot : elle sert la transcription, la mise en forme et la structuration d'un acte, sous contrôle de l'avocat.
+\end{enumerate}
+
+L'objectif du stage, pour l'entreprise comme pour l'école, était donc de \textbf{livrer un produit utilisable} (LexHub), pas un prototype hors ligne. C'est ce qui explique le déploiement sur \url{https://lexhub.space} et le modèle d'abonnement décrit au chapitre~\ref{ch:economie}.
+
+\section{Problématique}
+\label{sec:problematique}
+
+\paragraph{Constat.}
+Préparer une plaidoirie suppose de relier trois sources : la parole de l'avocat, les pièces du dossier, et un document officiel (Word / PDF) prêt à relire ou à confier à un stagiaire. Ces trois sources sont aujourd'hui dispersées.
+
+\paragraph{Écart.}
+Les logiciels de gestion (dossiers, audiences) n'offrent pas d'atelier vocal. Les outils de dictée bureautique ne sont pas un SaaS de cabinet. Les assistants d'IA grand public n'isolent pas les données, n'ont pas de rôles avocat / assistant, et risquent d'\textbf{inventer} des faits ou des articles.
+
+\paragraph{Contraintes.}
+Secret professionnel (isolation par cabinet) ; bilingue français / arabe, dictée en arabe ; le stagiaire ne doit pas voir les brouillons ; l'IA ne doit pas inventer le fond ; le système doit être déployé, pas seulement démontré.
+
+\paragraph{Question.}
+Comment concevoir, réaliser et mettre en production un SaaS multi-cabinets dans lequel l'avocat mène un atelier en \textbf{cinq étapes} (dossier et pièces, dictée, transcription, rédaction assistée, export), collabore avec un assistant qui ne voit que les \textbf{plaidoiries validées}, et dispose d'un modèle économique d'abonnement --- sans que l'IA n'invente le contenu juridique ?
+
+\section{Objectifs du projet}
+
+\begin{enumerate}[label=\textbf{O\arabic*.}]
+  \item Réaliser l'atelier de plaidoirie \textbf{tel qu'il est déployé} : étape 1 dossier et pièces (identité juridique, pièces) ; étape 2 dictée ; étape 3 transcription et bouton \textbf{Corriger} ; clarification puis rédaction IA (étape 4) avec chat de révision ; étape 5 export Word / PDF.
+  \item Offrir l'espace cabinet : dossiers (domaine, fiche judiciaire, clé de barre), documents (OCR, synthèse, questions), planning, activité, équipe.
+  \item Distinguer les rôles : avocat, assistant (menu \textbf{Plaidoiries validées}), admin cabinet (équipe et paiement), admin plateforme WebVoice (supervision, sans lecture des dossiers).
+  \item Faire de la \textbf{validation} le seuil de visibilité assistant ; l'assignation met en avant une plaidoirie et valide le brouillon si besoin.
+  \item Exposer le modèle économique (chapitre~\ref{ch:economie}) et opérer LexHub en production.
+\end{enumerate}
+
+\section{Méthodologie de travail}
+
+Cycles courts : cadrage et maquettes, implémentation, tests par rôle, déploiement Docker sur VPS, retours des encadrants. Le premier suivi académique a recentré le projet sur le parcours voix~$\rightarrow$~plaidoirie. \textbf{Tout le présent rapport décrit uniquement la version en ligne sur \url{https://lexhub.space}}, pas d'anciennes maquettes à trois étapes ni un moteur de transcription local présenté comme le chemin de production.
+
+\section{Plan du rapport}
+
+Le chapitre~\ref{ch:etat-art} positionne LexHub face à l'existant. Le chapitre~\ref{ch:analyse} spécifie acteurs et exigences. Le chapitre~\ref{ch:conception} présente l'architecture et les diagrammes UML. Le chapitre~\ref{ch:economie} expose le modèle économique. Le chapitre~\ref{ch:realisation} décrit la réalisation et le guide d'utilisation. Les chapitres~\ref{ch:tests} et~\ref{ch:conclusion} traitent des tests, du déploiement et des perspectives.

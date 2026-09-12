@@ -1,7 +1,7 @@
 """Routeur multi free-tiers (Mistral → Groq → Gemini → DeepSeek → Together → SambaNova → Kimi → Ollama).
 
 Objectif : éviter le « cerveau coupé » quand un seul provider est en 429.
-Compatible OpenAI Chat Completions via httpx (sync, comme le reste de Sanad).
+Compatible OpenAI Chat Completions via httpx (sync, comme le reste de LexHub).
 """
 
 from __future__ import annotations
@@ -51,7 +51,11 @@ class _Bucket:
 
 
 def _providers() -> list[_Bucket]:
-    """Ordre : débit / fiabilité pour un chat juridique FR/AR."""
+    """Ordre : débit / fiabilité pour un chat juridique FR/AR.
+
+    OpenAI n'est pas dans la rotation free par défaut (coût) — on le priorise
+    uniquement si preferred=\"openai\" (plans Pro+ / clé de barre).
+    """
     return [
         _Bucket(
             name="mistral",
@@ -64,14 +68,14 @@ def _providers() -> list[_Bucket]:
             name="groq",
             base_url="https://api.groq.com/openai/v1",
             api_key=settings.GROQ_API_KEY,
-            model="llama-3.3-70b-versatile",
+            model=settings.GROQ_MODEL or "llama-3.1-8b-instant",
             rpm=20,
         ),
         _Bucket(
             name="gemini",
             base_url="https://generativelanguage.googleapis.com/v1beta/openai",
             api_key=settings.GEMINI_API_KEY,
-            model=settings.GEMINI_MODEL or "gemini-2.0-flash",
+            model=settings.GEMINI_MODEL or "gemini-2.5-flash",
             rpm=15,
         ),
         _Bucket(
@@ -102,6 +106,13 @@ def _providers() -> list[_Bucket]:
             model=settings.KIMI_MODEL or "kimi-k2.6",
             rpm=10,
         ),
+        _Bucket(
+            name="openai",
+            base_url=(settings.OPENAI_BASE_URL or "https://api.openai.com/v1").rstrip("/"),
+            api_key=settings.OPENAI_API_KEY,
+            model=settings.OPENAI_MODEL or "gpt-4o-mini",
+            rpm=60,
+        ),
     ]
 
 
@@ -126,7 +137,9 @@ def _openai_chat(
     system: str,
     prompt: str,
     max_tokens: int = 4096,
+    temperature: float = 0.55,
     prior_messages: list[dict[str, str]] | None = None,
+    model_override: str | None = None,
 ) -> str | None:
     url = f"{bucket.base_url.rstrip('/')}/chat/completions"
     headers = {
@@ -142,9 +155,9 @@ def _openai_chat(
                 messages.append({"role": role, "content": content})
     messages.append({"role": "user", "content": prompt})
     payload = {
-        "model": bucket.model,
+        "model": (model_override or bucket.model).strip() or bucket.model,
         "messages": messages,
-        "temperature": 0.55,
+        "temperature": temperature,
         "max_tokens": max_tokens,
     }
     try:
@@ -168,9 +181,15 @@ def _openai_chat(
         return None
 
 
-def _call_ollama_local(system: str, prompt: str) -> str | None:
+def _call_ollama_local(
+    system: str,
+    prompt: str,
+    *,
+    max_tokens: int | None = None,
+) -> str | None:
     try:
-        with httpx.Client(timeout=min(float(settings.OLLAMA_CHAT_TIMEOUT or 90), 90.0)) as client:
+        predict = max(512, int(max_tokens or settings.OLLAMA_NUM_PREDICT or 512))
+        with httpx.Client(timeout=min(float(settings.OLLAMA_CHAT_TIMEOUT or 90), 120.0)) as client:
             r = client.post(
                 f"{settings.OLLAMA_BASE_URL}/api/chat",
                 json={
@@ -181,8 +200,8 @@ def _call_ollama_local(system: str, prompt: str) -> str | None:
                     ],
                     "stream": False,
                     "options": {
-                        "temperature": 0.2,
-                        "num_predict": max(512, settings.OLLAMA_NUM_PREDICT),
+                        "temperature": 0.15,
+                        "num_predict": predict,
                     },
                 },
             )
@@ -201,14 +220,21 @@ def chat_free_tier(
     allow_ollama: bool = True,
     local_only: bool = False,
     prior_messages: list[dict[str, str]] | None = None,
+    max_tokens: int = 4096,
+    temperature: float = 0.55,
+    model_override: str | None = None,
+    strict_preferred: bool = False,
 ) -> tuple[str | None, str]:
     """
     Essaie les providers free dans l'ordre.
     Retourne (texte, nom_provider).
-    local_only=True → Ollama uniquement (confidentialité dictée).
+    local_only=True → Ollama uniquement.
+    strict_preferred=True → uniquement le provider demandé (pas de fallback faible).
+    model_override → modèle ponctuel (ex. gpt-4o pour révision ChatGPT-like).
+    Note: DICTATION_LOCAL_ONLY ne s'applique qu'au STT (Whisper), pas au polish LLM.
     """
-    if local_only or getattr(settings, "DICTATION_LOCAL_ONLY", False):
-        text = _call_ollama_local(system, prompt)
+    if local_only:
+        text = _call_ollama_local(system, prompt, max_tokens=max_tokens)
         if text:
             return text, "ollama"
         return None, "none"
@@ -217,22 +243,67 @@ def chat_free_tier(
     buckets = [_get_bucket(p.name, p) for p in _providers()]
 
     ordered: list[_Bucket] = []
-    if preferred in ("mistral", "groq", "gemini", "deepseek", "together", "sambanova", "kimi"):
+    openai_bucket = next((b for b in buckets if b.name == "openai"), None)
+    force_openai = bool(getattr(settings, "LLM_FORCE_OPENAI", True)) and bool(
+        openai_bucket and openai_bucket.api_key
+    )
+    strict_openai = bool(getattr(settings, "LLM_OPENAI_STRICT", True))
+    if force_openai:
+        # LexHub : toute génération texte = ChatGPT si la clé est là
+        preferred = "openai"
+        if strict_openai:
+            strict_preferred = True
+            allow_ollama = False
+    elif preferred in ("auto", "", "none") and openai_bucket and openai_bucket.api_key:
+        preferred = "openai"
+    if preferred in (
+        "mistral",
+        "groq",
+        "gemini",
+        "deepseek",
+        "together",
+        "sambanova",
+        "kimi",
+        "openai",
+    ):
         ordered.extend([b for b in buckets if b.name == preferred])
-        ordered.extend([b for b in buckets if b.name != preferred])
+        # Strict OpenAI : jamais de rotation free-tier
+        if not strict_preferred and not (force_openai and strict_openai):
+            # Ne pas faire basculer OpenAI dans la rotation free si non demandé
+            rest = [b for b in buckets if b.name != preferred and b.name != "openai"]
+            if preferred == "openai":
+                ordered.extend(rest)
+            else:
+                ordered.extend(rest)
     else:
-        ordered = buckets
+        if force_openai and openai_bucket:
+            ordered = [openai_bucket]
+        else:
+            ordered = [b for b in buckets if b.name != "openai"]
 
     for bucket in ordered:
+        if force_openai and strict_openai and bucket.name != "openai":
+            continue
         if not bucket.available():
             continue
-        text = _openai_chat(bucket, system, prompt, prior_messages=prior_messages)
+        text = _openai_chat(
+            bucket,
+            system,
+            prompt,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            prior_messages=prior_messages,
+            model_override=model_override if bucket.name == "openai" else None,
+        )
         if text:
-            logger.info("LLM reply via %s", bucket.name)
-            return text, bucket.name
+            label = bucket.name
+            if bucket.name == "openai" and model_override:
+                label = f"openai:{model_override}"
+            logger.info("LLM reply via %s", label)
+            return text, label
 
-    if allow_ollama:
-        text = _call_ollama_local(system, prompt)
+    if allow_ollama and not strict_preferred:
+        text = _call_ollama_local(system, prompt, max_tokens=max_tokens)
         if text:
             return text, "ollama"
 

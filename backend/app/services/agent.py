@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
@@ -12,6 +13,25 @@ from app.services.citation_urls import resolve_citation_url
 from app.services.reforms_corpus import search_reforms
 
 logger = logging.getLogger(__name__)
+
+_OCR_ATTENTION_RE = re.compile(
+    r"(OCR|ocr|استخراج جزئي|جودة الاستخراج|ré-?extra|réextra|"
+    r"qualité d.?extraction|extraction quality|مشوش|brouill)",
+    re.I,
+)
+
+
+def _sanitize_attention_points(points: list, *, drop_ocr_noise: bool) -> list[str]:
+    """Drop false OCR / extraction-quality warnings when the source is native Word."""
+    out: list[str] = []
+    for p in points or []:
+        s = str(p or "").strip()
+        if not s:
+            continue
+        if drop_ocr_noise and _OCR_ATTENTION_RE.search(s):
+            continue
+        out.append(s)
+    return out
 
 
 @dataclass
@@ -581,7 +601,7 @@ def _merge_hybrid(question: str, corpus_result: AgentResult, web_result: AgentRe
     llm_answer = generate_from_sources_sync(question, combined_sources, language=locale)
     if llm_answer:
         answer = (
-            f"{llm_answer}\n\n**Références :** corpus Sanad indexé + sources web (URLs ci-dessous)."
+            f"{llm_answer}\n\n**Références :** corpus LexHub indexé + sources web (URLs ci-dessous)."
         )
     else:
         answer = (
@@ -699,7 +719,10 @@ def route_and_search(
     conversation_history: list | None = None,
 ) -> AgentResult:
     """Chat direct style Groq/Kimi : web mondial + LLM cloud (réponses claires)."""
+    from app.core.config import settings
     from app.services.direct_chat import answer_like_groq_kimi
+
+    history = [] if settings.AI_EPHEMERAL else (conversation_history or [])
 
     return answer_like_groq_kimi(
         question,
@@ -712,8 +735,20 @@ def route_and_search(
         cabinet_id=cabinet_id,
         case_id=case_id,
         case_reference=case_reference,
-        conversation_history=conversation_history,
+        conversation_history=history,
     )
+
+
+def _clean_summary_md(summary: str) -> str:
+    s = (summary or "").strip()
+    if s.startswith("```"):
+        s = s.split("\n", 1)[-1]
+        if s.rstrip().endswith("```"):
+            s = s.rstrip()[:-3]
+        s = s.strip()
+        if s.lower().startswith("markdown"):
+            s = s[8:].lstrip()
+    return s.strip()
 
 
 def generate_synthesis(document_name: str, text: str, language: str = "ar") -> dict:
@@ -721,7 +756,6 @@ def generate_synthesis(document_name: str, text: str, language: str = "ar") -> d
         extract_amounts,
         extract_dates,
         extract_parties,
-        extract_risk_clauses,
     )
     from app.services.language import (
         get_disclaimer,
@@ -746,21 +780,54 @@ def generate_synthesis(document_name: str, text: str, language: str = "ar") -> d
             "disclaimer": disclaimer,
         }
 
-    from app.services.extraction import is_scrambled_arabic, safe_repair_arabic_text
+    from app.services.extraction import (
+        is_scrambled_arabic,
+        looks_like_native_arabic_prose,
+        safe_repair_arabic_text,
+    )
+    from app.services.arabic_text_fix import audio_transcript_quality
 
-    text = safe_repair_arabic_text(text)
+    name_l = (document_name or "").lower()
+    is_audio = name_l.endswith((".ogg", ".wav", ".mp3", ".m4a", ".webm", ".mpeg", ".mpga"))
+    tq = audio_transcript_quality(text) if is_audio else None
+
+    # DOCX / texte Word natif : ne pas « réparer » ni traiter comme OCR.
+    assume_native = (not is_audio) and (
+        looks_like_native_arabic_prose(text)
+        or name_l.endswith((".docx", ".doc", ".odt", ".rtf"))
+    )
+    if not assume_native and not is_audio:
+        text = safe_repair_arabic_text(text)
+    elif is_audio:
+        text = (text or "").strip()
     preview = text[:6000].replace("\n", " ")
-    scrambled = is_scrambled_arabic(text)
+    scrambled = False if assume_native else is_scrambled_arabic(text)
 
-    llm_data = generate_synthesis_structured(document_name, text, language=locale)
+    llm_data = generate_synthesis_structured(
+        document_name,
+        text,
+        language=locale,
+        assume_native=assume_native,
+        source_kind="audio" if is_audio else "file",
+        transcript_quality=tq,
+    )
     if llm_data and llm_data.get("summary"):
         summary = llm_data["summary"]
         # Refuser un « résumé » qui n'est que du texte OCR collé
         if scrambled and len(summary) > 100 and summary[:80] in text[:500]:
             summary = ""
         if summary:
-            attention = list(llm_data.get("attention_points") or [])
-            if scrambled:
+            attention = _sanitize_attention_points(
+                list(llm_data.get("attention_points") or []),
+                drop_ocr_noise=assume_native or not scrambled,
+            )
+            if is_audio and tq == "poor":
+                warn = {
+                    "fr": "Transcription audio peu fiable — ne pas traiter les noms/lieux interprétés comme des faits. Préférez la dictée live ou ré-enregistrez.",
+                    "ar": "التفريغ الصوتي غير موثوق — لا تعتمد الأسماء/الأماكن المستنتجة كوقائع. يُفضّل الإملاء المباشر أو إعادة التسجيل.",
+                }.get(locale, "التفريغ الصوتي غير موثوق — لا تعتمد الأسماء/الأماكن المستنتجة كوقائع.")
+                attention = [warn] + [a for a in attention if a != warn]
+            if scrambled and not assume_native and not is_audio and len(text) < 12000:
                 attention = [
                     {
                         "fr": "Qualité d'extraction moyenne — vérifier le PDF / ré-extraire.",
@@ -768,20 +835,32 @@ def generate_synthesis(document_name: str, text: str, language: str = "ar") -> d
                         "en": "جودة الاستخراج متوسطة — تحقق من PDF أو أعد الاستخراج.",
                     }.get(locale, "جودة الاستخراج متوسطة — تحقق من PDF أو أعد الاستخراج.")
                 ] + attention
-            # Regex uniquement pour combler des listes vides — jamais pour remplacer le summary LLM
-            parties = list(llm_data.get("parties") or []) or extract_parties(text)
-            dates = list(llm_data.get("key_dates") or []) or extract_dates(text)
-            amounts = list(llm_data.get("amounts") or []) or extract_amounts(text)
-            risks = list(llm_data.get("risk_clauses") or [])
-            if not risks and not scrambled:
-                risks = extract_risk_clauses(text)
+            # Si le LLM a répondu : faire confiance à ses listes (même vides).
+            # Le regex ne doit PAS remplir avec des n° de lois / phrases arabes inversées.
+            parties = [x for x in (llm_data.get("parties") or []) if str(x).strip()]
+            dates = [x for x in (llm_data.get("key_dates") or []) if str(x).strip()]
+            amounts = [x for x in (llm_data.get("amounts") or []) if str(x).strip()]
+            dates = [
+                d
+                for d in dates
+                if not __import__("re").fullmatch(
+                    r"\d\.\d{2}\.\d{3}",
+                    str(d).replace("/", ".").replace("-", "."),
+                )
+            ]
+            # Pas de « بنود المخاطر » : trop de bruit OCR / mémoires universitaires.
+            # Le résumé intelligent suffit ; regex/LLM risks désactivés ici.
+            if not parties and not dates and not amounts:
+                parties = extract_parties(text)
+                dates = extract_dates(text)
+                amounts = extract_amounts(text)
             return {
                 "parties": parties[:40],
                 "key_dates": dates[:40],
                 "amounts": amounts[:40],
-                "risk_clauses": risks[:40],
+                "risk_clauses": [],
                 "attention_points": attention,
-                "summary": summary,
+                "summary": _clean_summary_md(summary),
                 "sources": [Citation(label=document_name, excerpt=preview[:300])],
                 "disclaimer": disclaimer,
             }
@@ -789,8 +868,8 @@ def generate_synthesis(document_name: str, text: str, language: str = "ar") -> d
     # Secours LLM prose (pas de template programmé)
     summary = generate_synthesis_text(document_name, text, language=locale)
     if summary and not (scrambled and summary[:60] in text[:400]):
-        attention = []
-        if scrambled:
+        attention: list[str] = []
+        if scrambled and not assume_native and len(text) < 12000:
             attention.append(
                 {
                     "fr": "Qualité d'extraction moyenne — vérifier le PDF / ré-extraire.",
@@ -802,14 +881,44 @@ def generate_synthesis(document_name: str, text: str, language: str = "ar") -> d
             "parties": extract_parties(text),
             "key_dates": extract_dates(text),
             "amounts": extract_amounts(text),
-            "risk_clauses": [] if scrambled else extract_risk_clauses(text),
+            "risk_clauses": [],
             "attention_points": attention,
-            "summary": summary,
+            "summary": _clean_summary_md(summary),
             "sources": [Citation(label=document_name, excerpt=preview[:300])],
             "disclaimer": disclaimer,
         }
 
-    # Dernier recours uniquement si aucun LLM n'a répondu
+    # Dernier recours : résumé extractif si le texte est lisible, sinon message d'échec
+    attention = []
+    cleaned_text = (text or "").strip()
+    if len(cleaned_text) >= 400:
+        paras = [p.strip() for p in re.split(r"\n{2,}", cleaned_text) if len(p.strip()) > 60]
+        if not paras:
+            paras = [cleaned_text[:900]]
+        body = "\n\n".join(paras[:5])[:2200]
+        if locale == "ar":
+            summary = (
+                "ملخص مستخرج من النص (دون اختلاق):\n\n"
+                + body
+                + "\n\nهذا ملخص آلي من المقاطع الأولى — راجعوا الوثيقة الأصلية."
+            )
+        else:
+            summary = (
+                "Résumé extrait du texte (aucune invention) :\n\n"
+                + body
+                + "\n\nCeci est un extrait automatique des premiers passages — relisez la pièce originale."
+            )
+        return {
+            "parties": extract_parties(cleaned_text),
+            "key_dates": extract_dates(cleaned_text),
+            "amounts": extract_amounts(cleaned_text),
+            "risk_clauses": [],
+            "attention_points": attention,
+            "summary": _clean_summary_md(summary),
+            "sources": [Citation(label=document_name, excerpt=preview[:300])],
+            "disclaimer": disclaimer,
+        }
+
     _fallback = {
         "fr": (
             "## Synthèse indisponible\n\n"
@@ -831,7 +940,7 @@ def generate_synthesis(document_name: str, text: str, language: str = "ar") -> d
         ),
     }
     attention = []
-    if scrambled:
+    if scrambled and not assume_native:
         attention.append(
             {
                 "fr": "Texte arabe brouillé — ré-extrayez puis relancez la synthèse.",
@@ -844,7 +953,7 @@ def generate_synthesis(document_name: str, text: str, language: str = "ar") -> d
         "parties": extract_parties(text),
         "key_dates": extract_dates(text),
         "amounts": extract_amounts(text),
-        "risk_clauses": [] if scrambled else extract_risk_clauses(text),
+        "risk_clauses": [],
         "attention_points": attention,
         "summary": _fallback.get(locale, _fallback["ar"]),
         "sources": [Citation(label=document_name, excerpt=preview[:300])],
@@ -933,35 +1042,88 @@ def generate_case_analysis(
         return out
 
     parties, dates, amounts = _uniq(parties), _uniq(dates), _uniq(amounts)
-    all_text = "\n\n".join(chunks)[:5000]
-    fallback_summary = all_text[:900] if all_text else case_reference
-    llm_text = (
-        generate_case_analysis_text(case_reference, all_text, language=locale)
-        if all_text
-        else None
-    )
+    # Volume limité — Ollama CPU peut prendre des minutes sinon
+    all_text = "\n\n".join(chunks)[:4500]
+
+    # Résumé extractif immédiat (toujours disponible)
+    if locale == "ar":
+        fallback_summary = (
+            f"## تحليل الملف {case_reference}\n\n"
+            f"**الوثائق المستعملة:** {', '.join(key_docs) or 'لا توجد'}\n\n"
+            f"**الأطراف المكتشفة:** {', '.join(parties[:12]) or '—'}\n\n"
+            f"**التواريخ:** {', '.join(dates[:12]) or '—'}\n\n"
+            f"**المبالغ:** {', '.join(amounts[:12]) or '—'}\n\n"
+            f"### مقتطفات\n{(all_text[:1200] if all_text else 'لا يوجد نص مستخرج.')}\n\n"
+            "### ما يُستحسن فعله\n"
+            "- مراجعة القطع الجاهزة في تبويب الوثائق\n"
+            "- التحقق من الآجال والمبالغ مع الموكل\n"
+        )
+    else:
+        fallback_summary = (
+            f"## Analyse du dossier {case_reference}\n\n"
+            f"**Pièces utilisées :** {', '.join(key_docs) or 'aucune'}\n\n"
+            f"**Parties détectées :** {', '.join(parties[:12]) or '—'}\n\n"
+            f"**Dates :** {', '.join(dates[:12]) or '—'}\n\n"
+            f"**Montants :** {', '.join(amounts[:12]) or '—'}\n\n"
+            f"### Extraits\n{(all_text[:1200] if all_text else 'Aucun texte extractible.')}\n\n"
+            "### Suite utile\n"
+            "- Ouvrir les pièces prêtes dans l’onglet Documents\n"
+            "- Vérifier délais et montants avec le client\n"
+        )
+
+    llm_text = None
+    if all_text:
+        try:
+            llm_text = generate_case_analysis_text(
+                case_reference, all_text, language=locale
+            )
+        except Exception as exc:
+            logger.warning("generate_case_analysis_text failed: %s", exc)
+            llm_text = None
     summary = llm_text or fallback_summary
 
-    hits = search_case_documents(cabinet_id, case_id, f"dossier {case_reference}")
+    # Pas de RAG embeddings ici (peut bloquer longtemps) — analyse locale uniquement
     legal_issues: list[str] = []
     risks: list[str] = []
-    if hits:
-        for h in hits[:5]:
-            label = h.get("source") or "Source"
-            legal_issues.append(f"{label}: {(h.get('text') or '')[:160]}")
-        risks = [f"Vérifier la pertinence de {h.get('source')}" for h in hits[:3]]
+    if not key_docs:
+        legal_issues = [
+            "Aucune pièce extractible — importer des documents avant une analyse approfondie"
+            if locale != "ar"
+            else "لا توجد قطع قابلة للاستخراج — استورد وثائق قبل تحليل أعمق"
+        ]
+    else:
+        legal_issues = [
+            f"Pièce à relire : {n}" if locale != "ar" else f"قطعة للمراجعة: {n}"
+            for n in key_docs[:5]
+        ]
+        risks = [
+            "Revue manuelle des délais et des montants recommandée"
+            if locale != "ar"
+            else "يُستحسن مراجعة يدوية للآجال والمبالغ"
+        ]
 
     checklist = [
-        "Vérifier les pièces indexées et leur qualité OCR",
-        "Contrôler les délais et échéances mentionnés",
-        "Confirmer les parties et montants avec le client",
+        "Vérifier les pièces indexées et leur qualité OCR"
+        if locale != "ar"
+        else "تحقق من جودة استخراج الوثائق",
+        "Contrôler les délais et échéances mentionnés"
+        if locale != "ar"
+        else "راجع الآجال المذكورة",
+        "Confirmer les parties et montants avec le client"
+        if locale != "ar"
+        else "أكد الأطراف والمبالغ مع الموكل",
     ]
-    if not key_docs:
-        checklist.insert(0, "Ajouter des documents extractibles au dossier")
+    if not llm_text and all_text:
+        checklist.insert(
+            0,
+            "Analyse structurée locale (IA lente/indisponible) — relancer si besoin"
+            if locale != "ar"
+            else "تحليل محلي منظم (الذكاء بطيء/غير متاح) — أعد التشغيل عند الحاجة",
+        )
 
-    confidence = 75 if hits or chunks else 30
+    confidence = 55 if chunks else 25
     if llm_text:
-        confidence = min(92, confidence + 10)
+        confidence = min(90, confidence + 25)
 
     return {
         "case_reference": case_reference,

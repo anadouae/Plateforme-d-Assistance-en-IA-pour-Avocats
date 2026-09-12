@@ -38,11 +38,29 @@ def sniff_allowed_upload(content: bytes, ext: str) -> str | None:
     Retourne un message d'erreur si le contenu ne correspond pas à l'extension,
     sinon None.
     """
-    if not content or len(content) < 4:
+    ext = (ext or "").lower()
+    if not content:
+        return "Fichier vide ou invalide."
+
+    # TXT / Markdown : accepter même un court fichier ; UTF-16 OK
+    if ext in {".txt", ".md", ".markdown"}:
+        sample = content[:8192]
+        nulls = sample.count(b"\x00")
+        if nulls > 2:
+            for enc in ("utf-16", "utf-16-le", "utf-16-be"):
+                try:
+                    sample.decode(enc)
+                    return None
+                except UnicodeDecodeError:
+                    continue
+            if nulls > max(8, len(sample) // 3):
+                return "Le fichier texte semble binaire."
+        return None
+
+    if len(content) < 4:
         return "Fichier vide ou invalide."
 
     head = content[:16]
-    ext = ext.lower()
 
     if ext == ".pdf":
         if not content.lstrip().startswith(_PDF):

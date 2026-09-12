@@ -15,6 +15,7 @@ function speechLangsForLocale(locale: string): string[] {
 const TEH_FIX: Record<string, string> = {
   محكمه: "محكمة",
   مرافعه: "مرافعة",
+  المرافعه: "المرافعة",
   جلسه: "جلسة",
   دعوه: "دعوى",
   قضيه: "قضية",
@@ -25,32 +26,155 @@ const TEH_FIX: Record<string, string> = {
   مذكره: "مذكرة",
   مسطره: "مسطرة",
   ابتدائيه: "ابتدائية",
+  استئنافيه: "استئنافية",
   تجاريه: "تجارية",
   اداريه: "إدارية",
   إداريه: "إدارية",
   مدنيه: "مدنية",
   المدعيه: "المدعية",
   العارضه: "العارضة",
+  جريمه: "جريمة",
+  سيده: "سيدة",
+  سنه: "سنة",
+  متورطه: "متورطة",
+  مجموعه: "مجموعة",
+  الدعاره: "الدعارة",
+  دعاره: "دعارة",
+  المغربيه: "المغربية",
+  مغربيه: "مغربية",
+  الدستوريه: "الدستورية",
+  دستوريه: "دستورية",
+  والدستوريه: "والدستورية",
+  نقطه: "نقطة",
+  السيده: "السيدة",
+  الاهميه: "الأهمية",
+  الأهميه: "الأهمية",
+  اهميه: "أهمية",
+  الموقره: "الموقرة",
+  موقره: "موقرة",
+  عقوبه: "عقوبة",
+  قاصره: "قاصرة",
+  القاصره: "القاصرة",
+  مدينه: "مدينة",
+  المدينه: "المدينة",
+  شرطه: "شرطة",
+  النيابه: "النيابة",
+  نيابه: "نيابة",
+  حمايه: "حماية",
+  الحمايه: "الحماية",
+  حريه: "حرية",
+  الحريه: "الحرية",
+  قانونيه: "قانونية",
+  القانونيه: "القانونية",
+  جزائيه: "جزائية",
+  وثيقه: "وثيقة",
+  شهاده: "شهادة",
+  تهمه: "تهمة",
+  براءه: "براءة",
+  ماده: "مادة",
+  فقره: "فقرة",
+  مصلحه: "مصلحة",
+  سلطه: "سلطة",
+  دوله: "دولة",
 };
 
-/** Répare ه→ة sur lexique juridique + nettoie boucles Chrome. */
-export function cleanDictationNoise(text: string): string {
+const KEEP_FINAL_HEH = new Set([
+  "الله",
+  "ولله",
+  "بالله",
+  "وجه",
+  "فقه",
+  "شبه",
+  "كره",
+  "فيه",
+  "عليه",
+  "إليه",
+  "اليه",
+  "منه",
+  "عنه",
+  "له",
+  "به",
+  "معه",
+  "لديه",
+  "أمامه",
+  "امامه",
+  "نفسه",
+  "كله",
+  "بعضه",
+  "ضده",
+  "نحوه",
+  "هذه",
+  "لهذه",
+  "بهذه",
+  "كهذه",
+  "فهذه",
+  "وهذه",
+]);
+
+function fixTehMarbutaWord(word: string): string {
+  const m = word.match(/^([\u0600-\u06FF]+)(.*)$/);
+  if (!m) return word;
+  let core = m[1];
+  const rest = m[2] || "";
+  if (TEH_FIX[core]) return TEH_FIX[core] + rest;
+  if (KEEP_FINAL_HEH.has(core)) return word;
+  for (const pref of ["وال", "بال", "كال", "فال", "لل", "ال", "و", "ف", "ب", "ك", "ل"]) {
+    if (core.startsWith(pref) && core.length > pref.length + 2) {
+      const stem = core.slice(pref.length);
+      if (TEH_FIX[stem]) return pref + TEH_FIX[stem] + rest;
+      if (KEEP_FINAL_HEH.has(stem)) return word;
+      if (stem.endsWith("ه") && !KEEP_FINAL_HEH.has(stem) && stem.length >= 3) {
+        return pref + stem.slice(0, -1) + "ة" + rest;
+      }
+      break;
+    }
+  }
+  if (core.endsWith("ه") && !KEEP_FINAL_HEH.has(core) && core.length >= 3) {
+    return core.slice(0, -1) + "ة" + rest;
+  }
+  return word;
+}
+
+/** Répare ه→ة (artefact Chrome STT) sans changer le sens. */
+export function lightCleanDictation(text: string): string {
   let t = text.replace(/\s+/g, " ").trim();
   if (!t) return "";
-
+  t = t.split("هذة").join("هذه").split("لهذة").join("لهذه");
   for (const [wrong, right] of Object.entries(TEH_FIX)) {
     t = t.split(wrong).join(right);
   }
-  // Finales ه → ة (mots ≥ 4 lettres, hors pronoms courants)
-  const skip = new Set(["فيه", "عليه", "إليه", "منه", "عنه", "له", "به", "هذه", "تلك", "الله"]);
   t = t
-    .split(/(\s+)/)
-    .map((w) => {
-      if (skip.has(w) || w.length < 4 || !w.endsWith("ه")) return w;
-      if (/^[\u0600-\u06FF]+ه$/.test(w)) return `${w.slice(0, -1)}ة`;
-      return w;
-    })
-    .join("");
+    .split(" ")
+    .map((w) => fixTehMarbutaWord(w))
+    .join(" ");
+  return t.trim();
+}
+
+/** Chrome redit parfois toute la moitié du texte d’un coup. */
+function collapseDuplicatedHalf(text: string): string {
+  const t = text.trim();
+  if (t.length < 40) return t;
+  const words = t.split(/\s+/);
+  if (words.length >= 8 && words.length % 2 === 0) {
+    const mid = words.length / 2;
+    const a = words.slice(0, mid).join(" ");
+    const b = words.slice(mid).join(" ");
+    if (a === b) return a;
+  }
+  const midChar = Math.floor(t.length / 2);
+  for (let i = midChar - 30; i <= midChar + 30; i++) {
+    if (i <= 10 || i >= t.length - 10) continue;
+    const left = t.slice(0, i).trim();
+    const right = t.slice(i).trim();
+    if (left.length >= 25 && left === right) return left;
+  }
+  return t;
+}
+
+/** Lexique + anti-boucles Chrome (ne pas appliquer sur Whisper brut). */
+export function cleanDictationNoise(text: string): string {
+  let t = lightCleanDictation(text);
+  if (!t) return "";
 
   const parts = t
     .split(/(?<=[.。؟!?])\s+/)
@@ -69,6 +193,8 @@ export function cleanDictationNoise(text: string): string {
     if (next === t) break;
     t = next;
   }
+  t = collapseDuplicatedHalf(t);
+  t = t.replace(/((?:[\u0600-\u06FF]+\s+){2,10}[\u0600-\u06FF]+)(?:\s+\1)+/g, "$1");
   return t.trim();
 }
 
@@ -183,20 +309,25 @@ export function useSpeechInput(locale: string = "fr") {
         }
 
         if (code === "no-speech") {
-          // Ne coupe pas la session — Chrome envoie souvent no-speech entre deux phrases
-          setError(
-            locale.startsWith("ar")
-              ? "لم يُلتقط كلام للحظة — واصل الحديث أو أعد المحاولة."
-              : "Silence détecté — continuez à parler ou réessayez.",
-          );
+          // Normal entre deux phrases — NE PAS afficher d'erreur (ça bloquait l'avocat)
+          if (shouldRestartRef.current) {
+            window.setTimeout(() => {
+              if (!shouldRestartRef.current) return;
+              try {
+                recognition.start();
+                setListening(true);
+              } catch {
+                /* already started */
+              }
+            }, 250);
+          }
           return;
         }
 
         if (code === "network") {
-          // 1 retry silencieux, puis message clair — SANS boucler sur les dialectes
-          // (les retries multi-lang causaient des textes en double)
+          // Chrome coupe souvent l’aperçu live — on relance (l’audio MediaRecorder continue)
           networkRetriesRef.current += 1;
-          if (networkRetriesRef.current <= 1 && shouldRestartRef.current) {
+          if (networkRetriesRef.current <= 8 && shouldRestartRef.current) {
             try {
               recognition.stop();
             } catch {
@@ -209,18 +340,16 @@ export function useSpeechInput(locale: string = "fr") {
                 setListening(true);
                 setError(null);
               } catch {
-                shouldRestartRef.current = false;
-                setListening(false);
+                /* retry via onend */
               }
-            }, 600);
+            }, 400 + networkRetriesRef.current * 200);
             return;
           }
-          shouldRestartRef.current = false;
-          setListening(false);
+          // Ne tue PAS la dictée : l’enregistrement serveur continue sans aperçu
           setError(
             locale.startsWith("ar")
-              ? "خطأ شبكة التعرف الصوتي. Chrome يحتاج إنترنت مستقر. يمكنك كتابة النص يدوياً ثم « تصحيح و ترقيم »."
-              : "Erreur réseau dictée — Chrome a besoin d'Internet. Tapez le texte puis « Corriger ».",
+              ? "معاينة Chrome متوقفة مؤقتاً — التسجيل مستمر. النص الكامل عند الإيقاف."
+              : "Aperçu Chrome en pause — l’enregistrement continue. Texte complet à l’arrêt.",
           );
           return;
         }
@@ -269,16 +398,30 @@ export function useSpeechInput(locale: string = "fr") {
       };
 
       recognition.onend = () => {
-        if (shouldRestartRef.current) {
+        // Chrome coupe l’aperçu après ~1 phrase / silence — ce n’est PAS une limite LexHub.
+        // On relance tant que la dictée est active (MediaRecorder tourne en parallèle).
+        if (!shouldRestartRef.current) {
+          setListening(false);
+          return;
+        }
+        const tryStart = (attempt: number) => {
+          if (!shouldRestartRef.current) {
+            setListening(false);
+            return;
+          }
           try {
             recognition.start();
             setListening(true);
-            return;
+            networkRetriesRef.current = 0;
           } catch {
-            /* ignore */
+            if (attempt < 6) {
+              window.setTimeout(() => tryStart(attempt + 1), 300 + attempt * 200);
+            } else {
+              setListening(false);
+            }
           }
-        }
-        setListening(false);
+        };
+        window.setTimeout(() => tryStart(0), 200);
       };
 
       try {

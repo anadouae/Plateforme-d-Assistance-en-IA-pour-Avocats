@@ -1,0 +1,251 @@
+/* Landing auras — S3 Midnight glass */
+.landing-royal-test {
+  --lr-ink: #E8ECF8;
+  --lr-ink-soft: rgba(255, 255, 255, 0.8);
+  --lr-paper: #061018;
+  --lr-paper-dim: #0A1824;
+  --lr-card: rgba(255, 255, 255, 0.06);
+  --lr-royal-950: #061018;
+  --lr-royal-900: #0A1628;
+  --lr-royal-800: #12253A;
+  --lr-royal-700: #1B3F9C;
+  --lr-glow: #4C7CFF;
+  --lr-glow-soft: rgba(76, 124, 255, 0.35);
+  --lr-line-light: rgba(255, 255, 255, 0.12);
+  --lr-line-dark: rgba(76, 124, 255, 0.35);
+  --lr-muted-on-dark: rgba(255, 255, 255, 0.72);
+  --lr-ivory: rgba(255, 255, 255, 0.92);
+  --lr-brass: #4C7CFF;
+}
+
+.landing-royal-test .lr-aura {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.landing-royal-test .lr-aura--a {
+  width: 520px;
+  height: 520px;
+  top: -120px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: radial-gradient(circle, rgba(76, 124, 255, 0.45), transparent 68%);
+  opacity: 0.85;
+  animation: lr-pulse 7s ease-in-out infinite;
+}
+
+.landing-royal-test .lr-aura--b {
+  width: 380px;
+  height: 380px;
+  bottom: -80px;
+  right: -40px;
+  background: radial-gradient(circle, rgba(27, 63, 156, 0.55), transparent 70%);
+  opacity: 0.7;
+  animation: lr-float 9s ease-in-out infinite;
+}
+
+.landing-royal-test .lr-aura--c {
+  width: 280px;
+  height: 280px;
+  top: 40%;
+  left: -60px;
+  background: radial-gradient(circle, rgba(201, 168, 74, 0.18), transparent 70%);
+  opacity: 0.5;
+}
+
+@keyframes lr-pulse {
+  0%,
+  100% {
+    transform: translateX(-50%) scale(1);
+    opacity: 0.75;
+  }
+  50% {
+    transform: translateX(-50%) scale(1.08);
+    opacity: 1;
+  }
+}
+
+@keyframes lr-float {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.65;
+  }
+  50% {
+    transform: translate(-20px, -16px) scale(1.06);
+    opacity: 0.9;
+  }
+}
+
+.landing-royal-test .lr-hero-shine {
+  position: absolute;
+  inset: -20% -10%;
+  background: linear-gradient(
+    115deg,
+    transparent 35%,
+    rgba(255, 176, 122, 0.08) 48%,
+    rgba(168, 192, 255, 0.12) 52%,
+    transparent 65%
+  );
+  animation: lr-shine 9s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes lr-shine {
+  0% { transform: translateX(-18%) skewX(-8deg); opacity: 0.35; }
+  50% { transform: translateX(12%) skewX(-8deg); opacity: 0.85; }
+  100% { transform: translateX(28%) skewX(-8deg); opacity: 0.35; }
+}
+
+.landing-royal-test .lr-cta-pulse {
+  animation: lr-cta 2.8s ease-in-out infinite;
+}
+@keyframes lr-cta {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 106, 0, 0.35); }
+  50% { box-shadow: 0 0 0 10px rgba(255, 106, 0, 0); }
+}
+
+.landing-royal-test .lr-feature-card {
+  transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.45s ease;
+}
+.landing-royal-test .lr-feature-card:hover {
+  transform: translateY(-6px);
+}
+
+/* Titre LexHub — flux ivoire → or */
+.landing-royal-test .lr-title-gold {
+  background: linear-gradient(
+    110deg,
+    #F4F6FC 0%,
+    #F4F6FC 28%,
+    #FFE6C2 42%,
+    #C9A84A 50%,
+    #FFE6C2 58%,
+    #F4F6FC 72%,
+    #F4F6FC 100%
+  );
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: lr-gold-flow 7s ease-in-out infinite;
+}
+@keyframes lr-gold-flow {
+  0%, 100% { background-position: 100% 50%; }
+  50% { background-position: 0% 50%; }
+}
+
+/* Badge Espace avocat · Maroc — mélange vert / rouge (drapeau) fluide */
+.landing-royal-test .lr-badge-maroc {
+  background:
+    linear-gradient(#0B1A4D, #0B1A4D) padding-box,
+    linear-gradient(90deg, #006233, #c1272d, #006233) border-box;
+  border: 1px solid transparent;
+  color: #e8f5ee;
+  animation: lr-badge-shift 5.5s ease-in-out infinite;
+}
+.landing-royal-test .lr-badge-maroc__dot {
+  background: #c1272d;
+  box-shadow: 0 0 10px rgba(193, 39, 45, 0.55);
+  animation: lr-dot-flag 2.8s ease-in-out infinite;
+}
+@keyframes lr-badge-shift {
+  0%, 100% {
+    color: #d8f3e4;
+    box-shadow: 0 0 0 1px rgba(0, 98, 51, 0.35);
+  }
+  50% {
+    color: #fde8ea;
+    box-shadow: 0 0 0 1px rgba(193, 39, 45, 0.4);
+  }
+}
+@keyframes lr-dot-flag {
+  0%, 100% {
+    background: #006233;
+    box-shadow: 0 0 10px rgba(0, 98, 51, 0.55);
+  }
+  50% {
+    background: #c1272d;
+    box-shadow: 0 0 10px rgba(193, 39, 45, 0.55);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-royal-test .lr-aura,
+  .landing-royal-test .lr-hero-shine,
+  .landing-royal-test .lr-cta-pulse,
+  .landing-royal-test .lr-title-gold,
+  .landing-royal-test .lr-badge-maroc,
+  .landing-royal-test .lr-badge-maroc__dot,
+  .landing-royal-test .lr-hero-ball,
+  .landing-royal-test .lr-hero-ball-trail,
+  .landing-royal-test .lr-hero-orbit {
+    animation: none !important;
+  }
+  .landing-royal-test .lr-title-gold {
+    color: #FFE6C2;
+    background: none;
+    -webkit-background-clip: unset;
+    background-clip: unset;
+  }
+  .landing-royal-test .lr-pricing-card {
+    transform: none !important;
+  }
+}
+
+/* Hero B v2 — halo doré */
+.landing-royal-test .lr-hero-orbit {
+  background: radial-gradient(
+    circle,
+    rgba(255, 230, 194, 0.22) 0%,
+    rgba(201, 168, 74, 0.12) 35%,
+    transparent 70%
+  );
+  filter: blur(2px);
+}
+
+.landing-royal-test .lr-hero-ball {
+  background: radial-gradient(circle at 30% 30%, #fff8e6, #c9a84a 45%, #8a6d1f 100%);
+  box-shadow:
+    0 0 24px rgba(201, 168, 74, 0.65),
+    0 0 48px rgba(255, 106, 0, 0.25);
+  z-index: 3;
+}
+
+.landing-royal-test .lr-hero-ball-trail {
+  background: linear-gradient(90deg, transparent, rgba(201, 168, 74, 0.55), transparent);
+  z-index: 2;
+}
+
+.landing-royal-test .lr-pricing-stage {
+  transform-style: preserve-3d;
+}
+
+.landing-royal-test .lr-pricing-card {
+  backface-visibility: hidden;
+  will-change: transform;
+}
+
+.landing-royal-test .lr-security-icon {
+  animation: lr-shield-pulse 3s ease-in-out infinite;
+}
+
+@keyframes lr-shield-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 20px rgba(76, 124, 255, 0.25);
+  }
+  50% {
+    box-shadow: 0 0 32px rgba(76, 124, 255, 0.45);
+  }
+}
+
+@media (max-width: 640px) {
+  .landing-royal-test .lr-pricing-stage {
+    height: 380px;
+    perspective: none;
+  }
+}

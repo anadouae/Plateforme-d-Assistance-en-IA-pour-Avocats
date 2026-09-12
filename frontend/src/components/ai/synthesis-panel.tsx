@@ -5,15 +5,15 @@ import {
   AlertTriangle,
   Calendar,
   DollarSign,
-  FileText,
   Loader2,
   RefreshCw,
   Users,
 } from "lucide-react";
-import { MarkdownAnswer } from "@/components/ai/markdown-answer";
+import { StructuredSynthesis } from "@/components/ai/structured-synthesis";
 import { Button } from "@/components/ui/button";
 import { locales, type Locale } from "@/lib/i18n/translations";
 import { api, ApiError, getClientLocale, type SynthesisResult } from "@/lib/api";
+import { useBillingCredits } from "@/store/billing-credits";
 import { useLocaleStore } from "@/store/locale";
 import { cn } from "@/lib/utils";
 
@@ -32,8 +32,9 @@ const LABELS: Record<
     parties: string;
     dates: string;
     amounts: string;
-    risks: string;
     executive: string;
+    structuredHint: string;
+    executiveHint: string;
     sources: string;
     loading: string;
     loadingHint: string;
@@ -43,6 +44,8 @@ const LABELS: Record<
     pending: string;
     pendingAudio: string;
     refresh: string;
+    analyze: string;
+    analyzeHint: string;
     error: string;
   }
 > = {
@@ -50,8 +53,10 @@ const LABELS: Record<
     parties: "Parties",
     dates: "Dates clés",
     amounts: "Montants",
-    risks: "Clauses à risque",
     executive: "Synthèse intelligente",
+    structuredHint:
+      "Parties, dates et montants s’affichent s’ils sont clairement détectés (contrats / dossiers).",
+    executiveHint: "Résumé structuré — sans Markdown, zones distinctes.",
     sources: "Source documentaire",
     loading: "Analyse intelligente du document…",
     loadingHint: "Le modèle lit la pièce et rédige une synthèse de cabinet.",
@@ -61,14 +66,18 @@ const LABELS: Record<
     pending: "En attente du texte extrait…",
     pendingAudio: "En attente de la transcription…",
     refresh: "Actualiser",
+    analyze: "Lancer l'analyse IA",
+    analyzeHint: "L'analyse n'est pas lancée automatiquement — chaque clic consomme une requête IA.",
     error: "Impossible de générer la synthèse. Réessayez.",
   },
   ar: {
     parties: "الأطراف",
     dates: "التواريخ الرئيسية",
     amounts: "المبالغ",
-    risks: "بنود المخاطر",
     executive: "تلخيص ذكي",
+    structuredHint:
+      "تظهر الأطراف والتواريخ والمبالغ فقط إن وُجدت بوضوح (عقود / قضايا).",
+    executiveHint: "ملخص منظم — بدون نجوم، مناطق واضحة.",
     sources: "مصدر الوثيقة",
     loading: "جاري التحليل الذكي للوثيقة…",
     loadingHint: "يقرأ النموذج القطعة ويُعد تلخيصاً للمكتب.",
@@ -78,6 +87,8 @@ const LABELS: Record<
     pending: "في انتظار النص المستخرج…",
     pendingAudio: "في انتظار التفريغ الصوتي…",
     refresh: "تحديث",
+    analyze: "بدء التحليل الذكي",
+    analyzeHint: "لا يُشغَّل التحليل تلقائياً — كل نقرة تستخدم طلباً واحداً.",
     error: "تعذر إنشاء التلخيص. حاول مجدداً.",
   },
 };
@@ -85,12 +96,12 @@ const LABELS: Record<
 function SynthesisSkeleton() {
   return (
     <div className="animate-pulse space-y-4">
+      <div className="h-40 rounded-lg bg-slate-100" />
       <div className="grid gap-3 sm:grid-cols-2">
-        {[1, 2, 3, 4].map((i) => (
+        {[1, 2].map((i) => (
           <div key={i} className="h-20 rounded-lg bg-slate-100" />
         ))}
       </div>
-      <div className="h-40 rounded-lg bg-slate-100" />
     </div>
   );
 }
@@ -99,22 +110,13 @@ function InfoBlock({
   icon: Icon,
   title,
   items,
-  variant = "default",
 }: {
   icon: typeof Users;
   title: string;
   items: string[];
-  variant?: "default" | "risk";
 }) {
   return (
-    <div
-      className={cn(
-        "rounded-xl border p-4",
-        variant === "risk"
-          ? "border-amber-200 bg-amber-50/50"
-          : "border-sanad-border bg-sanad-light/50",
-      )}
-    >
+    <div className="rounded-xl border border-sanad-border bg-sanad-light/50 p-4">
       <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
         <Icon className="h-3.5 w-3.5" />
         {title}
@@ -172,6 +174,7 @@ export function SynthesisPanel({
   const [cache, setCache] = useState<Partial<Record<Locale, SynthesisResult>>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [started, setStarted] = useState(false);
   const requestId = useRef(0);
   const cacheRef = useRef(cache);
   cacheRef.current = cache;
@@ -184,6 +187,7 @@ export function SynthesisPanel({
   useEffect(() => {
     setCache({});
     setError("");
+    setStarted(false);
   }, [documentId]);
 
   const labels = LABELS[lang];
@@ -197,10 +201,12 @@ export function SynthesisPanel({
       const id = ++requestId.current;
       setLoading(true);
       setError("");
+      setStarted(true);
       try {
         const result = await api.getSynthesis(documentId, targetLang);
         if (id !== requestId.current) return;
         setCache((prev) => ({ ...prev, [targetLang]: result }));
+        void useBillingCredits.getState().notifySpend("synthesis");
       } catch (e) {
         if (id !== requestId.current) return;
         setError(
@@ -213,10 +219,7 @@ export function SynthesisPanel({
     [canAnalyze, hasText, documentId],
   );
 
-  useEffect(() => {
-    if (!canAnalyze || !hasText) return;
-    void load(lang);
-  }, [canAnalyze, hasText, lang, documentId, load]);
+  const needsLangAnalysis = started && !synthesis && !loading;
 
   if (!canAnalyze) {
     return (
@@ -256,7 +259,7 @@ export function SynthesisPanel({
               setLang(next);
             }}
           />
-          {synthesis && (
+          {synthesis ? (
             <Button
               variant="ghost"
               size="sm"
@@ -266,11 +269,38 @@ export function SynthesisPanel({
               <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
               {labels.refresh}
             </Button>
-          )}
+          ) : started ? (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={loading}
+              onClick={() => void load(lang, true)}
+            >
+              {labels.analyze}
+            </Button>
+          ) : null}
         </div>
       </div>
 
-      {loading && !synthesis && (
+      {!started && !loading && (
+        <div className="rounded-xl border border-sanad-border bg-sanad-light/30 p-4 text-sm">
+          <p className="font-medium text-sanad-navy">{labels.analyze}</p>
+          <p className="mt-1 text-xs text-slate-500">{labels.analyzeHint}</p>
+          <Button className="mt-3" size="sm" onClick={() => void load(lang, true)}>
+            {labels.analyze}
+          </Button>
+        </div>
+      )}
+
+      {needsLangAnalysis && (
+        <div className="rounded-lg border border-dashed border-sanad-border px-4 py-3 text-sm text-slate-600">
+          <Button variant="outline" size="sm" onClick={() => void load(lang, true)}>
+            {labels.analyze}
+          </Button>
+        </div>
+      )}
+
+      {loading && !synthesis && started && (
         <div className="space-y-3">
           <div className="space-y-1">
             <div className="flex items-center gap-2 text-sm text-sanad-blue">
@@ -314,32 +344,32 @@ export function SynthesisPanel({
             </div>
           )}
 
-          <div className="grid gap-3 sm:grid-cols-2">
-            {synthesis.parties.length > 0 && (
-              <InfoBlock icon={Users} title={labels.parties} items={synthesis.parties} />
-            )}
-            {synthesis.key_dates.length > 0 && (
-              <InfoBlock icon={Calendar} title={labels.dates} items={synthesis.key_dates} />
-            )}
-            {synthesis.amounts.length > 0 && (
-              <InfoBlock icon={DollarSign} title={labels.amounts} items={synthesis.amounts} />
-            )}
-            {synthesis.risk_clauses.length > 0 && (
-              <InfoBlock
-                icon={FileText}
-                title={labels.risks}
-                items={synthesis.risk_clauses}
-                variant="risk"
-              />
-            )}
-          </div>
-
           <div className="rounded-xl border border-sanad-green/20 bg-sanad-green/5 p-4">
-            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-sanad-green">
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-sanad-green">
               {labels.executive}
             </p>
-            <MarkdownAnswer text={synthesis.summary} sources={synthesis.sources} />
+            <p className="mb-3 text-xs text-slate-500">{labels.executiveHint}</p>
+            <StructuredSynthesis text={synthesis.summary} />
           </div>
+
+          {(synthesis.parties.length > 0 ||
+            synthesis.key_dates.length > 0 ||
+            synthesis.amounts.length > 0) && (
+            <>
+              <p className="text-xs text-slate-500">{labels.structuredHint}</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {synthesis.parties.length > 0 && (
+                  <InfoBlock icon={Users} title={labels.parties} items={synthesis.parties} />
+                )}
+                {synthesis.key_dates.length > 0 && (
+                  <InfoBlock icon={Calendar} title={labels.dates} items={synthesis.key_dates} />
+                )}
+                {synthesis.amounts.length > 0 && (
+                  <InfoBlock icon={DollarSign} title={labels.amounts} items={synthesis.amounts} />
+                )}
+              </div>
+            </>
+          )}
 
           {synthesis.sources.length > 0 && (
             <div className="space-y-2">

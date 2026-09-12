@@ -9,12 +9,20 @@ services:
     environment:
       ENVIRONMENT: production
       DEBUG: "false"
-      DATABASE_URL: postgresql://sanad:sanad_secret@postgres:5432/sanad
+      DATABASE_URL: postgresql://${POSTGRES_USER:-lexhub}:${POSTGRES_PASSWORD:-lexhub_secret}@postgres:5432/${POSTGRES_DB:-lexhub}
       SEED_DEMO_DATA: ${SEED_DEMO_DATA:-false}
       WHISPER_ENABLED: ${WHISPER_ENABLED:-true}
       WHISPER_MODEL: ${WHISPER_MODEL:-medium}
       WHISPER_DEVICE: ${WHISPER_DEVICE:-cpu}
       WHISPER_COMPUTE_TYPE: ${WHISPER_COMPUTE_TYPE:-int8}
+      # Prod : clés Turnstile RÉELLES obligatoires (pas les clés de test)
+      TURNSTILE_SITE_KEY: ${TURNSTILE_SITE_KEY:?set TURNSTILE_SITE_KEY in .env.vps}
+      TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:?set TURNSTILE_SECRET_KEY in .env.vps}
+      CAPTCHA_AFTER_FAILURES: ${CAPTCHA_AFTER_FAILURES:-3}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      FRONTEND_URL: ${FRONTEND_URL}
+      SECRET_KEY: ${SECRET_KEY}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
     volumes: !override
       - chroma_data:/app/data/chromadb
       - hf_cache:/root/.cache/huggingface

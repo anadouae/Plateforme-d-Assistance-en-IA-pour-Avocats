@@ -2,6 +2,7 @@ import logging
 import threading
 
 from celery import Celery
+from celery.schedules import crontab
 from celery.signals import worker_process_init
 
 from app.core.config import settings
@@ -9,7 +10,7 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 celery_app = Celery(
-    "sanad",
+    "lexhub",
     broker=settings.CELERY_BROKER_URL,
     backend=settings.CELERY_RESULT_BACKEND,
 )
@@ -26,6 +27,25 @@ celery_app.conf.update(
     task_reject_on_worker_lost=True,
     task_soft_time_limit=settings.CELERY_TASK_SOFT_TIME_LIMIT,
     task_time_limit=settings.CELERY_TASK_TIME_LIMIT,
+    beat_schedule={
+        "agenda-remind-48h-every-15min": {
+            "task": "agenda_remind_48h",
+            "schedule": 900.0,  # 15 minutes
+        },
+        "trial-lifecycle-hourly": {
+            "task": "trial_lifecycle_hourly",
+            "schedule": 3600.0,  # 1 heure
+        },
+        "retention-daily-9h": {
+            "task": "retention_lifecycle_daily",
+            "schedule": crontab(hour=9, minute=0),  # 09:00 Africa/Casablanca
+        },
+        "retention-weekly-digest": {
+            "task": "retention_weekly_digest",
+            "schedule": crontab(hour=9, minute=30, day_of_week=1),  # lundi
+        },
+    },
+    imports=("app.services.tasks",),
 )
 
 celery_app.autodiscover_tasks(["app.services"])
@@ -54,7 +74,7 @@ def _warmup_worker_models(**_kwargs) -> None:
     """Warm-up en arrière-plan : n'bloque PAS l'acceptation des tâches (extraction PDF)."""
     threading.Thread(
         target=_warmup_models_sync,
-        name="sanad-model-warmup",
+        name="lexhub-model-warmup",
         daemon=True,
     ).start()
     logger.info("Celery model warmup started in background")

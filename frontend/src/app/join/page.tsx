@@ -3,17 +3,15 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-/** Ancienne route → onglet الانضمام de l'auth unifié */
+/** Ancienne route « code cabinet » : l’entrée se fait uniquement par invitation e-mail. */
 export default function JoinRedirectPage() {
   const router = useRouter();
   useEffect(() => {
-    router.replace("/login?tab=join");
+    router.replace("/login");
   }, [router]);
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#F6EFDD]">
-      <p className="text-sm text-[#2C3B5C]" dir="rtl">
-        جارٍ التوجيه…
-      </p>
+    <div className="flex min-h-screen items-center justify-center bg-[#F4F6FA]">
+      <p className="text-sm text-[#0A1228]">Redirection…</p>
     </div>
   );
 }

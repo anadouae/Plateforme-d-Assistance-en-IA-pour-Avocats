@@ -14,15 +14,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     from app.core.database import Base
-    from app.models import (  # noqa: F401
-        AuditLog,
-        Cabinet,
-        Case,
-        ChatMessage,
-        Document,
-        EmailToken,
-        User,
-    )
+    import app.models  # noqa: F401 — enregistre tous les modèles SQLAlchemy
 
     bind = op.get_bind()
     Base.metadata.create_all(bind=bind)
@@ -30,15 +22,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     from app.core.database import Base
-    from app.models import (  # noqa: F401
-        AuditLog,
-        Cabinet,
-        Case,
-        ChatMessage,
-        Document,
-        EmailToken,
-        User,
-    )
+    import app.models  # noqa: F401
 
     bind = op.get_bind()
     Base.metadata.drop_all(bind=bind)

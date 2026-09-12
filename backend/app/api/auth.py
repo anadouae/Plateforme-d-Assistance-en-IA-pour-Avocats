@@ -20,7 +20,6 @@ from app.schemas import (
     ForgotPasswordRequest,
     GoogleAuthRequest,
     LoginRequest,
-    MagicLoginRequest,
     MessageResponse,
     RefreshTokenRequest,
     RegisterRequest,
@@ -41,32 +40,28 @@ from app.services.auth_sessions import (
 )
 from app.services.email import (
     send_lockout_email,
-    send_magic_link_email,
     send_otp_email,
     send_password_reset_email,
-    send_verification_email,
 )
 from app.services.email_otp import (
     PURPOSE_REGISTER,
     consume_otp,
-    create_magic_token,
     create_otp,
-    consume_magic_token,
+    otp_is_valid,
 )
 from app.services.recovery_codes import consume_recovery_code, generate_recovery_codes
 from app.services.tokens import (
     consume_token,
     create_token,
     reset_password_hours,
-    verify_email_hours,
 )
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 def _mfa_required_for(user: User) -> bool:
-    # TOTP téléphone optionnel — Magic Link / email OTP sont le flux principal
-    return False
+    # MFA obligatoire pour l admin plateforme LexHub
+    return user.role == UserRole.ADMIN_WEBVOICE
 
 
 def _user_response(user: User, cabinet: Cabinet | None) -> UserResponse:
@@ -74,11 +69,17 @@ def _user_response(user: User, cabinet: Cabinet | None) -> UserResponse:
         id=user.id,
         email=user.email,
         full_name=user.full_name,
+        full_name_ar=getattr(user, "full_name_ar", None),
+        phone=getattr(user, "phone", None),
         role=user.role.value,
         cabinet_id=user.cabinet_id,
         cabinet_name=cabinet.name if cabinet else "",
+        cabinet_name_ar=getattr(cabinet, "name_ar", None) if cabinet else None,
+        cabinet_city=cabinet.city if cabinet else None,
+        cabinet_has_logo=bool(getattr(cabinet, "logo_path", None)) if cabinet else False,
         totp_enabled=bool(user.totp_enabled),
         mfa_required=_mfa_required_for(user),
+        has_seen_onboarding_tour=bool(getattr(user, "has_seen_onboarding_tour", False)),
     )
 
 
@@ -100,6 +101,11 @@ def _clear_refresh_cookie(response: Response) -> None:
         key=settings.REFRESH_COOKIE_NAME,
         path="/api/auth",
     )
+    if settings.REFRESH_COOKIE_NAME != "sanad_refresh":
+        response.delete_cookie(
+            key="sanad_refresh",
+            path="/api/auth",
+        )
 
 
 def _issue_tokens(
@@ -166,6 +172,20 @@ def get_me(user: User = Depends(get_current_user), db: Session = Depends(get_db)
     return _user_response(user, cabinet)
 
 
+@router.post("/onboarding-tour/complete", response_model=UserResponse)
+def complete_onboarding_tour(
+    user: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    """Marque le tour guidé comme vu (terminé ou passé)."""
+    if not getattr(user, "has_seen_onboarding_tour", False):
+        user.has_seen_onboarding_tour = True
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    cabinet = db.query(Cabinet).filter(Cabinet.id == user.cabinet_id).first()
+    return _user_response(user, cabinet)
+
+
 @router.get("/captcha-config")
 def captcha_config():
     return {
@@ -191,7 +211,11 @@ def request_register_otp(
         )
     code = create_otp(db, email=data.email, purpose=PURPOSE_REGISTER, minutes=15, digits=True)
     db.commit()
-    send_otp_email(data.email, code, "Vérification de votre email")
+    if not send_otp_email(data.email, code, "Vérification de votre email"):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Service d'email indisponible. Réessayez plus tard.",
+        )
     return MessageResponse(
         message="Si cet email est disponible, un code de vérification a été envoyé."
     )
@@ -205,72 +229,27 @@ def verify_register_otp(
     from app.core.rate_limit import check_rate_limit
     from app.services.email_otp import otp_is_valid
 
-    check_rate_limit(request, key="auth.verify_register_otp", limit=20, window_sec=60)
+    check_rate_limit(request, key="auth.verify_register_otp", limit=10, window_sec=60)
+    from app.core.rate_limit import check_named_rate_limit, count_failures, record_failure
+
+    email_key = (data.email or "").strip().lower()
+    # Max 5 échecs / 15 min par e-mail (anti brute-force OTP)
+    fails = count_failures(request, key=f"otp_fail:{email_key}", window_sec=900)
+    if fails >= 5:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Trop de tentatives. Demandez un nouveau code.",
+        )
+    check_named_rate_limit(name=f"otp_verify:{email_key}", limit=8, window_sec=60)
     if not otp_is_valid(
         db, email=data.email, purpose=PURPOSE_REGISTER, code=data.code
     ):
+        record_failure(request, key=f"otp_fail:{email_key}", window_sec=900)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Code invalide ou expiré.",
         )
     return MessageResponse(message="Email vérifié. Vous pouvez continuer l'inscription.")
-
-
-@router.post("/magic-link", response_model=MessageResponse)
-def request_magic_link(
-    data: EmailOnlyRequest, request: Request, db: Session = Depends(get_db)
-):
-    """Connexion sans mot de passe : envoie un lien à usage unique (15 min)."""
-    from app.core.rate_limit import check_rate_limit
-
-    check_rate_limit(request, key="auth.magic_link", limit=5, window_sec=60)
-    user = db.query(User).filter(User.email == data.email.lower()).first()
-    # Toujours même réponse (anti-énumération)
-    if user and user.is_active and user.is_verified:
-        token = create_magic_token(db, user.email, minutes=15)
-        log_audit(db, "auth.magic_link_sent", user=user, request=request)
-        db.commit()
-        send_magic_link_email(user.email, token)
-    else:
-        db.commit()
-    return MessageResponse(
-        message="Si un compte existe avec cet email, un lien de connexion a été envoyé."
-    )
-
-
-@router.post("/magic-login", response_model=TokenResponse)
-def magic_login(
-    data: MagicLoginRequest,
-    request: Request,
-    response: Response,
-    db: Session = Depends(get_db),
-):
-    from app.core.rate_limit import check_rate_limit
-
-    check_rate_limit(request, key="auth.magic_login", limit=20, window_sec=60)
-    email = consume_magic_token(db, data.token)
-    if not email:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Lien invalide ou expiré. Demandez un nouveau lien.",
-        )
-    user = db.query(User).filter(User.email == email).first()
-    if not user or not user.is_active or not user.is_verified:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Compte inactif ou non vérifié.",
-        )
-    cabinet = db.query(Cabinet).filter(Cabinet.id == user.cabinet_id).first()
-    if cabinet and cabinet.status in (CabinetStatus.SUSPENDED, CabinetStatus.PENDING):
-        if user.role != UserRole.ADMIN_WEBVOICE:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Cabinet suspendu ou en attente de validation.",
-            )
-    log_audit(db, "auth.magic_login", user=user, request=request)
-    tokens = _issue_tokens(db, user, cabinet, request, response, mfa_setup_required=False)
-    db.commit()
-    return tokens
 
 
 @router.post("/register", response_model=MessageResponse, status_code=status.HTTP_201_CREATED)
@@ -305,7 +284,7 @@ async def register(data: RegisterRequest, request: Request, db: Session = Depend
         address=data.address,
         barreau=data.barreau,
         ice=data.ice,
-        status=CabinetStatus.PENDING,
+        status=CabinetStatus.ACTIVE,
     )
     db.add(cabinet)
     db.flush()
@@ -319,51 +298,48 @@ async def register(data: RegisterRequest, request: Request, db: Session = Depend
         full_name=data.manager_name,
         phone=data.phone,
         role=UserRole.ADMIN_CABINET,
-        is_active=False,
-        is_verified=False,
+        is_active=True,
+        is_verified=True,
         cabinet_id=cabinet.id,
     )
     db.add(user)
     db.flush()
 
-    raw_token = create_token(db, user, TokenType.VERIFY_EMAIL, verify_email_hours())
+    from app.services.billing import start_free_for_cabinet
+
+    start_free_for_cabinet(db, cabinet.id)
+
+    if getattr(data, "referral_code", None):
+        from app.services.referral import attach_referral_on_register
+
+        try:
+            attach_referral_on_register(
+                db, new_cabinet_id=cabinet.id, referral_code=data.referral_code
+            )
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+
     log_audit(db, "cabinet.register", user=user, request=request, details=cabinet.name)
     db.commit()
 
-    send_verification_email(user.email, raw_token)
+    try:
+        from app.services.email import send_welcome_free_email
 
-    return MessageResponse(
-        message="Inscription réussie. Un email de vérification a été envoyé à votre adresse professionnelle."
-    )
-
-
-@router.get("/verify-email", response_model=MessageResponse)
-def verify_email(token: str = Query(...), db: Session = Depends(get_db)):
-    user = consume_token(db, token, TokenType.VERIFY_EMAIL)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Lien invalide ou expiré. Demandez un nouveau lien de vérification.",
+        send_welcome_free_email(
+            user.email,
+            full_name=user.full_name,
+            cabinet_name=cabinet.name,
         )
-
-    user.is_verified = True
-    db.commit()
-
-    return MessageResponse(
-        message="Votre adresse email a été vérifiée avec succès. Votre cabinet sera activé par l'administrateur."
-    )
-
-
-@router.post("/resend-verification", response_model=MessageResponse)
-def resend_verification(data: ForgotPasswordRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == data.email.lower()).first()
-    if user and not user.is_verified:
-        raw = create_token(db, user, TokenType.VERIFY_EMAIL, verify_email_hours())
-        db.commit()
-        send_verification_email(user.email, raw)
+    except Exception:
+        pass
 
     return MessageResponse(
-        message="Si un compte existe avec cette adresse, un email de vérification a été envoyé."
+        message=(
+            "Inscription réussie. Votre cabinet est sur le plan Découverte (gratuit). "
+            "Connectez-vous, puis upgradez depuis Tarifs si besoin."
+        )
     )
 
 
@@ -377,7 +353,11 @@ def forgot_password(data: ForgotPasswordRequest, request: Request, db: Session =
         raw = create_token(db, user, TokenType.RESET_PASSWORD, reset_password_hours())
         log_audit(db, "auth.forgot_password", user=user, request=request)
         db.commit()
-        send_password_reset_email(user.email, raw)
+        if not send_password_reset_email(user.email, raw):
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Service d'email indisponible. Réessayez plus tard.",
+            )
 
     return MessageResponse(
         message="Si un compte existe avec cette adresse, un email sera envoyé."
@@ -409,11 +389,13 @@ async def reset_password(
     user.failed_login_attempts = 0
     user.locked_until = None
     revoke_all_user_sessions(db, user.id)
-    if data.token and not user.is_active:
-        cabinet = db.query(Cabinet).filter(Cabinet.id == user.cabinet_id).first()
-        if cabinet and cabinet.status == CabinetStatus.ACTIVE:
-            user.is_active = True
-            user.is_verified = True
+    # Sécurité : un compte désactivé ne se réactive PAS via reset MDP
+    if not user.is_active:
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Compte désactivé — contactez l'admin de votre cabinet pour réactivation.",
+        )
     db.commit()
 
     return MessageResponse(message="Mot de passe réinitialisé avec succès.")
@@ -429,7 +411,11 @@ def refresh_token(
     from app.core.rate_limit import check_rate_limit
 
     check_rate_limit(request, key="auth.refresh", limit=30, window_sec=60)
-    raw = data.refresh_token or request.cookies.get(settings.REFRESH_COOKIE_NAME)
+    raw = (
+        data.refresh_token
+        or request.cookies.get(settings.REFRESH_COOKIE_NAME)
+        or request.cookies.get("sanad_refresh")
+    )
     if not raw:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token invalide")
 
@@ -473,7 +459,11 @@ def logout(
     data: RefreshTokenRequest = Body(default_factory=RefreshTokenRequest),
     db: Session = Depends(get_db),
 ):
-    raw = data.refresh_token or request.cookies.get(settings.REFRESH_COOKIE_NAME)
+    raw = (
+        data.refresh_token
+        or request.cookies.get(settings.REFRESH_COOKIE_NAME)
+        or request.cookies.get("sanad_refresh")
+    )
     if raw:
         revoke_session(db, raw)
         db.commit()
@@ -519,7 +509,7 @@ async def login(
     if find_pending_join_block(db, data.email, data.password):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="طلبك قيد المراجعة — لا يمكنك الدخول قبل موافقة المنسّق.",
+            detail="JOIN_PENDING",
         )
 
     user = db.query(User).filter(User.email == data.email.lower()).first()

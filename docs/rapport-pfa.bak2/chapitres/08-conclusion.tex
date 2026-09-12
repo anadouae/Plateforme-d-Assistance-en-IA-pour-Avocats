@@ -1,0 +1,48 @@
+\chapter{Conclusion et perspectives}
+\label{ch:conclusion}
+
+\section{Bilan}
+
+Ce stage à WEBVOICE a permis de livrer \textbf{LexHub}, plateforme d'assistance IA pour cabinets d'avocats, conformément au sujet du PFA. L'objectif n'était pas un démonstrateur hors-ligne : c'est un produit déployé sur \url{https://lexhub.space}, avec isolation multi-tenant, rôles, atelier de plaidoirie guidé, validation / assignation, et export officiel.
+
+Sur le plan académique, le travail relie analyse des besoins, étude comparative, conception UML, réalisation full-stack et mise en production. Sur le plan professionnel, il confronte aux contraintes réelles : e-mails, temps réel, export, déontologie et qualité du pipeline voix~$\rightarrow$~document.
+
+\section{Apports personnels}
+
+Maîtrise d'une architecture web moderne, conception d'un flux métier (voix $\rightarrow$ acte), vigilance vis-à-vis des inventions de l'IA, dialogue avec un tuteur école (M.~Mohammed Al Achhab) et un encadrant entreprise (M.~Hatim Benhaddou).
+
+\section{Perspectives --- rendre LexHub plus capable}
+\label{sec:perspectives}
+
+Les perspectives ci-dessous concernent l'\textbf{évolution produit} : performance, précision et puissance métier. Elles ne portent pas sur l'outillage déjà en place (déploiement, images Docker, GitHub Actions).
+
+\subsection{Performance et qualité de la voix}
+\begin{itemize}[leftmargin=1.4em]
+  \item Réduire la \textbf{latence} de transcription (streaming partiel, découpage intelligent, modèles plus rapides) pour que l'avocat voie le texte presque en temps réel.
+  \item Améliorer la \textbf{précision arabe juridique} (homophones, noms propres, références de dossiers) via lexique cabinet et mesures WER sur corpus de plaidoiries réelles.
+  \item Renforcer la \textbf{robustesse micro} (bruit, distance, débit réseau faible) afin de limiter les reprises de dictée.
+\end{itemize}
+
+\subsection{Puissance du flux plaidoirie}
+\begin{itemize}[leftmargin=1.4em]
+  \item \textbf{Bibliothèque de modèles} par domaine (civil, pénal, commercial\ldots) réutilisables et partagés dans le cabinet.
+  \item \textbf{Historique de versions} d'une plaidoirie (qui a modifié quoi, quand) avant validation.
+  \item \textbf{Relecture croisée} entre avocats du même cabinet (circuit de validation multi-niveaux).
+  \item Recherche full-text sur l'ensemble des plaidoiries validées du cabinet.
+\end{itemize}
+
+\subsection{Cabinet plus intelligent}
+\begin{itemize}[leftmargin=1.4em]
+  \item Lier plus étroitement \textbf{planning $\leftrightarrow$ dossier $\leftrightarrow$ plaidoirie} (préparer l'audience depuis l'échéance).
+  \item Tableau de bord d'\textbf{indicateurs métier} : volume de dictées, temps moyen voix~$\rightarrow$~export, plaidoiries en attente de validation.
+  \item Enrichir le module Documents : synthèse plus fiable des pièces déjà indexées, pour nourrir la préparation (toujours avec sources, jamais d'invention).
+\end{itemize}
+
+\subsection{Expérience et confiance}
+\begin{itemize}[leftmargin=1.4em]
+  \item Parcours mobile encore plus fluide pour dicter hors du cabinet.
+  \item Options de \textbf{confidentialité renforcée} (rétention audio, politiques de purge) adaptées aux exigences déontologiques.
+  \item À plus long terme : signature électronique du PDF/Word et échanges standardisés avec les systèmes judiciaires lorsque les APIs le permettront.
+\end{itemize}
+
+En résumé : le PFA livre une plateforme \textbf{déjà opérationnelle} ; les perspectives ci-dessus la rendent \textbf{plus rapide, plus précise et plus utile} au quotidien de l'avocat.

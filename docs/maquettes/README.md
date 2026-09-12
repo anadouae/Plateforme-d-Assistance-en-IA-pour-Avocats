@@ -4,7 +4,7 @@
 
 Captures d’écran des interfaces de l’application (à présenter à l’encadrant école).
 
-Généré le : 25/07/2026 09:23:27
+Généré le : 08/08/2026 03:06:30
 
 | # | Écran | Fichier |
 |---|-------|---------|
@@ -21,10 +21,11 @@ Généré le : 25/07/2026 09:23:27
 | 11 | Dossiers | `11-dossiers.png` |
 | 12 | Nouveau dossier | `12-nouveau-dossier.png` |
 | 13 | Documents | `13-documents.png` |
-| 14 | Plaidoirie | `14-plaidoirie.png` |
-| 15 | Planning | `15-planning.png` |
-| 16 | Équipe | `16-equipe.png` |
-| 17 | Paramètres | `17-parametres.png` |
+| 14 | Plaidoirie — choix modèle | `14-plaidoirie.png` |
+| 15 | Plaidoirie — dictée & document | `14b-plaidoirie-workspace.png` |
+| 16 | Planning | `15-planning.png` |
+| 17 | Équipe | `16-equipe.png` |
+| 18 | Paramètres | `17-parametres.png` |
 
 ## Aperçu
 
@@ -80,9 +81,13 @@ Généré le : 25/07/2026 09:23:27
 
 ![Documents](./13-documents.png)
 
-### Plaidoirie
+### Plaidoirie — choix modèle
 
-![Plaidoirie](./14-plaidoirie.png)
+![Plaidoirie — choix modèle](./14-plaidoirie.png)
+
+### Plaidoirie — dictée & document
+
+![Plaidoirie — dictée & document](./14b-plaidoirie-workspace.png)
 
 ### Planning
 

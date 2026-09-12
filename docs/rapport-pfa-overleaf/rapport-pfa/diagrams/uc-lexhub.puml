@@ -1,0 +1,41 @@
+@startuml uc-lexhub
+!theme plain
+left to right direction
+skinparam packageStyle rectangle
+skinparam actorStyle awesome
+
+actor "Avocat" as Avocat
+actor "Assistant" as Assistant
+actor "Admin cabinet" as AdminCab
+actor "Admin plateforme" as AdminPlat
+
+rectangle "Système LexHub" {
+  usecase "Dicter / transcrire" as UC1
+  usecase "Composer document" as UC2
+  usecase "Valider plaidoirie" as UC3
+  usecase "Assigner / épingler" as UC4
+  usecase "Exporter Word/PDF" as UC5
+  usecase "Voir pièces validées" as UC6
+  usecase "Gérer dossiers" as UC7
+  usecase "Documents / OCR" as UC8
+  usecase "Planning" as UC9
+  usecase "Gérer équipe" as UC10
+  usecase "Activité" as UC11
+  usecase "Suspendre cabinet" as UC12
+}
+
+Avocat --> UC1
+Avocat --> UC2
+Avocat --> UC3
+Avocat --> UC4
+Avocat --> UC5
+Avocat --> UC7
+Avocat --> UC8
+Avocat --> UC9
+Assistant --> UC6
+Assistant --> UC5
+Assistant --> UC8
+AdminCab --> UC10
+AdminCab --> UC11
+AdminPlat --> UC12
+@enduml

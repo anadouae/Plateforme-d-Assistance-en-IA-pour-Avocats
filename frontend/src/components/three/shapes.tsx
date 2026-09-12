@@ -5,7 +5,7 @@ import { useFrame } from "@react-three/fiber";
 import { Float } from "@react-three/drei";
 import * as THREE from "three";
 
-export const NAVY = "#0B1F4A";
+export const NAVY = "#0B1A4D";
 export const GOLD = "#D2B589";
 export const IVORY = "#FDFFFF";
 export const CREAM = "#F5F0E8";

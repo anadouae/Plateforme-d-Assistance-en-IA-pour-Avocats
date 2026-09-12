@@ -43,6 +43,7 @@ def summarize_raw(
     data: SummarizeRequest,
     request: Request,
     user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     if user.role == UserRole.ASSISTANT:
         raise HTTPException(
@@ -50,19 +51,24 @@ def summarize_raw(
             detail="Vous n'avez pas l'autorisation d'accéder à la synthèse IA.",
         )
     check_rate_limit(request, key="summarize", limit=20, window_sec=60)
+    from app.services.billing import assert_can_use_ai_action, spend_ai_action
 
-    if not _any_provider():
+    assert_can_use_ai_action(db, user.cabinet_id, "summarize")
+
+    if not _any_provider() and not (settings.OPENAI_API_KEY or "").strip():
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Aucun moteur de synthèse disponible (Mistral API ou Ollama).",
+            detail="Aucun moteur de synthèse disponible.",
         )
 
     summary, provider, model = summarize_long(data.text)
     if not summary:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Synthèse indisponible. Vérifiez la clé Mistral ou Ollama.",
+            detail="Synthèse indisponible. Réessayez dans un instant.",
         )
+    spend_ai_action(db, user.cabinet_id, "summarize")
+    db.commit()
     return SummarizeResponse(
         summary=summary,
         provider=provider,
@@ -84,6 +90,9 @@ def summarize_document(
             detail="Vous n'avez pas l'autorisation d'accéder à la synthèse IA.",
         )
     check_rate_limit(request, key="summarize", limit=20, window_sec=60)
+    from app.services.billing import assert_can_use_ai_action, spend_ai_action
+
+    assert_can_use_ai_action(db, user.cabinet_id, "summarize")
 
     doc = (
         db.query(Document)
@@ -101,7 +110,7 @@ def summarize_document(
             detail="Pas assez de texte extrait. Lancez l'OCR / extraction avant la synthèse.",
         )
 
-    if not _any_provider():
+    if not _any_provider() and not (settings.OPENAI_API_KEY or "").strip():
         degraded_summary = (
             "## Synthèse (mode dégradé)\n\n"
             "Aucun moteur IA disponible. Extrait OCR :\n\n"
@@ -136,6 +145,7 @@ def summarize_document(
         )
 
     log_audit(db, "document.summarize", user=user, request=request, details=doc.original_name)
+    spend_ai_action(db, user.cabinet_id, "summarize")
     db.commit()
     return DocumentSummarizeResponse(
         document_id=doc.id,

@@ -1,0 +1,14 @@
+---
+description: Always deploy Sanad FE/BE changes to lexhub VPS without waiting for user OK
+alwaysApply: true
+---
+
+# Auto-deploy lexhub
+
+After finishing user-facing code changes (frontend and/or backend) for Sanad / LexHub:
+
+1. **Deploy immediately** to the VPS (`51.38.78.23`, `/opt/sanad`) — do **not** wait for the user to say "ok", "go", or "déploie".
+2. Push changed files via SFTP/paramiko (same pattern as `scripts/vps_push_*.py`), then restart the relevant containers (`frontend` and/or `backend`) with:
+   `docker compose -f docker-compose.yml -f docker-compose.lexhub.yml ...`
+3. Tell the user briefly that it is live on https://lexhub.space (hard refresh if needed).
+4. Exception: skip deploy only for pure local docs, unfinished WIP the user said to keep local, or when SSH/credentials fail (then report the failure).

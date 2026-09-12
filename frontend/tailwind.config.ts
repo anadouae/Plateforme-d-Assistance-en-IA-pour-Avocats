@@ -1,13 +1,18 @@
 import type { Config } from "tailwindcss";
 
-/** Palette refonte Sanad (sanad-redesign.html) */
-const ink = "#0E1526";
-const inkSoft = "#3B4459";
-const parchment = "#F7F5F0";
-const gold = "#C7973F";
-const goldSoft = "#E8C97C";
+/** Palette LexHub — bleu royal + accent */
+const ink = "#0A1228";
+const inkSoft = "#4A5568";
+const parchment = "#EEF1F8";
+const gold = "#FF6A00"; /* TEST orange vif */
+const goldSoft = "#FFB07A";
 const emerald = "#1F6F54";
 const emeraldSoft = "#57A88C";
+const royal950 = "#071033";
+const royal900 = "#0B1A4D";
+const royal800 = "#12307A";
+const royal700 = "#1B3F9C";
+const royalGlow = "#4C7CFF";
 
 const config: Config = {
   content: [
@@ -22,13 +27,13 @@ const config: Config = {
         foreground: "var(--foreground)",
         sanad: {
           navy: ink,
-          ivory: "#FFFFFF",
+          ivory: "#FBFCFE",
           gold,
           goldSoft,
-          stone: "#E9E6DF",
+          stone: "#DCE4F5",
           cream: parchment,
           slate: ink,
-          blue: "#1c274a",
+          blue: royal800,
           green: emerald,
           forest: emerald,
           emerald,
@@ -36,9 +41,35 @@ const config: Config = {
           dark: ink,
           muted: inkSoft,
           light: parchment,
-          border: "rgba(14,21,38,0.08)",
-          royal: ink,
-          royalSoft: "#1c274a",
+          border: "rgba(10,18,40,0.09)",
+          royal: royal900,
+          royalSoft: royal700,
+          royalGlow,
+          ink,
+          inkSoft,
+          parchment,
+        },
+        // Alias marque (préférer lexhub-* dans le nouveau code)
+        lexhub: {
+          navy: ink,
+          ivory: "#FBFCFE",
+          gold,
+          goldSoft,
+          stone: "#DCE4F5",
+          cream: parchment,
+          slate: ink,
+          blue: royal800,
+          green: emerald,
+          forest: emerald,
+          emerald,
+          emeraldSoft,
+          dark: ink,
+          muted: inkSoft,
+          light: parchment,
+          border: "rgba(10,18,40,0.09)",
+          royal: royal900,
+          royalSoft: royal700,
+          royalGlow,
           ink,
           inkSoft,
           parchment,
@@ -55,17 +86,22 @@ const config: Config = {
         "sanad-lg": "28px",
         "sanad-md": "18px",
         "sanad-sm": "12px",
+        "lexhub-lg": "28px",
+        "lexhub-md": "18px",
+        "lexhub-sm": "12px",
       },
       boxShadow: {
-        luxe: "0 20px 60px -20px rgba(14,21,38,0.25)",
-        gold: "0 8px 28px rgba(199,151,63,0.35)",
-        royal: "0 20px 60px rgba(14,21,38,0.28)",
-        "sanad-sm": "0 8px 24px -12px rgba(14,21,38,0.18)",
+        luxe: "0 20px 60px -20px rgba(7,16,51,0.32)",
+        gold: "0 8px 28px rgba(201,168,74,0.35)",
+        royal: "0 20px 60px rgba(11,26,77,0.35)",
+        "royal-glow": "0 0 40px rgba(76,124,255,0.35)",
+        "sanad-sm": "0 8px 24px -12px rgba(11,26,77,0.2)",
       },
       backgroundImage: {
         "gradient-conic": "conic-gradient(var(--tw-gradient-stops))",
-        "sanad-ink": "linear-gradient(155deg, #0E1526, #1c274a)",
-        "sanad-gold": "linear-gradient(155deg, #E8C97C, #C7973F)",
+        "sanad-ink": `linear-gradient(155deg, ${royal700}, ${royal900})`,
+        "sanad-gold": `linear-gradient(155deg, ${goldSoft}, ${gold})`,
+        "sanad-royal": `linear-gradient(165deg, ${royal900} 0%, ${royal950} 55%, ${ink} 100%)`,
       },
       animation: {
         float: "float 6s ease-in-out infinite",

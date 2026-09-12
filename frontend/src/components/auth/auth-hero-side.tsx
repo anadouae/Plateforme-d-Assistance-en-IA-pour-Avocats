@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Scale } from "lucide-react";
-import { SanadLogo } from "@/components/brand/sanad-logo";
+import { LexHubLogo } from "@/components/brand/sanad-logo";
 import { useTranslations } from "@/store/locale";
 
 /** Kept for compatibility — hero is now embedded in AuthLayout. */
@@ -14,7 +14,7 @@ export function AuthHeroSide() {
     <div className="auth-hero-side relative hidden overflow-hidden lg:flex lg:w-[45%] lg:flex-col lg:justify-between">
       <div className="relative z-10 flex h-full flex-col justify-between p-12 text-white">
         <Link href="/" className="inline-block">
-          <SanadLogo size="lg" className="drop-shadow-lg" />
+          <LexHubLogo size="lg" className="drop-shadow-lg" />
         </Link>
         <div>
           <motion.div

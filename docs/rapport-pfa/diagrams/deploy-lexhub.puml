@@ -1,0 +1,32 @@
+@startuml deploy-lexhub
+skinparam shadowing false
+node "Client" {
+  [Navigateur]
+}
+node "VPS lexhub.space" {
+  [Caddy TLS] as Caddy
+  [Frontend Next.js] as FE
+  [Backend FastAPI] as BE
+  [Celery] as CEL
+  database PostgreSQL
+  queue Redis
+  storage MinIO
+}
+cloud "Services cloud" {
+  [STT API]
+  [OCR API]
+  [LLM API]
+  [E-mail]
+}
+[Navigateur] --> Caddy
+Caddy --> FE
+Caddy --> BE
+BE --> PostgreSQL
+BE --> Redis
+BE --> MinIO
+BE --> CEL
+BE --> [STT API]
+BE --> [OCR API]
+BE --> [LLM API]
+BE --> [E-mail]
+@enduml

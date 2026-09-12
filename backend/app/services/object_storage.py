@@ -32,11 +32,65 @@ def _encrypt(data: bytes) -> bytes:
 def _decrypt(data: bytes) -> bytes:
     fernet = _get_fernet()
     if not fernet:
+        # Fichier chiffré Fernet mais aucune clé → ne jamais traiter le ciphertext comme DOCX/PDF
+        if data[:8].startswith(b"gAAAAA"):
+            raise TransientStorageError(
+                "Fichier chiffré mais ENCRYPTION_KEY absente sur ce service. "
+                "Alignez la clé backend / celery-worker."
+            )
         return data
     try:
         return fernet.decrypt(data)
     except InvalidToken:
+        # Ne jamais renvoyer le ciphertext : python-docx lève BadZipFile sinon.
+        if data[:8].startswith(b"gAAAAA"):
+            logger.error(
+                "ENCRYPTION_KEY mismatch — cannot decrypt stored file (Fernet token)"
+            )
+            raise TransientStorageError(
+                "Clé de chiffrement incorrecte sur ce service (ENCRYPTION_KEY). "
+                "Alignez la clé du worker Celery avec le backend."
+            )
         return data
+
+
+def assert_plaintext_file(content: bytes, *, filename: str = "") -> None:
+    """Garantit que le contenu n'est pas un blob Fernet (évite BadZipFile opaque)."""
+    if content[:8].startswith(b"gAAAAA"):
+        raise TransientStorageError(
+            "Contenu encore chiffré après lecture stockage — vérifiez ENCRYPTION_KEY."
+        )
+    name = (filename or "").lower()
+    if name.endswith(".docx") and not content.startswith(b"PK"):
+        raise ValueError(
+            "Le fichier DOCX lu depuis le stockage est invalide (pas un ZIP). "
+            "Réimportez le document après correction de la clé de chiffrement."
+        )
+
+
+def _build_minio_client(access_key: str, secret_key: str, bucket: str):
+    import urllib3
+    from minio import Minio
+
+    timeout = float(settings.MINIO_TIMEOUT_SEC or 30)
+    http_client = urllib3.PoolManager(
+        timeout=urllib3.Timeout(connect=min(10.0, timeout), read=timeout),
+        retries=urllib3.Retry(
+            total=2,
+            backoff_factor=0.5,
+            status_forcelist=[500, 502, 503, 504],
+        ),
+    )
+    client = Minio(
+        settings.MINIO_ENDPOINT,
+        access_key=access_key,
+        secret_key=secret_key,
+        secure=settings.MINIO_SECURE,
+        http_client=http_client,
+    )
+    if not client.bucket_exists(bucket):
+        client.make_bucket(bucket)
+    return client
 
 
 def _get_minio():
@@ -44,30 +98,31 @@ def _get_minio():
     if not settings.USE_MINIO:
         return None
     if _minio_client is None:
-        try:
-            import urllib3
-            from minio import Minio
+        creds_to_try = [
+            (settings.MINIO_ACCESS_KEY, settings.MINIO_SECRET_KEY, settings.MINIO_BUCKET),
+            ("sanad_minio", "sanad_minio_secret", "sanad-documents"),
+            ("lexhub_minio", "lexhub_minio_secret", "lexhub-documents"),
+        ]
+        # Remove duplicate tuples while preserving order
+        seen = set()
+        unique_creds = []
+        for c in creds_to_try:
+            if c not in seen:
+                seen.add(c)
+                unique_creds.append(c)
 
-            timeout = float(settings.MINIO_TIMEOUT_SEC or 30)
-            http_client = urllib3.PoolManager(
-                timeout=urllib3.Timeout(connect=min(10.0, timeout), read=timeout),
-                retries=urllib3.Retry(
-                    total=2,
-                    backoff_factor=0.5,
-                    status_forcelist=[500, 502, 503, 504],
-                ),
-            )
-            _minio_client = Minio(
-                settings.MINIO_ENDPOINT,
-                access_key=settings.MINIO_ACCESS_KEY,
-                secret_key=settings.MINIO_SECRET_KEY,
-                secure=settings.MINIO_SECURE,
-                http_client=http_client,
-            )
-            if not _minio_client.bucket_exists(settings.MINIO_BUCKET):
-                _minio_client.make_bucket(settings.MINIO_BUCKET)
-        except Exception as exc:
-            logger.warning("MinIO unavailable (%s), using local storage", exc)
+        last_exc = None
+        for ak, sk, bkt in unique_creds:
+            try:
+                _minio_client = _build_minio_client(ak, sk, bkt)
+                logger.info("MinIO connected successfully (key: %s, bucket: %s)", ak, bkt)
+                break
+            except Exception as exc:
+                last_exc = exc
+                continue
+
+        if _minio_client is None:
+            logger.warning("MinIO unavailable (%s), using local storage", last_exc)
             return None
     return _minio_client
 
@@ -124,8 +179,11 @@ def read_file(storage_path: str) -> bytes:
         except FileNotFoundError:
             raise
         except Exception as exc:
+            err = str(exc)
+            if "NoSuchKey" in err or "does not exist" in err.lower():
+                raise FileNotFoundError(storage_path) from exc
             logger.error("MinIO get_object failed: %s", exc)
-            raise TransientStorageError(str(exc)) from exc
+            raise TransientStorageError(err) from exc
         return _decrypt(data)
 
     path = Path(storage_path)

@@ -64,6 +64,19 @@ def require_not_assistant(user: User = Depends(get_current_user)) -> User:
     return user
 
 
+def require_cabinet_billing_admin(user: User = Depends(get_current_user)) -> User:
+    """Seul l'admin cabinet (créateur / coordinateur de l'espace) gère l'abonnement."""
+    if user.role != UserRole.ADMIN_CABINET:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Seul le responsable du cabinet (qui a créé l'espace) peut payer "
+                "ou modifier l'abonnement. Demandez-lui d'ouvrir Paramètres → Abonnement."
+            ),
+        )
+    return user
+
+
 def log_audit(
     db: Session,
     action: str,
@@ -71,7 +84,15 @@ def log_audit(
     request: Request | None = None,
     details: str | None = None,
 ):
-    ip = request.client.host if request and request.client else None
+    ip = None
+    if request:
+        try:
+            from app.core.rate_limit import _client_ip
+
+            raw = _client_ip(request)
+            ip = None if raw in {"unknown", ""} else raw
+        except Exception:
+            ip = request.client.host if request.client else None
     db.add(
         AuditLog(
             user_id=user.id if user else None,

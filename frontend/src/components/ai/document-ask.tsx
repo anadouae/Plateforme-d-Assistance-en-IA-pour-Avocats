@@ -4,6 +4,11 @@ import { useState } from "react";
 import { Loader2, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { api, getClientLocale, type AIResult } from "@/lib/api";
+import { useBillingCredits } from "@/store/billing-credits";
+import {
+  StructuredSynthesis,
+  cleanSynthesisMarkdown,
+} from "@/components/ai/structured-synthesis";
 
 interface DocumentAskProps {
   documentId: string;
@@ -26,6 +31,7 @@ export function DocumentAsk({ documentId, suggestions = [] }: DocumentAskProps) 
       const res = await api.askDocument(documentId, trimmed, getClientLocale());
       setResult(res);
       setQuestion("");
+      void useBillingCredits.getState().notifySpend("ask");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Question impossible");
     } finally {
@@ -71,8 +77,8 @@ export function DocumentAsk({ documentId, suggestions = [] }: DocumentAskProps) 
       {error && <p className="text-sm text-red-600">{error}</p>}
 
       {result && (
-        <div className="rounded-md border border-sanad-border bg-sanad-light/40 p-4 text-sm text-slate-700 whitespace-pre-wrap">
-          {result.answer}
+        <div className="rounded-md border border-sanad-border bg-sanad-light/40 p-4 text-sm text-slate-700">
+          <StructuredSynthesis text={cleanSynthesisMarkdown(result.answer || "")} />
           {result.disclaimer && (
             <p className="mt-3 text-xs text-slate-500">{result.disclaimer}</p>
           )}

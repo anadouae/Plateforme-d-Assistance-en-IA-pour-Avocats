@@ -18,7 +18,7 @@ async def is_password_breached(password: str) -> bool:
         async with httpx.AsyncClient(timeout=6.0) as client:
             resp = await client.get(
                 f"https://api.pwnedpasswords.com/range/{prefix}",
-                headers={"Add-Padding": "true", "User-Agent": "Sanad-Security"},
+                headers={"Add-Padding": "true", "User-Agent": "LexHub-Security"},
             )
             if resp.status_code != 200:
                 logger.warning("HIBP status %s — skip check", resp.status_code)

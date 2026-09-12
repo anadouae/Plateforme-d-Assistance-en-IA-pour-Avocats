@@ -1,0 +1,136 @@
+\chapter{Conception du système}
+\label{ch:conception}
+
+\section{Architecture logique}
+
+La figure~\ref{fig:archi} présente les blocs de la version déployée. Le navigateur n'accède jamais directement à la base de données : tout passe par l'API authentifiée.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  box/.style={draw=royal!65,fill=royal!6,rounded corners=4pt,align=center,minimum width=2.7cm,minimum height=1.15cm,font=\small}
+]
+  \node[box] (fe) at (0,0) {Interface\\Next.js};
+  \node[box] (api) at (3.7,0) {API\\FastAPI};
+  \node[box] (pg) at (7.4,0) {PostgreSQL};
+  \node[box] (stt) at (0,-2.2) {STT cloud\\(API vocale)};
+  \node[box] (rd) at (3.7,-2.2) {Redis\\tâches + temps réel};
+  \node[box] (io) at (7.4,-2.2) {Fichiers\\(stockage objet)};
+  \node[box] (llm) at (3.7,-4.2) {Routeur LLM\\(composition)};
+  \draw[-{Stealth},thick,royal] (fe) -- (api);
+  \draw[-{Stealth},thick,royal] (api) -- (pg);
+  \draw[-{Stealth},thick,royal] (api) -- (stt);
+  \draw[-{Stealth},thick,royal] (api) -- (rd);
+  \draw[-{Stealth},thick,royal] (api) -- (io);
+  \draw[-{Stealth},thick,royal] (api) -- (llm);
+\end{tikzpicture}
+\caption{Architecture déployée (vue logique)}
+\label{fig:archi}
+\end{figure}
+
+\paragraph{Rôle de chaque bloc.}
+Next.js sert l'interface (desktop et mobile). FastAPI orchestre métier et sécurité. PostgreSQL persiste cabinets, utilisateurs, dossiers et brouillons. Redis diffuse les événements temps réel et la file de tâches. Le stockage objet conserve les pièces. Le moteur STT convertit l'audio en texte \emph{après} l'enregistrement navigateur (\texttt{MediaRecorder}). Le routeur LLM structure la plaidoirie sous consignes anti-invention.
+
+\section{Pipeline plaidoirie}
+
+\begin{enumerate}[label=\textbf{P\arabic*.}]
+  \item Capture micro (navigateur).
+  \item Envoi authentifié vers l'API de transcription.
+  \item Reconnaissance vocale (service cloud) puis nettoyage typographique (ponctuation, lexique, sens de lecture).
+  \item Relecture humaine, puis correction de \textbf{forme} (arabe standard) \emph{sans} résumer ni inventer de faits ; marques orange sur substitutions STT.
+  \item Contrôle déterministe des \textbf{contradictions} (numéros, dates, montants, noms) entre texte brut et texte corrigé.
+  \item Composition : structure de plaidoirie, \textbf{sans inventer} les faits manquants.
+  \item Prévisualisation éditable, enregistrement, validation ou assignation, export Word/PDF.
+\end{enumerate}
+
+\section{Diagramme de séquence --- dictée (UML)}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize, x=2.4cm, y=-0.52cm]
+  \foreach \x/\lab in {0/Avocat, 1/Navigateur, 2/{API LexHub}, 3/STT, 4/Base} {
+    \node[align=center,font=\small\bfseries] at (\x,0) {\lab};
+    \draw[linegray,thick] (\x,0.35) -- (\x,12.0);
+  }
+  \draw[-{Stealth}] (0,1) -- node[above,font=\tiny]{parole} (1,1);
+  \draw[-{Stealth}] (1,2.2) -- node[above,font=\tiny]{audio + JWT} (2,2.2);
+  \draw[-{Stealth}] (2,3.4) -- node[above,font=\tiny]{fichier} (3,3.4);
+  \draw[-{Stealth}] (3,4.6) -- node[above,font=\tiny]{texte brut} (2,4.6);
+  \draw[-{Stealth}] (2,5.8) -- node[above,font=\tiny]{audit} (4,5.8);
+  \draw[-{Stealth}] (2,7.0) -- node[above,font=\tiny]{transcription} (1,7.0);
+  \draw[-{Stealth}] (1,8.4) -- node[above,font=\tiny]{Corriger (forme)} (2,8.4);
+  \draw[-{Stealth}] (2,9.6) -- node[above,font=\tiny]{texte + marques} (1,9.6);
+  \node[align=left,font=\tiny] at (2.2,11.0) {Puis composition, édition,\\validation / assignation.};
+\end{tikzpicture}
+\caption{Séquence UML : de la voix au texte corrigé}
+\label{fig:seq-stt}
+\end{figure}
+
+\section{Diagramme de séquence --- validation et assignation}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize, x=2.35cm, y=-0.52cm]
+  \foreach \x/\lab in {0/Avocat, 1/API, 2/Base, 3/{Temps reel}, 4/Assistant} {
+    \node[align=center,font=\small\bfseries] at (\x,0) {\lab};
+    \draw[linegray,thick] (\x,0.35) -- (\x,11.2);
+  }
+  \draw[-{Stealth}] (0,1.1) -- node[above,font=\tiny]{valider \emph{ou} assigner} (1,1.1);
+  \draw[-{Stealth}] (1,2.3) -- node[above,font=\tiny]{statut = validated} (2,2.3);
+  \draw[-{Stealth}] (1,3.5) -- node[above,font=\tiny]{assigned\_to (opt.)} (2,3.5);
+  \draw[-{Stealth}] (1,4.7) -- node[above,font=\tiny]{événement WS} (3,4.7);
+  \draw[-{Stealth}] (3,5.9) -- node[above,font=\tiny]{rafraîchir liste} (4,5.9);
+  \draw[-{Stealth}] (1,7.3) -- node[above,font=\tiny]{notification / e-mail} (4,7.3);
+  \draw[-{Stealth}] (4,9.0) -- node[above,font=\tiny]{export / impression} (1,9.0);
+\end{tikzpicture}
+\caption{Séquence UML : validation, assignation et visibilité assistant}
+\label{fig:seq-val}
+\end{figure}
+
+\section{Modèle de données (diagramme de classes)}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  cls/.style={draw=royal,fill=royal!4,align=left,font=\scriptsize,inner sep=5pt,rounded corners=1pt}
+]
+  \node[cls] (c) at (0,0) {\textbf{Cabinet}\\id / nom / statut\\logo / join\_code};
+  \node[cls] (u) at (5.0,0.8) {\textbf{User}\\email / role\\cabinet\_id / actif};
+  \node[cls] (k) at (0,-2.8) {\textbf{Case (Dossier)}\\titre / domaine\\cabinet\_id / responsable};
+  \node[cls] (p) at (5.0,-2.6) {\textbf{PlaidoirieDraft}\\titre / texte / statut\\assigned\_to / pinned\\cabinet\_id / case\_id?};
+  \node[cls] (d) at (9.6,-0.6) {\textbf{Document}\\fichier / OCR\\cabinet\_id / case\_id};
+  \node[cls] (n) at (9.6,-2.8) {\textbf{Notification}\\type / user\_id\\cabinet\_id};
+  \draw[-{Stealth}] (u) -- node[above,font=\tiny]{1..*} (c);
+  \draw[-{Stealth}] (k) -- (c);
+  \draw[-{Stealth}] (p) -- (c);
+  \draw[-{Stealth}] (d) -- (c);
+  \draw[-{Stealth}] (p) -- node[right,font=\tiny]{0..1} (k);
+  \draw[-{Stealth}] (p.east) -- node[above,font=\tiny]{assigné} (u.south);
+  \draw[-{Stealth}] (n) -- (c);
+\end{tikzpicture}
+\caption{Classes persistantes (extrait) --- la clé \texttt{cabinet\_id} garantit l'isolation}
+\label{fig:classes}
+\end{figure}
+
+\section{Modules fonctionnels}
+
+\begin{table}[H]
+\centering
+\caption{Modules de la version déployée}
+\label{tab:modules}
+\small
+\begin{tabular}{@{}lp{9.5cm}@{}}
+\toprule
+\textbf{Module} & \textbf{Rôle} \\
+\midrule
+Plaidoirie & Atelier 5 étapes, validation, assignation, pin, export \\
+Dossiers & Affaires, domaine, filtre / recherche, responsable \\
+Documents & Dépôt, OCR, synthèse sourcée, rattachement dossier \\
+Planning & Audiences / échéances liées aux dossiers \\
+Activité & Journal des actions du cabinet \\
+Équipe & Invitations, code d'adhésion, rôles \\
+Paramètres & Branding, sécurité, clôture cabinet (admin) \\
+Admin plateforme & Liste cabinets, suspension / réactivation \\
+\bottomrule
+\end{tabular}
+\end{table}

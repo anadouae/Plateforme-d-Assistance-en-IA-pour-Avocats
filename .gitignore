@@ -29,6 +29,7 @@ frontend/out/
 backend/data/chromadb/
 backend/uploads/
 backend/data/
+backups/
 
 # IDE / OS
 .qodo/
@@ -57,4 +58,15 @@ NUL
 backend/sanad.db
 backend/_tmp_*.py
 backend/**/*.recovered
+
+# Credentials and sensitive notes
+*credentials*
+*Credentials*
+
+# Root scratch / local test artifacts
+/Plaidoirie_Amrani_*.docx
+/audio de test en arabe.ogg
+/*.pdf
+!/backend/scripts/fixtures/sanad-test-document.pdf
+
 

@@ -11,11 +11,14 @@ from starlette.responses import Response
 from app.api import (
     admin,
     auth,
+    billing,
     cases,
     corpus,
     dictation,
     documents,
+    notifications,
     plaidoirie_templates,
+    realtime_ws,
     summarize,
     team,
     workspace,
@@ -24,7 +27,7 @@ from app.api import settings as settings_api
 from app.core.config import settings
 from app.core.logging_config import CorrelationIdMiddleware, configure_logging
 from app.core.migrations import run_migrations
-from app.services.rag import ensure_legal_corpus, get_corpus_stats, warmup_embeddings
+from app.services.rag import get_corpus_stats
 from app.services.groq_llm import llm_health
 
 configure_logging()
@@ -42,12 +45,15 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         )
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+        response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+        response.headers["X-Permitted-Cross-Domain-Policies"] = "none"
         # CSP API : pas de contenu HTML — politique restrictive par défaut
         response.headers["Content-Security-Policy"] = (
-            "default-src 'none'; frame-ancestors 'none'; base-uri 'none'"
+            "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
         )
         if request.url.path.startswith("/api/auth"):
-            response.headers["Cache-Control"] = "no-store"
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
+            response.headers["Pragma"] = "no-cache"
         if settings.ENVIRONMENT == "production":
             response.headers["Strict-Transport-Security"] = (
                 "max-age=63072000; includeSubDomains; preload"
@@ -56,12 +62,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 def _init_rag() -> None:
-    try:
-        warmup_embeddings()
-        ensure_legal_corpus()
-        logger.info("ChromaDB corpus ready")
-    except Exception as exc:
-        logger.warning("ChromaDB init deferred: %s", exc)
+    """Ne pas charger BGE-M3 dans le process API (ça bloquait upload/suppression 40–90 s)."""
+    logger.info("ChromaDB warmup skipped on API — handled by Celery")
 
 
 @asynccontextmanager
@@ -72,6 +74,20 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.exception("Migrations failed at startup: %s", exc)
 
+    try:
+        from app.core.database import SessionLocal
+        from app.services.billing import ensure_default_plans
+
+        db = SessionLocal()
+        try:
+            ensure_default_plans(db)
+            db.commit()
+            logger.info("Billing default plans ensured")
+        finally:
+            db.close()
+    except Exception as exc:
+        logger.warning("Billing plan seed skipped: %s", exc)
+
     from app.core.security import is_weak_secret_key
 
     if settings.ENVIRONMENT == "production":
@@ -79,6 +95,30 @@ async def lifespan(app: FastAPI):
             raise RuntimeError("ENCRYPTION_KEY is required in production")
         if is_weak_secret_key(settings.SECRET_KEY):
             raise RuntimeError("SECRET_KEY is weak or default — refuse to start in production")
+        # Turnstile obligatoire en prod (pas les clés de test Cloudflare)
+        _cf_test_sites = {
+            "1x00000000000000000000AA",
+            "2x00000000000000000000AB",
+            "3x00000000000000000000FF",
+        }
+        _cf_test_secrets = {
+            "1x0000000000000000000000000000000AA",
+            "2x0000000000000000000000000000000AA",
+            "3x0000000000000000000000000000000AA",
+        }
+        if not settings.TURNSTILE_SITE_KEY or not settings.TURNSTILE_SECRET_KEY:
+            raise RuntimeError(
+                "TURNSTILE_SITE_KEY et TURNSTILE_SECRET_KEY sont obligatoires en production "
+                "(Cloudflare Turnstile → https://dash.cloudflare.com → Turnstile)"
+            )
+        if (
+            settings.TURNSTILE_SITE_KEY in _cf_test_sites
+            or settings.TURNSTILE_SECRET_KEY in _cf_test_secrets
+        ):
+            raise RuntimeError(
+                "Clés Turnstile de TEST Cloudflare interdites en production — "
+                "créez un widget réel sur dash.cloudflare.com"
+            )
     elif not settings.ENCRYPTION_KEY:
         logger.warning("ENCRYPTION_KEY not set — files stored unencrypted")
     if is_weak_secret_key(settings.SECRET_KEY):
@@ -98,8 +138,34 @@ async def lifespan(app: FastAPI):
         except Exception as exc:
             logger.exception("SEED_DEMO_DATA failed: %s", exc)
 
+    # Fallback rappels agenda 48 h si Celery beat est indisponible
+    agenda_stop = threading.Event()
+
+    def _agenda_reminder_loop() -> None:
+        while not agenda_stop.wait(15 * 60):
+            try:
+                from app.core.database import SessionLocal
+                from app.services.agenda_reminders import send_due_agenda_reminders
+
+                db = SessionLocal()
+                try:
+                    send_due_agenda_reminders(db)
+                finally:
+                    db.close()
+            except Exception as exc:
+                logger.warning("Agenda reminder fallback failed: %s", exc)
+
+    agenda_thread = threading.Thread(
+        target=_agenda_reminder_loop,
+        name="agenda-remind-48h",
+        daemon=True,
+    )
+    agenda_thread.start()
+    logger.info("Agenda 48h reminder fallback thread started")
+
     yield
 
+    agenda_stop.set()
     rag_task.cancel()
     try:
         await rag_task
@@ -112,7 +178,7 @@ _redoc_url = None if settings.ENVIRONMENT == "production" else "/redoc"
 
 app = FastAPI(
     title=settings.APP_NAME,
-    description="API Sanad – Avocat AI Assistance",
+    description="API LexHub — plateforme LegalTech marocaine",
     version="1.0.0",
     lifespan=lifespan,
     docs_url=_docs_url,
@@ -143,13 +209,17 @@ app.include_router(plaidoirie_templates.router)
 app.include_router(team.router)
 app.include_router(settings_api.router)
 app.include_router(admin.router)
+app.include_router(billing.router)
+app.include_router(billing.admin_router)
 app.include_router(corpus.router)
+app.include_router(notifications.router)
+app.include_router(realtime_ws.router)
 
 
 @app.get("/")
 def root():
     return {
-        "service": "sanad-api",
+        "service": "lexhub-api",
         "status": "running",
         "docs": "/docs" if _docs_url else None,
         "health": "/health",
@@ -161,32 +231,11 @@ def root():
 @app.get("/health")
 @app.get("/api/health")
 def health():
-    """Alias `/api/health` pour les clients qui préfixent le préfixe API."""
-    llm = {"status": "skipped"}
-    corpus = {}
-    try:
-        llm = llm_health()
-    except Exception:
-        llm = {"status": "unavailable"}
-    try:
-        corpus = get_corpus_stats()
-    except Exception:
-        pass
+    """Healthcheck public minimal (pas d'infos internes)."""
     return {
         "status": "ok",
-        "service": "sanad-api",
+        "service": "lexhub-api",
         "version": "2.0.0",
-        "environment": settings.ENVIRONMENT,
-        "encryption": bool(settings.ENCRYPTION_KEY),
-        "minio": settings.USE_MINIO,
-        "llm": llm,
-        "cloud_fallback_enabled": settings.LLM_ALLOW_CLOUD_FALLBACK and bool(settings.GROQ_API_KEY),
-        "corpus": {
-            "total_entries": corpus.get("total_entries", 0),
-            "target": corpus.get("target_adala", 130000),
-            "collections": list(corpus.get("collections", {}).keys()),
-        },
-        "web_search": settings.WEB_SEARCH_PROVIDER,
     }
 
 

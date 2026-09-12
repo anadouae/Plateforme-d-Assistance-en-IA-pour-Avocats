@@ -1,45 +1,49 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Check, Copy, Loader2, RefreshCw, Trash2, X } from "lucide-react";
+import { Loader2, Mail, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   api,
   ApiError,
-  type JoinCodeInfo,
-  type MembershipRequestItem,
+  type BillingEntitlements,
+  type CabinetInviteItem,
   type TeamMember,
 } from "@/lib/api";
 import { ASSIGNABLE_ROLES, roleLabel } from "@/lib/roles";
-import { useLocaleStore, useTranslations } from "@/store/locale";
+import { useClientLocale, useTranslations } from "@/store/locale";
+import { useConfirm } from "@/components/ui/confirm-dialog";
 
 export function TeamPanel() {
-  const locale = useLocaleStore((s) => s.locale);
+  const locale = useClientLocale();
   const ar = locale === "ar";
   const t = useTranslations().app.team;
-  const [codeInfo, setCodeInfo] = useState<JoinCodeInfo | null>(null);
-  const [requests, setRequests] = useState<MembershipRequestItem[]>([]);
+  const confirm = useConfirm();
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [approveRole, setApproveRole] = useState<Record<string, string>>({});
-  const [copied, setCopied] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteName, setInviteName] = useState("");
+  const [inviteRole, setInviteRole] = useState("avocat");
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [personalInvites, setPersonalInvites] = useState<CabinetInviteItem[]>([]);
+  const [ent, setEnt] = useState<BillingEntitlements | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const [code, reqs, team] = await Promise.all([
-        api.getJoinCode(),
-        api.getJoinRequests(),
+      const [team, invites, entitlements] = await Promise.all([
         api.getTeam(),
+        api.listTeamInvites().catch(() => [] as CabinetInviteItem[]),
+        api.getBillingEntitlements().catch(() => null),
       ]);
-      setCodeInfo(code);
-      setRequests(reqs);
       setMembers(team);
+      setPersonalInvites(invites);
+      setEnt(entitlements);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : "Erreur");
     } finally {
@@ -50,61 +54,6 @@ export function TeamPanel() {
   useEffect(() => {
     void load();
   }, [load]);
-
-  async function copyCode() {
-    if (!codeInfo?.join_code) return;
-    try {
-      await navigator.clipboard.writeText(codeInfo.join_code);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setError(t.copyFail);
-    }
-  }
-
-  async function regenerate() {
-    if (!window.confirm(t.regenerateConfirm)) {
-      return;
-    }
-    setBusyId("regen");
-    try {
-      const next = await api.regenerateJoinCode();
-      setCodeInfo(next);
-      setMessage(t.regenerated);
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Erreur");
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  async function approve(id: string) {
-    const role = approveRole[id] || "avocat";
-    setBusyId(id);
-    setError("");
-    try {
-      await api.approveJoinRequest(id, role);
-      setMessage(t.approved);
-      await load();
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Erreur");
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  async function reject(id: string) {
-    if (!window.confirm(t.rejectConfirm)) return;
-    setBusyId(id);
-    try {
-      await api.rejectJoinRequest(id);
-      await load();
-    } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Erreur");
-    } finally {
-      setBusyId(null);
-    }
-  }
 
   async function changeRole(memberId: string, role: string) {
     setBusyId(memberId);
@@ -119,11 +68,13 @@ export function TeamPanel() {
   }
 
   async function removeAccess(member: TeamMember) {
-    if (
-      !window.confirm(t.removeAccessConfirm.replace("{name}", member.full_name))
-    ) {
-      return;
-    }
+    const ok = await confirm({
+      title: t.removeAccessConfirm.replace("{name}", member.full_name),
+      tone: "danger",
+      requireDeletePhrase: true,
+      confirmLabel: ar ? "إزالة" : "Retirer",
+    });
+    if (!ok) return;
     setBusyId(member.id);
     try {
       await api.updateTeamMember(member.id, { is_active: false });
@@ -146,108 +97,132 @@ export function TeamPanel() {
 
   return (
     <div dir={ar ? "rtl" : "ltr"} className="space-y-5">
-      {message && (
+      {message ? (
         <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{message}</p>
-      )}
-      {error && (
+      ) : null}
+      {error ? (
         <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>
-      )}
+      ) : null}
 
-      <Card className="border-[#B08D3F]/30">
+      {ent?.usage ? (
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+          <p className="font-semibold text-[#0B1A4D]">
+            {ar ? "مقاعد الخطة" : "Sièges du plan"}{" "}
+            <span className="font-normal text-slate-500">
+              · {ar ? "محامون" : "Avocats"} {ent.usage.avocats_used ?? 0}/
+              {ent.usage.avocats_limit ?? 1} · {ar ? "مساعدون" : "Assistants"}{" "}
+              {ent.usage.assistants_used ?? 0}/{ent.usage.assistants_limit ?? 0}
+            </span>
+          </p>
+          <p className="mt-2 text-xs leading-relaxed text-slate-600">
+            {ar
+              ? "لاستبدال مساعد دون ترقية: أزيلوا وصول المساعد الحالي (إزالة)، ثم ادعوا البديل. عند بلوغ الحد تُرفض الدعوات الجديدة."
+              : "Pour remplacer un assistant sans upgrader : retirez l’accès de l’ancien (Retirer), puis invitez le nouveau. À la limite du plan, les nouvelles invitations sont refusées."}
+          </p>
+        </div>
+      ) : null}
+
+      <Card className="border-[#E85A00]/30">
         <CardHeader>
-          <CardTitle className="text-base">{t.joinCodeTitle}</CardTitle>
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Mail className="h-5 w-5 text-[#E85A00]" />
+            {ar ? "دعوة عضو بالبريد" : "Inviter un membre par email"}
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <p className="text-sm text-slate-600">{t.joinCodeDesc}</p>
-          <div className="flex flex-wrap items-center gap-2">
-            <code
-              dir="ltr"
-              className="rounded-xl border border-[#B08D3F]/40 bg-[#F6EFDD] px-4 py-2.5 font-mono text-lg font-semibold tracking-wider text-[#16233F]"
-            >
-              {codeInfo?.join_code || "—"}
-            </code>
-            <Button type="button" size="sm" variant="outline" onClick={() => void copyCode()}>
-              {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-              {t.copy}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              disabled={busyId === "regen"}
-              onClick={() => void regenerate()}
-            >
-              {busyId === "regen" ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCw className="h-4 w-4" />
-              )}
-              {t.regenerate}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+          <p className="text-sm text-slate-600">
+            {ar
+              ? "كل الانضمامات تتم عبر دعوة من مسؤول المكتب — رابط شخصي، دخول فوري بدون انتظار."
+              : "Toutes les invitations passent par l’admin : email personnel, accès immédiat sans approbation."}
+          </p>
+          <input
+            type="text"
+            value={inviteName}
+            onChange={(e) => setInviteName(e.target.value)}
+            placeholder={ar ? "الاسم (اختياري)" : "Nom du destinataire (optionnel)"}
+            className="w-full rounded-lg border border-sanad-stone bg-white px-3 py-2 text-sm"
+          />
+          <input
+            type="email"
+            value={inviteEmail}
+            onChange={(e) => setInviteEmail(e.target.value)}
+            placeholder="email@cabinet.ma"
+            dir="ltr"
+            className="w-full rounded-lg border border-sanad-stone bg-white px-3 py-2 text-sm"
+          />
+          <select
+            className="w-full rounded-lg border border-sanad-stone bg-white px-3 py-2 text-sm"
+            value={inviteRole}
+            onChange={(e) => setInviteRole(e.target.value)}
+          >
+            {ASSIGNABLE_ROLES.map((role) => (
+              <option key={role.value} value={role.value}>
+                {ar ? role.labelAr : role.labelFr}
+              </option>
+            ))}
+          </select>
+          <Button
+            type="button"
+            disabled={inviteBusy || !inviteEmail.trim()}
+            onClick={() => {
+              setInviteBusy(true);
+              setError("");
+              void api
+                .sendTeamInviteEmail(inviteEmail.trim(), inviteName.trim() || undefined, inviteRole)
+                .then((r) => {
+                  setMessage(r.message);
+                  setInviteEmail("");
+                  setInviteName("");
+                  return api.listTeamInvites();
+                })
+                .then((list) => setPersonalInvites(list))
+                .catch((e) => setError(e instanceof ApiError ? e.message : "Erreur email"))
+                .finally(() => setInviteBusy(false));
+            }}
+          >
+            {inviteBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {ar ? "إرسال الدعوة" : "Envoyer l’invitation"}
+          </Button>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{t.pendingRequests}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {requests.length === 0 && (
-            <p className="text-sm text-slate-400">{t.noRequests}</p>
-          )}
-          {requests.map((r) => (
-            <div
-              key={r.id}
-              className="flex flex-col gap-3 rounded-xl border border-sanad-border bg-white px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
-            >
-              <div className="min-w-0">
-                <p className="font-medium text-sanad-navy">{r.full_name}</p>
-                <p className="truncate text-xs text-slate-500" dir="ltr">
-                  {r.email}
-                </p>
-                <p className="text-[11px] text-slate-400">
-                  {new Date(r.requested_at).toLocaleString(ar ? "ar-MA" : "fr-FR")}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <select
-                  className="h-9 rounded-lg border border-sanad-border bg-sanad-cream/40 px-2 text-xs"
-                  value={approveRole[r.id] || "avocat"}
-                  onChange={(e) =>
-                    setApproveRole((prev) => ({ ...prev, [r.id]: e.target.value }))
-                  }
-                >
-                  {ASSIGNABLE_ROLES.map((role) => (
-                    <option key={role.value} value={role.value}>
-                      {ar ? role.labelAr : role.labelFr}
-                    </option>
-                  ))}
-                </select>
-                <Button
-                  size="sm"
-                  disabled={busyId === r.id}
-                  onClick={() => void approve(r.id)}
-                >
-                  {busyId === r.id ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Check className="h-3.5 w-3.5" />
-                  )}
-                  {t.approve}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={busyId === r.id}
-                  onClick={() => void reject(r.id)}
-                >
-                  <X className="h-3.5 w-3.5" />
-                  {t.reject}
-                </Button>
-              </div>
+          {personalInvites.length > 0 ? (
+            <div className="mt-4 space-y-2 border-t border-sanad-border pt-4">
+              <p className="text-sm font-semibold text-[#16233F]">
+                {ar ? "دعوات في الانتظار" : "Invitations en attente"}
+              </p>
+              <ul className="space-y-2">
+                {personalInvites.map((inv) => (
+                  <li
+                    key={inv.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-sanad-stone bg-white px-3 py-2 text-sm"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-medium" dir="ltr">
+                        {inv.email}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {roleLabel((inv as { role?: string }).role || "avocat", ar ? "ar" : "fr")}
+                        {" · "}
+                        {ar ? "تنتهي" : "expire"}{" "}
+                        {new Date(inv.expires_at).toLocaleDateString(ar ? "ar-MA" : "fr-FR")}
+                      </p>
+                      {inv.email_status === "already_on_lexhub" ? (
+                        <p className="mt-1 text-[11px] text-amber-800">
+                          {ar
+                            ? "تنبيه: هذا البريد له حساب LexHub في مكتب آخر — لا يمكن إنشاء حساب ثانٍ (نقل يدوي)."
+                            : "Attention : cet email a déjà un compte LexHub ailleurs — pas de 2e compte (transfert manuel)."}
+                        </p>
+                      ) : null}
+                      {inv.email_status === "already_member_same" ? (
+                        <p className="mt-1 text-[11px] text-slate-600">
+                          {ar ? "عضو بالفعل في مكتبكم." : "Déjà membre de votre cabinet."}
+                        </p>
+                      ) : null}
+                    </div>
+                  </li>
+                ))}
+              </ul>
             </div>
-          ))}
+          ) : null}
         </CardContent>
       </Card>
 
@@ -264,9 +239,9 @@ export function TeamPanel() {
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium text-sanad-navy">
                   {m.full_name}
-                  {!m.is_active && (
+                  {!m.is_active ? (
                     <span className="ms-2 text-[10px] text-red-600">{t.suspended}</span>
-                  )}
+                  ) : null}
                 </p>
                 <p className="truncate text-xs text-slate-500" dir="ltr">
                   {m.email}
@@ -276,7 +251,8 @@ export function TeamPanel() {
                 <select
                   className="h-8 rounded border border-sanad-border bg-white px-2 text-xs"
                   value={m.role}
-                  disabled={busyId === m.id}
+                  disabled={busyId === m.id || !m.is_active}
+                  title={!m.is_active ? (ar ? "حساب موقوف — لا يمكن تغيير الدور" : "Compte suspendu — rôle figé") : undefined}
                   onChange={(e) => void changeRole(m.id, e.target.value)}
                 >
                   {ASSIGNABLE_ROLES.map((role) => (
@@ -288,7 +264,7 @@ export function TeamPanel() {
                 <span className="text-[10px] text-slate-400">
                   {roleLabel(m.role, ar ? "ar" : "fr")}
                 </span>
-                {m.is_active && (
+                {m.is_active ? (
                   <button
                     type="button"
                     className="rounded p-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
@@ -297,7 +273,7 @@ export function TeamPanel() {
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
-                )}
+                ) : null}
               </div>
             </div>
           ))}

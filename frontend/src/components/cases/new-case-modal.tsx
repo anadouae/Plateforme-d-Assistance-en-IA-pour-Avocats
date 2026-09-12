@@ -4,46 +4,103 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api, ApiError, type TeamMember } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
-import { useLocaleStore } from "@/store/locale";
-
-const TYPE_PILLS = [
-  { value: "Bail commercial", labelFr: "Bail commercial", labelAr: "كراء تجاري" },
-  { value: "Recouvrement", labelFr: "Recouvrement", labelAr: "تحصيل" },
-  { value: "Droit du travail", labelFr: "Droit du travail", labelAr: "قانون الشغل" },
-  { value: "Pénal", labelFr: "Pénal", labelAr: "جنائي" },
-  { value: "Famille", labelFr: "Famille", labelAr: "أسرة" },
-  { value: "Autre", labelFr: "Autre", labelAr: "أخرى" },
-] as const;
+import { useLocaleStore, useTranslations } from "@/store/locale";
+import { caseDomainOptions } from "@/lib/i18n/labels";
+import { customDomainsFromCases, normalizeCaseDomain } from "@/lib/case-domains";
+import {
+  JURISDICTION_DEGREES,
+  QUALITY_OPTIONS,
+  indicativeDeadlineHint,
+  opposingRoleFor,
+  partyRoleOptions,
+  qualityHelp,
+  roleHelp,
+  suggestTribunal,
+} from "@/lib/case-legal";
+import {
+  MOROCCO_CITIES,
+  courtsForCity,
+  courtSeatById,
+} from "@/lib/morocco-courts";
+import { PROCEDURE_STATUSES } from "@/lib/case-judicial";
+import { FieldCoach } from "@/components/cases/field-coach";
+import type { CoachKey } from "@/lib/case-field-coach";
 
 type Props = {
   open: boolean;
   onClose: () => void;
   onCreated?: (reference: string, id: string) => void;
   returnFocusRef?: React.RefObject<HTMLElement | null>;
+  existingTypes?: string[];
+  /** Depuis l’atelier plaidoirie : ouvrir le dossier avec bandeau « retour atelier ». */
+  fromPlea?: boolean;
 };
 
-export function NewCaseModal({ open, onClose, onCreated, returnFocusRef }: Props) {
+export function NewCaseModal({
+  open,
+  onClose,
+  onCreated,
+  returnFocusRef,
+  existingTypes = [],
+  fromPlea = false,
+}: Props) {
   const router = useRouter();
   const locale = useLocaleStore((s) => s.locale);
+  const t = useTranslations().app.cases;
   const ar = locale === "ar";
   const user = useAuthStore((s) => s.user);
   const year = new Date().getFullYear();
   const overlayRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const clientRef = useRef<HTMLInputElement>(null);
+  const customRef = useRef<HTMLInputElement>(null);
 
   const [clientName, setClientName] = useState("");
-  const [caseType, setCaseType] = useState("Bail commercial");
+  const [caseType, setCaseType] = useState("Civil");
+  const [addingCustom, setAddingCustom] = useState(false);
+  const [customType, setCustomType] = useState("");
   const [status, setStatus] = useState("En cours");
   const [responsibleId, setResponsibleId] = useState("");
   const [firstHearing, setFirstHearing] = useState("");
+  const [jurisdictionDegree, setJurisdictionDegree] = useState("premiere_instance");
+  const [courtCity, setCourtCity] = useState("casablanca");
+  const [tribunal, setTribunal] = useState("casablanca-tpi");
+  const [clientRole, setClientRole] = useState("demandeur");
+  const [clientQuality, setClientQuality] = useState("personne_physique");
+  const [clientDomicile, setClientDomicile] = useState("");
+  const [opposingName, setOpposingName] = useState("");
+  const [opposingQuality, setOpposingQuality] = useState("personne_physique");
+  const [opposingDomicile, setOpposingDomicile] = useState("");
+  const [courtFileNumber, setCourtFileNumber] = useState("");
+  const [chamber, setChamber] = useState("");
+  const [greffe, setGreffe] = useState("");
+  const [judgeName, setJudgeName] = useState("");
+  const [procedureStatus, setProcedureStatus] = useState("instruction");
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState<{ client?: string; type?: string; form?: string }>(
-    {},
-  );
+  const [errors, setErrors] = useState<{
+    client?: string;
+    type?: string;
+    degree?: string;
+    role?: string;
+    city?: string;
+    tribunal?: string;
+    form?: string;
+  }>({});
   const [toast, setToast] = useState("");
   const [toastShow, setToastShow] = useState(false);
+  const [coachField, setCoachField] = useState<CoachKey>("client");
+
+  const [cabinetTypes, setCabinetTypes] = useState<string[]>(existingTypes);
+
+  const domainPills = useMemo(
+    () => caseDomainOptions(locale, customDomainsFromCases(cabinetTypes)),
+    [locale, cabinetTypes],
+  );
+  const availableCourts = useMemo(
+    () => courtsForCity(courtCity, jurisdictionDegree),
+    [courtCity, jurisdictionDegree],
+  );
 
   const lawyers = useMemo(
     () =>
@@ -56,12 +113,33 @@ export function NewCaseModal({ open, onClose, onCreated, returnFocusRef }: Props
   useEffect(() => {
     if (!open) return;
     setClientName("");
-    setCaseType("Bail commercial");
+    setCaseType("Civil");
+    setAddingCustom(false);
+    setCustomType("");
     setStatus("En cours");
     setFirstHearing("");
+    setJurisdictionDegree("premiere_instance");
+    setCourtCity("casablanca");
+    setTribunal("casablanca-tpi");
+    setClientRole("demandeur");
+    setClientQuality("personne_physique");
+    setClientDomicile("");
+    setOpposingName("");
+    setOpposingQuality("personne_physique");
+    setOpposingDomicile("");
+    setCourtFileNumber("");
+    setChamber("");
+    setGreffe("");
+    setJudgeName("");
+    setProcedureStatus("instruction");
     setErrors({});
     setLoading(false);
     setResponsibleId(user?.id || "");
+    setCabinetTypes(existingTypes);
+    api
+      .getCases()
+      .then((list) => setCabinetTypes(list.map((c) => c.case_type)))
+      .catch(() => {});
     api
       .getTeam()
       .then((list) => {
@@ -119,11 +197,24 @@ export function NewCaseModal({ open, onClose, onCreated, returnFocusRef }: Props
     if (!clientName.trim() || clientName.trim().length < 2) {
       next.client = ar ? "اسم الموكل مطلوب" : "Le client est obligatoire";
     }
-    if (!caseType) {
-      next.type = ar ? "اختر نوع القضية" : "Choisissez un type d’affaire";
+    const resolvedType = normalizeCaseDomain(addingCustom ? customType : caseType);
+    if (!resolvedType || resolvedType.length < 2) {
+      next.type = ar ? "اكتب نوع القضية" : "Indiquez le type de dossier";
+    }
+    if (!jurisdictionDegree) {
+      next.degree = ar ? "درجة التقاضي مطلوبة" : "Le degré de juridiction est obligatoire";
+    }
+    if (!clientRole) {
+      next.role = ar ? "دور الأطراف مطلوب" : "Le rôle des parties est obligatoire";
+    }
+    if (!courtCity) {
+      next.city = ar ? "مدينة المحكمة مطلوبة" : "La ville du tribunal est obligatoire";
+    }
+    if (!tribunal) {
+      next.tribunal = ar ? "المحكمة المختصة مطلوبة" : "Le tribunal compétent est obligatoire";
     }
     setErrors(next);
-    if (next.client || next.type) return;
+    if (next.client || next.type || next.degree || next.role || next.city || next.tribunal) return;
 
     setLoading(true);
     const minWait = new Promise((r) => setTimeout(r, 700));
@@ -131,10 +222,25 @@ export function NewCaseModal({ open, onClose, onCreated, returnFocusRef }: Props
       const [created] = await Promise.all([
         api.createCase({
           client_name: clientName.trim(),
-          case_type: caseType,
+          case_type: resolvedType,
           status,
           responsible_id: responsibleId || undefined,
           first_hearing_at: firstHearing || undefined,
+          jurisdiction_degree: jurisdictionDegree,
+          tribunal: tribunal || undefined,
+          court_city: courtCity || undefined,
+          client_role: clientRole,
+          client_quality: clientQuality.trim() || undefined,
+          client_domicile: clientDomicile.trim() || undefined,
+          opposing_name: opposingName.trim() || undefined,
+          opposing_role: opposingRoleFor(clientRole),
+          opposing_quality: opposingQuality.trim() || undefined,
+          opposing_domicile: opposingDomicile.trim() || undefined,
+          court_file_number: courtFileNumber.trim() || undefined,
+          chamber: chamber.trim() || undefined,
+          greffe: greffe.trim() || undefined,
+          judge_name: judgeName.trim() || undefined,
+          procedure_status: procedureStatus || undefined,
         }),
         minWait,
       ]);
@@ -148,7 +254,10 @@ export function NewCaseModal({ open, onClose, onCreated, returnFocusRef }: Props
       setToastShow(true);
       window.setTimeout(() => setToastShow(false), 2800);
       onCreated?.(created.reference, created.id);
-      window.setTimeout(() => router.push(`/cases/${created.id}`), 400);
+      window.setTimeout(() => {
+        const qs = fromPlea ? "?from=plea&tab=documents" : "";
+        router.push(`/cases/${created.id}${qs}`);
+      }, 400);
     } catch (e) {
       setLoading(false);
       setErrors({
@@ -156,6 +265,11 @@ export function NewCaseModal({ open, onClose, onCreated, returnFocusRef }: Props
       });
     }
   }
+
+  const roleOpts = partyRoleOptions(addingCustom ? customType : caseType);
+  const rolesHint = roleHelp(!ar);
+  const resolvedDomain =
+    normalizeCaseDomain(addingCustom ? customType : caseType) || caseType;
 
   const options =
     lawyers.length > 0
@@ -198,7 +312,17 @@ export function NewCaseModal({ open, onClose, onCreated, returnFocusRef }: Props
                 </svg>
               </div>
             </div>
-            <button type="button" className="modal-close" onClick={handleClose} aria-label="Fermer">
+            <button
+              type="button"
+              className="modal-close"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleClose();
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              aria-label={ar ? "إغلاق" : "Fermer"}
+            >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <line x1="18" y1="6" x2="6" y2="18" />
                 <line x1="6" y1="6" x2="18" y2="18" />
@@ -210,9 +334,10 @@ export function NewCaseModal({ open, onClose, onCreated, returnFocusRef }: Props
           </h3>
           <p className="modal-sub">
             {ar
-              ? "يُولَّد المرجع تلقائياً. يظهر الملف فوراً في التخطيط والوثائق."
-              : "La référence est générée automatiquement. Le dossier apparaît aussitôt dans Planning et Documents."}
+              ? "هوية قانونية للملف (ق.م.م م. 32). المرجع يُولَّد تلقائياً. انقروا حقلاً لفهم ماذا تكتبون."
+              : "Identité juridique du dossier (art. 32 CPC). Référence automatique. Cliquez un champ : une aide s’affiche."}
           </p>
+          <FieldCoach field={coachField} uiFr={!ar} />
 
           <div className="form-grid" dir={ar ? "rtl" : "ltr"}>
             <div className="form-field full">
@@ -221,6 +346,7 @@ export function NewCaseModal({ open, onClose, onCreated, returnFocusRef }: Props
                 ref={clientRef}
                 value={clientName}
                 onChange={(e) => setClientName(e.target.value)}
+                onFocus={() => setCoachField("client")}
                 placeholder={ar ? "مثال: أحمد بناني" : "Ex. Ahmed Bennani"}
               />
               {errors.client && (
@@ -229,30 +355,331 @@ export function NewCaseModal({ open, onClose, onCreated, returnFocusRef }: Props
             </div>
 
             <div className="form-field full">
-              <label>{ar ? "نوع القضية" : "Type d’affaire"}</label>
-              <div className="type-pick" role="radiogroup">
-                {TYPE_PILLS.map((p) => (
+              <label>{t.domain}</label>
+              <div className="type-pick" role="radiogroup" onFocus={() => setCoachField("domain")}>
+                {domainPills.map((p) => (
                   <button
                     key={p.value}
                     type="button"
                     role="radio"
-                    aria-checked={caseType === p.value}
-                    className={`type-pill${caseType === p.value ? " sel" : ""}`}
-                    onClick={() => setCaseType(p.value)}
+                    aria-checked={!addingCustom && caseType === p.value}
+                    className={`type-pill${!addingCustom && caseType === p.value ? " sel" : ""}`}
+                    onClick={() => {
+                      setAddingCustom(false);
+                      setCustomType("");
+                      setCaseType(p.value);
+                      setTribunal(suggestTribunal(p.value, jurisdictionDegree));
+                      const roles = partyRoleOptions(p.value);
+                      if (!roles.some((r) => r.value === clientRole)) {
+                        setClientRole(roles[0]?.value || "demandeur");
+                      }
+                      setErrors((e) => ({ ...e, type: undefined }));
+                    }}
                   >
-                    {ar ? p.labelAr : p.labelFr}
+                    {p.label}
                   </button>
                 ))}
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={addingCustom}
+                  className={`type-pill add${addingCustom ? " sel" : ""}`}
+                  onClick={() => {
+                    setAddingCustom(true);
+                    setCaseType("");
+                    window.setTimeout(() => customRef.current?.focus(), 40);
+                  }}
+                >
+                  + {t.addDomain}
+                </button>
               </div>
+              {addingCustom && (
+                <>
+                  <input
+                    ref={customRef}
+                    value={customType}
+                    onChange={(e) => {
+                      setCustomType(e.target.value);
+                      setErrors((err) => ({ ...err, type: undefined }));
+                    }}
+                    placeholder={t.addDomainPlaceholder}
+                    maxLength={100}
+                    style={{ marginTop: 10 }}
+                  />
+                  <span className="ref-hint">{t.addDomainHint}</span>
+                </>
+              )}
               {errors.type && (
                 <span style={{ color: "#b91c1c", fontSize: 12 }}>{errors.type}</span>
               )}
             </div>
 
             <div className="form-field">
+              <label>{ar ? "درجة التقاضي *" : "Degré de juridiction *"}</label>
+              <select
+                value={jurisdictionDegree}
+                onFocus={() => setCoachField("degree")}
+                onChange={(e) => {
+                  const d = e.target.value;
+                  setJurisdictionDegree(d);
+                  const kind = suggestTribunal(resolvedDomain, d);
+                  const next = courtsForCity(courtCity, d);
+                  const match = next.find((c) => c.kind === kind) || next[0];
+                  if (match) setTribunal(match.id);
+                  setErrors((err) => ({ ...err, degree: undefined }));
+                }}
+              >
+                {JURISDICTION_DEGREES.map((d) => (
+                  <option key={d.value} value={d.value}>
+                    {ar ? d.ar : d.fr}
+                  </option>
+                ))}
+              </select>
+              {errors.degree && (
+                <span style={{ color: "#b91c1c", fontSize: 12 }}>{errors.degree}</span>
+              )}
+              <span className="ref-hint">{indicativeDeadlineHint(jurisdictionDegree, !ar)}</span>
+            </div>
+
+            <div className="form-field">
+              <label>{ar ? "مدينة المحكمة *" : "Ville du tribunal *"}</label>
+              <select
+                value={courtCity}
+                onFocus={() => setCoachField("city")}
+                onChange={(e) => {
+                  const city = e.target.value;
+                  setCourtCity(city);
+                  const kind = suggestTribunal(resolvedDomain, jurisdictionDegree);
+                  const next = courtsForCity(city, jurisdictionDegree);
+                  const match = next.find((c) => c.kind === kind) || next[0];
+                  setTribunal(match?.id || "");
+                }}
+              >
+                {MOROCCO_CITIES.map((c) => (
+                  <option key={c.value} value={c.value}>
+                    {ar ? c.ar : c.fr}
+                  </option>
+                ))}
+              </select>
+              <span className="ref-hint">
+                {ar
+                  ? "المدينة تحدد المحاكم المتاحة — يمكن أن تختلف عن مقر المكتب"
+                  : "La ville filtre les sièges — peut différer du siège du cabinet"}
+              </span>
+              {errors.city ? (
+                <span style={{ color: "#b91c1c", fontSize: 12 }}>{errors.city}</span>
+              ) : null}
+            </div>
+
+            <div className="form-field">
+              <label>{ar ? "المحكمة المختصة *" : "Tribunal compétent *"}</label>
+              <select
+                value={tribunal}
+                onFocus={() => setCoachField("tribunal")}
+                onChange={(e) => setTribunal(e.target.value)}
+                disabled={availableCourts.length === 0}
+              >
+                {availableCourts.length === 0 ? (
+                  <option value="">
+                    {ar ? "لا محكمة لهذه الدرجة في هذه المدينة" : "Aucun siège pour ce degré / ville"}
+                  </option>
+                ) : (
+                  availableCourts.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {ar ? s.ar : s.fr}
+                    </option>
+                  ))
+                )}
+              </select>
+              <span className="ref-hint">
+                {ar
+                  ? "لائحة إرشادية — تحققوا من الاختصاص المحلي"
+                  : "Liste indicative — vérifiez toujours la compétence territoriale"}
+                {courtSeatById(tribunal)
+                  ? ` · ${ar ? courtSeatById(tribunal)!.ar : courtSeatById(tribunal)!.fr}`
+                  : ""}
+              </span>
+            </div>
+
+            <div className="form-field">
+              <label>{ar ? "دور موكلكم *" : "Rôle de votre client *"}</label>
+              <select
+                value={clientRole}
+                onFocus={() => setCoachField("role")}
+                onChange={(e) => {
+                  setClientRole(e.target.value);
+                  setErrors((err) => ({ ...err, role: undefined }));
+                }}
+              >
+                {roleOpts.map((r) => (
+                  <option key={r.value} value={r.value}>
+                    {ar ? r.ar : r.fr}
+                  </option>
+                ))}
+              </select>
+              {errors.role && (
+                <span style={{ color: "#b91c1c", fontSize: 12 }}>{errors.role}</span>
+              )}
+              <span className="ref-hint">
+                {rolesHint.demandeur} {rolesHint.defendeur}
+              </span>
+            </div>
+
+            <div className="form-field">
+              <label>{ar ? "طبيعة الموكل" : "Nature du client"}</label>
+              <select
+                value={clientQuality}
+                onFocus={() => setCoachField("quality")}
+                onChange={(e) => setClientQuality(e.target.value)}
+              >
+                {QUALITY_OPTIONS.map((q) => (
+                  <option key={q.value} value={q.value}>
+                    {ar ? q.ar : q.fr}
+                  </option>
+                ))}
+              </select>
+              <span className="ref-hint">{qualityHelp(!ar)}</span>
+            </div>
+
+            <div className="form-field full">
+              <label>{ar ? "موطن / مقر الموكل" : "Domicile / siège du client"}</label>
+              <input
+                value={clientDomicile}
+                onFocus={() => setCoachField("domicile")}
+                onChange={(e) => setClientDomicile(e.target.value)}
+                placeholder={ar ? "العنوان الكامل" : "Adresse complète"}
+              />
+            </div>
+
+            <div className="form-field">
+              <label>{ar ? "الطرف المقابل" : "Partie adverse"}</label>
+              <input
+                value={opposingName}
+                onFocus={() => setCoachField("opposing")}
+                onChange={(e) => setOpposingName(e.target.value)}
+                placeholder={ar ? "الاسم الكامل" : "Nom complet"}
+              />
+            </div>
+
+            <div className="form-field">
+              <label>{ar ? "طبيعة الطرف المقابل" : "Nature adverse"}</label>
+              <select
+                value={opposingQuality}
+                onFocus={() => setCoachField("opposingQuality")}
+                onChange={(e) => setOpposingQuality(e.target.value)}
+              >
+                {QUALITY_OPTIONS.map((q) => (
+                  <option key={q.value} value={q.value}>
+                    {ar ? q.ar : q.fr}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="form-field full">
+              <label>{ar ? "موطن الطرف المقابل" : "Domicile / siège adverse"}</label>
+              <input
+                value={opposingDomicile}
+                onFocus={() => setCoachField("opposingDomicile")}
+                onChange={(e) => setOpposingDomicile(e.target.value)}
+                placeholder={
+                  ar
+                    ? "مثال: شارع الزرقطوني رقم 210، الدار البيضاء"
+                    : "Ex. : rue Zerktouni 210, Casablanca"
+                }
+              />
+            </div>
+
+            <div className="form-field full" style={{ gridColumn: "1 / -1" }}>
+              <p className="ref-hint" style={{ marginBottom: 8, fontWeight: 600 }}>
+                {ar ? "الملف القضائي (اختياري عند الإنشاء)" : "Dossier judiciaire (optionnel à la création)"}
+              </p>
+              <p className="ref-hint" style={{ marginBottom: 10 }}>
+                {ar
+                  ? "رقم الرائج (RG) هو رقم الملف لدى المحكمة بعد الإيداع. الغرفة، كتابة الضبط والقاضي المقرر تُملأ عندما تُعرف — ليست لازمة لفتح الملف في LexHub."
+                  : "Le n° RG est le numéro du dossier au greffe après dépôt. Chambre, greffe et juge se remplissent quand ils sont connus — pas obligatoires pour ouvrir le dossier dans LexHub."}
+              </p>
+            </div>
+
+            <div className="form-field">
+              <label>{ar ? "رقم الرائج / RG" : "N° RG / رقم الرائج"}</label>
+              <input
+                value={courtFileNumber}
+                onFocus={() => setCoachField("rg")}
+                onChange={(e) => setCourtFileNumber(e.target.value)}
+                placeholder="2025/1547"
+                dir="ltr"
+              />
+            </div>
+
+            <div className="form-field">
+              <label>{ar ? "الغرفة" : "Chambre"}</label>
+              <input
+                value={chamber}
+                onFocus={() => setCoachField("chamber")}
+                onChange={(e) => setChamber(e.target.value)}
+                placeholder={ar ? "الغرفة التجارية الأولى" : "1ère chambre commerciale"}
+              />
+            </div>
+
+            <div className="form-field">
+              <label>{ar ? "كتابة الضبط / Greffe" : "Greffe"}</label>
+              <input
+                value={greffe}
+                onFocus={() => setCoachField("greffe")}
+                onChange={(e) => setGreffe(e.target.value)}
+                placeholder={ar ? "قسم القضايا التجارية" : "Greffe commercial"}
+              />
+            </div>
+
+            <div className="form-field">
+              <label>{ar ? "القاضي المقرر" : "Juge / مقرر"}</label>
+              <input
+                value={judgeName}
+                onFocus={() => setCoachField("judge")}
+                onChange={(e) => setJudgeName(e.target.value)}
+                placeholder={ar ? "ذ. كريم المنصوري" : "Ex. Me. …"}
+              />
+            </div>
+
+            <div className="form-field">
+              <label>{ar ? "حالة المسطرة" : "Statut procédure"}</label>
+              <select
+                value={procedureStatus}
+                onFocus={() => setCoachField("procedure")}
+                onChange={(e) => setProcedureStatus(e.target.value)}
+                title={
+                  ar
+                    ? "مرحلة المسطرة أمام المحكمة"
+                    : "Étape de la procédure devant le tribunal"
+                }
+              >
+                {PROCEDURE_STATUSES.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {ar ? s.ar : s.fr}
+                  </option>
+                ))}
+              </select>
+              <span className="ref-hint">
+                {ar
+                  ? "افتتاح = إيداع العريضة · تحقيق = تبادل المذكرات · جلسة · مداولة · حكم · تبليغ · استئناف · تنفيذ · مغلق."
+                  : "Ouverture = dépôt · Instruction = échanges · Audience · Délibéré · Jugement · Notification · Appel · Exécution · Clos."}
+              </span>
+            </div>
+
+            <div className="form-field full">
+              <span className="ref-hint">
+                {ar
+                  ? "اسم المحامي على التصدير = ملف المكتب / المستخدم المتصل (الإعدادات)."
+                  : "Avocat plaidant à l’export = profil connecté / branding cabinet (Paramètres)."}
+              </span>
+            </div>
+
+            <div className="form-field">
               <label>{ar ? "المسؤول" : "Responsable"}</label>
               <select
                 value={responsibleId}
+                onFocus={() => setCoachField("responsible")}
                 onChange={(e) => setResponsibleId(e.target.value)}
               >
                 {options.map((m) => (
@@ -265,7 +692,11 @@ export function NewCaseModal({ open, onClose, onCreated, returnFocusRef }: Props
 
             <div className="form-field">
               <label>{ar ? "الحالة" : "Statut initial"}</label>
-              <select value={status} onChange={(e) => setStatus(e.target.value)}>
+              <select
+                value={status}
+                onFocus={() => setCoachField("status")}
+                onChange={(e) => setStatus(e.target.value)}
+              >
                 <option value="En cours">{ar ? "جارٍ" : "En cours"}</option>
                 <option value="En attente">{ar ? "قيد الانتظار" : "En attente"}</option>
                 <option value="Clôturé">{ar ? "مغلق" : "Clôturé"}</option>
@@ -289,6 +720,7 @@ export function NewCaseModal({ open, onClose, onCreated, returnFocusRef }: Props
               <input
                 type="date"
                 value={firstHearing}
+                onFocus={() => setCoachField("hearing")}
                 onChange={(e) => setFirstHearing(e.target.value)}
               />
             </div>

@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 _CACHE: dict[str, tuple[float, tuple[str, list[Citation], int]]] = {}
 _CACHE_TTL = 300  # 5 min
+_MAX_CACHE_ENTRIES = 48
 
 _SGG_PORTAL = Citation(
     label="Bulletin officiel du Royaume du Maroc — sgg.gov.ma",
@@ -53,6 +54,9 @@ def _get_cached(key: str) -> tuple[str, list[Citation], int] | None:
 
 
 def _set_cache(key: str, data: tuple[str, list[Citation], int]) -> None:
+    if len(_CACHE) >= _MAX_CACHE_ENTRIES:
+        oldest_key = min(_CACHE.items(), key=lambda item: item[1][0])[0]
+        _CACHE.pop(oldest_key, None)
     _CACHE[key] = (time.time(), data)
 
 
@@ -327,7 +331,7 @@ def _google_news_rss(query: str, max_results: int = 8, locale: str = "fr") -> li
         with httpx.Client(timeout=18.0, follow_redirects=True) as client:
             resp = client.get(
                 url,
-                headers={"User-Agent": "Mozilla/5.0 (compatible; SanadLegal/2.0)"},
+                headers={"User-Agent": "Mozilla/5.0 (compatible; LexHubLegal/2.0)"},
             )
         if resp.status_code >= 400:
             logger.warning("Google News RSS HTTP %s", resp.status_code)

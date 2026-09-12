@@ -3,21 +3,24 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { motion, useMotionValue, useSpring } from "framer-motion";
-import {
-  Activity,
-  FileText,
-  FolderClock,
-  Lock,
-  Mic,
-  ShieldCheck,
-  Users,
-} from "lucide-react";
+import { FolderClock, Lock, ShieldCheck } from "lucide-react";
 import { PublicNavbar } from "@/components/layout/public-navbar";
 import { PublicFooter } from "@/components/layout/public-footer";
-import { LandingWaveform } from "@/components/home/landing-waveform";
 import { LandingParticles } from "@/components/home/landing-particles";
-import { useTranslations } from "@/store/locale";
+import { HeroSerpentBackdrop, useHeroRevealDelay } from "@/components/home/hero-serpent-b";
+import { LandingTrustBand } from "@/components/home/landing-trust-band";
+import { LandingComplianceStrip } from "@/components/home/landing-compliance-strip";
+import { LandingPainSection } from "@/components/home/landing-pain-section";
+import { LandingFaqAccordion } from "@/components/home/landing-faq";
+import { LandingFeatureIcon } from "@/components/home/landing-feature-icon";
+import { LandingPricingCarousel } from "@/components/home/landing-pricing-carousel";
+import { LandingReferralSection } from "@/components/home/landing-referral-section";
+import { HERO_VIDEOS, VideoCarousel } from "@/components/home/video-carousel";
+import { VisitorConvertNudge } from "@/components/billing/visitor-convert-nudge";
+import { LANDING_FAQ_AR, LANDING_FAQ_FR } from "@/lib/landing-faq";
+import { useClientLocale, useTranslations } from "@/store/locale";
 import { cn } from "@/lib/utils";
+import "./landing-royal-test.css";
 
 function useReveal<T extends HTMLElement>() {
   const ref = useRef<T | null>(null);
@@ -40,22 +43,23 @@ function useReveal<T extends HTMLElement>() {
 function Reveal({
   children,
   className,
+  delay = 0,
 }: {
   children: React.ReactNode;
   className?: string;
+  delay?: number;
 }) {
   const { ref, visible } = useReveal<HTMLDivElement>();
   return (
-    <div
+    <motion.div
       ref={ref}
-      className={cn(
-        "transition-all duration-700 ease-out",
-        visible ? "translate-y-0 opacity-100" : "translate-y-7 opacity-0",
-        className,
-      )}
+      initial={{ opacity: 0, y: 28 }}
+      animate={visible ? { opacity: 1, y: 0 } : {}}
+      transition={{ duration: 0.65, delay, ease: [0.22, 1, 0.36, 1] }}
+      className={className}
     >
       {children}
-    </div>
+    </motion.div>
   );
 }
 
@@ -100,49 +104,46 @@ function TiltCard({
 
 export function HomePageContent() {
   const t = useTranslations();
+  const ar = useClientLocale() === "ar";
   const hero = t.hero;
   const features = t.features;
-  const heroRef = useRef<HTMLElement>(null);
-  const glowX = useMotionValue(0);
-  const glowY = useMotionValue(0);
-  const [glowOn, setGlowOn] = useState(false);
+  const heroDelay = useHeroRevealDelay();
 
   const featureCards = [
     {
-      n: "01 — Voix",
+      n: "01 — Plaidoirie",
       title: features.f1Title,
       desc: features.f1Desc,
       dark: true,
-      icon: Mic,
+      iconKind: "mic" as const,
     },
     {
       n: "02 — Dossiers",
       title: features.f2Title,
       desc: features.f2Desc,
       dark: false,
-      icon: FileText,
+      iconKind: "file" as const,
     },
     {
       n: "03 — Synthèse",
       title: features.f3Title,
       desc: features.f3Desc,
       dark: false,
-      icon: Activity,
+      iconKind: "synth" as const,
     },
     {
       n: "04 — Équipe",
       title: features.f4Title,
       desc: features.f4Desc,
       dark: true,
-      icon: Users,
+      iconKind: "team" as const,
     },
   ];
 
   return (
-    <div className="relative min-h-screen bg-[#F7F2E7] text-[#1A1A17]">
-      {/* grain subtil */}
+    <div className="landing-royal-test relative min-h-screen bg-[var(--lr-paper)] text-[var(--lr-ink)]">
       <div
-        className="pointer-events-none fixed inset-0 z-[60] opacity-[0.035] mix-blend-overlay"
+        className="pointer-events-none fixed inset-0 z-[60] opacity-[0.03] mix-blend-overlay"
         style={{
           backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`,
         }}
@@ -150,188 +151,215 @@ export function HomePageContent() {
       />
 
       <PublicNavbar variant="dark" />
+      <VisitorConvertNudge />
 
-      {/* HERO v3 */}
       <section
-        ref={heroRef}
         className="relative overflow-hidden px-6 pb-16 pt-28 sm:px-8 sm:pt-32"
         style={{
           background:
-            "radial-gradient(ellipse 900px 500px at 50% -10%, rgba(184,145,47,0.10), transparent), #0A1220",
+            "radial-gradient(ellipse 1000px 560px at 50% -8%, rgba(76,124,255,0.22), transparent 55%), linear-gradient(165deg, #0B1A4D 0%, #071033 55%, #0A1228 100%)",
         }}
-        onMouseMove={(e) => {
-          const el = heroRef.current;
-          if (!el) return;
-          const rect = el.getBoundingClientRect();
-          glowX.set(e.clientX - rect.left);
-          glowY.set(e.clientY - rect.top);
-          setGlowOn(true);
-        }}
-        onMouseLeave={() => setGlowOn(false)}
       >
+        <div className="lr-aura lr-aura--a opacity-70" aria-hidden />
+        <div className="lr-aura lr-aura--b opacity-50" aria-hidden />
+        <div className="lr-aura lr-aura--c opacity-40" aria-hidden />
+        <div className="lr-hero-shine opacity-60" aria-hidden />
+        <HeroSerpentBackdrop />
         <div
-          className="pointer-events-none absolute inset-0 opacity-35"
+          className="pointer-events-none absolute inset-0 opacity-30"
           style={{
             backgroundImage:
-              "linear-gradient(rgba(217,186,106,0.18) 1px, transparent 1px)",
+              "linear-gradient(rgba(140,170,255,0.16) 1px, transparent 1px)",
             backgroundSize: "100% 96px",
           }}
           aria-hidden
         />
         <LandingParticles />
-        <motion.div
-          className="pointer-events-none absolute z-0 h-[560px] w-[560px] -translate-x-1/2 -translate-y-1/2 rounded-full"
-          style={{
-            left: glowX,
-            top: glowY,
-            opacity: glowOn ? 1 : 0,
-            background:
-              "radial-gradient(circle, rgba(217,186,106,0.10), transparent 70%)",
-          }}
-        />
 
-        <div className="relative z-10 mx-auto max-w-[860px] text-center">
-          <motion.span
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="inline-flex items-center gap-2 rounded-full border border-[rgba(217,186,106,0.18)] bg-white/[0.03] px-4 py-2 font-mono text-[11.5px] uppercase tracking-[0.14em] text-[#D9BA6A]"
-          >
-            <span className="h-1.5 w-1.5 rounded-full bg-[#D9BA6A]" />
-            {hero.badge}
-          </motion.span>
+        <div className="relative z-10 mx-auto grid max-w-[1180px] items-center gap-10 lg:grid-cols-2 lg:gap-12">
+          <div className={cn("text-center", ar ? "lg:text-right" : "lg:text-start")}>
+            <motion.h1
+              initial={{ opacity: 0, y: 24 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: heroDelay, duration: 0.75 }}
+              className="lr-title-gold font-display text-[clamp(48px,8vw,92px)] font-semibold leading-[0.95] tracking-tight"
+            >
+              {hero.title}
+            </motion.h1>
 
-          <motion.h1
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="font-display mt-7 text-[clamp(64px,11vw,128px)] font-semibold leading-[0.95] tracking-tight text-[#F7F2E7]"
-          >
-            {hero.title}
-          </motion.h1>
+            <motion.p
+              initial={{ opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: heroDelay + 0.12, duration: 0.7 }}
+              className="font-display mt-2 text-[21px] font-normal italic text-[#FF6A00]"
+            >
+              {hero.subtitle}
+            </motion.p>
 
-          <motion.p
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="font-display mt-2 text-[21px] font-normal italic text-[#D9BA6A]"
-          >
-            {hero.subtitle}
-          </motion.p>
+            <motion.p
+              initial={{ opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: heroDelay + 0.22, duration: 0.7 }}
+              className={cn(
+                "mt-5 max-w-[520px] text-[16.5px] leading-relaxed text-[#A8B6D4]",
+                ar ? "mr-0 lg:mr-auto" : "mx-auto lg:mx-0",
+              )}
+            >
+              {hero.description}
+            </motion.p>
 
-          <motion.p
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="mx-auto mt-5 max-w-[560px] text-[16.5px] leading-relaxed text-[#A7B1C2]"
-          >
-            {hero.description}
-          </motion.p>
-
-          <LandingWaveform />
-
-          <div className="mx-auto mt-14 grid max-w-[980px] gap-[22px] perspective-[1200px] sm:grid-cols-2">
-            <TiltCard className="rounded-[18px] border border-[rgba(217,186,106,0.18)] bg-gradient-to-br from-[#142640] to-[#0E1A2E] p-8 text-start shadow-none transition hover:border-[rgba(184,145,47,0.35)] hover:shadow-[0_30px_60px_rgba(0,0,0,0.35)]">
-              <p className="font-mono text-[11.5px] uppercase tracking-[0.14em] text-[#D9BA6A]">
-                {hero.gesture1Label}
-              </p>
-              <h3 className="font-display mt-3 text-[23px] font-semibold text-[#F4EEDD]">
-                {hero.gesture1Title}
-              </h3>
-              <p className="mt-2.5 text-[14.5px] leading-relaxed text-[#9AA4B2]">
-                {hero.gesture1Desc}
-              </p>
-              <div className="mt-5 flex h-[46px] w-[46px] items-center justify-center rounded-[10px] border border-[rgba(217,186,106,0.18)] bg-[rgba(217,186,106,0.08)] text-[#D9BA6A]">
-                <Mic className="h-5 w-5" />
-              </div>
-            </TiltCard>
-
-            <TiltCard className="rounded-[18px] border border-[rgba(217,186,106,0.18)] bg-gradient-to-br from-[#142640] to-[#0E1A2E] p-8 text-start transition hover:border-[rgba(184,145,47,0.35)] hover:shadow-[0_30px_60px_rgba(0,0,0,0.35)]">
-              <p className="font-mono text-[11.5px] uppercase tracking-[0.14em] text-[#D9BA6A]">
-                {hero.gesture2Label}
-              </p>
-              <h3 className="font-display mt-3 text-[23px] font-semibold text-[#F4EEDD]">
-                {hero.gesture2Title}
-              </h3>
-              <p className="mt-2.5 text-[14.5px] leading-relaxed text-[#9AA4B2]">
-                {hero.gesture2Desc}
-              </p>
-              <div className="mt-5 flex h-[46px] w-[46px] items-center justify-center rounded-[10px] border border-[rgba(217,186,106,0.18)] bg-[rgba(217,186,106,0.08)] text-[#D9BA6A]">
-                <FileText className="h-5 w-5" />
-              </div>
-            </TiltCard>
+            <motion.p
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: heroDelay + 0.32, duration: 0.65 }}
+              className={cn(
+                "mt-8 max-w-[480px] text-[13.5px] leading-relaxed text-[#8FA0C0]",
+                ar ? "mr-0 lg:mr-auto text-right" : "mx-auto lg:mx-0 text-left",
+              )}
+            >
+              {ar
+                ? "إملاء عربي · ملف · مرافعة — LexHub يصوغ دون اختراع."
+                : "Dictée arabe · dossier · plaidoirie — LexHub structure, sans inventer."}
+            </motion.p>
           </div>
+
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: heroDelay + 0.15, duration: 0.9 }}
+            className="relative min-h-[280px] overflow-hidden rounded-[4px] border border-white/10 shadow-[0_40px_80px_rgba(0,0,0,0.35)] sm:min-h-[360px] lg:min-h-[480px]"
+          >
+            <VideoCarousel sources={HERO_VIDEOS} className="absolute inset-0 h-full w-full" />
+            <motion.span
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: heroDelay + 0.4, duration: 0.6 }}
+              className="lr-badge-maroc absolute left-4 top-4 z-[2] inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/35 px-3.5 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] text-white backdrop-blur-sm"
+            >
+              <span className="lr-badge-maroc__dot h-1.5 w-1.5 rounded-full" />
+              {hero.badge}
+            </motion.span>
+          </motion.div>
+        </div>
+
+        {/* Gestes sous le fold — hors premier viewport */}
+        <div className="relative z-10 mx-auto mt-24 max-w-[1180px] pt-8 sm:mt-32">
+        <motion.div
+          initial={{ opacity: 0, y: 32 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, amount: 0.35 }}
+          transition={{ duration: 0.75 }}
+          className="grid gap-[22px] perspective-[1200px] sm:grid-cols-2"
+        >
+          <TiltCard className="rounded-[18px] border border-[rgba(140,170,255,0.22)] bg-gradient-to-br from-[#12307A] to-[#0B1A4D] p-8 text-start shadow-none transition hover:border-[rgba(76,124,255,0.45)] hover:shadow-[0_30px_60px_rgba(7,16,51,0.45)]">
+            <p className="font-mono text-[11.5px] uppercase tracking-[0.14em] text-[#A8C0FF]">
+              {hero.gesture1Label}
+            </p>
+            <h3 className="font-display mt-3 text-[23px] font-semibold text-[#F4F6FC]">
+              {hero.gesture1Title}
+            </h3>
+            <p className="mt-2.5 text-[14.5px] leading-relaxed text-[#A8B6D4]">
+              {hero.gesture1Desc}
+            </p>
+            <div className="mt-5 flex h-[46px] w-[46px] items-center justify-center rounded-[10px] border border-[rgba(140,170,255,0.28)] bg-[rgba(76,124,255,0.12)]">
+              <LandingFeatureIcon kind="mic" dark />
+            </div>
+          </TiltCard>
+
+          <TiltCard className="rounded-[18px] border border-[rgba(140,170,255,0.22)] bg-gradient-to-br from-[#12307A] to-[#0B1A4D] p-8 text-start transition hover:border-[rgba(76,124,255,0.45)] hover:shadow-[0_30px_60px_rgba(7,16,51,0.45)]">
+            <p className="font-mono text-[11.5px] uppercase tracking-[0.14em] text-[#A8C0FF]">
+              {hero.gesture2Label}
+            </p>
+            <h3 className="font-display mt-3 text-[23px] font-semibold text-[#F4F6FC]">
+              {hero.gesture2Title}
+            </h3>
+            <p className="mt-2.5 text-[14.5px] leading-relaxed text-[#A8B6D4]">
+              {hero.gesture2Desc}
+            </p>
+            <div className="mt-5 flex h-[46px] w-[46px] items-center justify-center rounded-[10px] border border-[rgba(140,170,255,0.28)] bg-[rgba(76,124,255,0.12)]">
+              <LandingFeatureIcon kind="synth" dark />
+            </div>
+          </TiltCard>
+        </motion.div>
         </div>
       </section>
 
-      {/* FEATURES v3 — 2×2 */}
-      <section id="fonctionnalites" className="bg-[#F7F2E7] px-6 py-[108px] sm:px-8">
+      <LandingComplianceStrip ar={ar} />
+      <LandingTrustBand ar={ar} />
+
+      <LandingPainSection ar={ar} />
+
+      <section id="fonctionnalites" className="bg-[var(--lr-paper)] px-6 py-[108px] sm:px-8">
         <Reveal className="mx-auto mb-14 max-w-[620px] text-center">
-          <p className="font-mono text-[11.5px] uppercase tracking-[0.14em] text-[#B8912F]">
+          <p className="font-mono text-[11.5px] uppercase tracking-[0.14em] text-[#1B3F9C]">
             {hero.featuresEyebrow}
           </p>
-          <h2 className="font-display mt-3.5 text-[clamp(30px,4vw,42px)] font-semibold tracking-tight text-[#1A1A17]">
+          <h2 className="font-display mt-3.5 text-[clamp(30px,4vw,42px)] font-semibold tracking-tight text-[var(--lr-ink)]">
             {features.title}
           </h2>
         </Reveal>
 
         <div className="mx-auto grid max-w-[1080px] gap-5 md:grid-cols-2">
-          {featureCards.map((f) => {
-            const Icon = f.icon;
-            return (
+          {featureCards.map((f, idx) => (
+            <Reveal key={f.n} delay={idx * 0.1}>
               <TiltCard
-                key={f.n}
                 strength={4}
-                className="overflow-hidden rounded-2xl border border-[rgba(26,26,23,0.10)] bg-[#FFFFFC] transition hover:border-[rgba(184,145,47,0.35)] hover:shadow-[0_24px_48px_rgba(20,30,50,0.09)]"
+                className="lr-feature-card overflow-hidden rounded-2xl border border-[var(--lr-line-light)] bg-[var(--lr-card)] transition hover:border-[rgba(27,63,156,0.35)] hover:shadow-[0_24px_48px_rgba(11,26,77,0.12)]"
               >
                 <div
                   className={cn(
                     "flex h-[168px] items-center justify-center",
                     f.dark
-                      ? "bg-gradient-to-br from-[#1D3357] to-[#0E1A2E]"
-                      : "bg-[#EFE7D6]",
+                      ? "bg-gradient-to-br from-[#1B3F9C] to-[#0B1A4D]"
+                      : "bg-[var(--lr-paper-dim)]",
                   )}
                 >
-                  <Icon
-                    className={cn(
-                      "h-[52px] w-[52px]",
-                      f.dark ? "text-[#D9BA6A]" : "text-[#142640] opacity-55",
-                    )}
-                    strokeWidth={1.4}
-                  />
+                  <LandingFeatureIcon kind={f.iconKind} dark={f.dark} />
                 </div>
                 <div className="px-[26px] pb-7 pt-6">
-                  <p className="font-mono text-[11.5px] uppercase tracking-[0.14em] text-[#5E6470]">
+                  <p className="font-mono text-[11.5px] uppercase tracking-[0.14em] text-[var(--lr-ink-soft)]">
                     {f.n}
                   </p>
-                  <h3 className="font-display mt-2.5 text-[19px] font-semibold text-[#1A1A17]">
+                  <h3 className="font-display mt-2.5 text-[19px] font-semibold text-[var(--lr-ink)]">
                     {f.title}
                   </h3>
-                  <p className="mt-2 text-sm leading-relaxed text-[#5E6470]">{f.desc}</p>
+                  <p className="mt-2 text-sm leading-relaxed text-[var(--lr-ink-soft)]">{f.desc}</p>
                 </div>
               </TiltCard>
-            );
-          })}
+            </Reveal>
+          ))}
         </div>
       </section>
 
-      {/* Confidentialité — remplace le bandeau citation / stats */}
+      <LandingPricingCarousel />
+
+      <LandingReferralSection ar={ar} />
+
+      <LandingFaqAccordion
+        ar={ar}
+        eyebrow={ar ? "أسئلة المحامي" : "Questions d’avocat"}
+        title={ar ? "أسئلة شائعة" : "Questions fréquentes"}
+        items={[...(ar ? LANDING_FAQ_AR : LANDING_FAQ_FR)]}
+      />
+
       <section
         id="confidentialite"
-        className="bg-[#0A1220] px-6 py-[96px] text-center sm:px-8"
+        className="relative overflow-hidden bg-[var(--lr-royal-950)] px-6 py-[96px] text-center sm:px-8"
       >
-        <Reveal className="mx-auto max-w-[720px]">
-          <p className="font-mono text-[11.5px] uppercase tracking-[0.18em] text-[#D9BA6A]">
+        <div className="lr-aura lr-aura--a opacity-60" aria-hidden />
+        <Reveal className="relative z-10 mx-auto max-w-[720px]">
+          <p className="font-mono text-[11.5px] uppercase tracking-[0.18em] text-[#A8C0FF]">
             {hero.privacyEyebrow}
           </p>
-          <h2 className="font-display mt-4 text-[clamp(28px,4vw,40px)] font-semibold tracking-tight text-[#F7F2E7]">
+          <h2 className="font-display mt-4 text-[clamp(28px,4vw,40px)] font-semibold tracking-tight text-[var(--lr-ivory)]">
             {hero.privacyTitle}
           </h2>
-          <p className="mx-auto mt-4 max-w-[560px] text-[15.5px] leading-relaxed text-[#94A3B8]">
+          <p className="mx-auto mt-4 max-w-[560px] text-[15.5px] leading-relaxed text-[var(--lr-muted-on-dark)]">
             {hero.privacyDesc}
           </p>
         </Reveal>
 
-        <div className="mx-auto mt-14 grid max-w-[1080px] gap-5 text-start md:grid-cols-3">
+        <div className="relative z-10 mx-auto mt-14 grid max-w-[1080px] gap-5 text-start md:grid-cols-3">
           {[
             {
               icon: ShieldCheck,
@@ -348,39 +376,43 @@ export function HomePageContent() {
               title: hero.privacyCard3Title,
               desc: hero.privacyCard3Desc,
             },
-          ].map((card) => {
+          ].map((card, idx) => {
             const Icon = card.icon;
             return (
-              <Reveal key={card.title}>
-                <article className="h-full rounded-2xl border border-[rgba(148,163,184,0.14)] bg-[#111D35] px-6 py-7 transition hover:border-[rgba(217,186,106,0.28)]">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-full border border-[#D9BA6A]/50 text-[#D9BA6A]">
+              <Reveal key={card.title} delay={idx * 0.12}>
+                <motion.article
+                  whileHover={{ y: -4 }}
+                  className="h-full rounded-2xl border border-[var(--lr-line-dark)] bg-[#0F2258] px-6 py-7 transition hover:border-[rgba(76,124,255,0.4)] hover:shadow-[0_0_40px_rgba(76,124,255,0.12)]"
+                >
+                  <div className="lr-security-icon flex h-12 w-12 items-center justify-center rounded-full border border-[#4C7CFF]/45 text-[#4C7CFF]">
                     <Icon className="h-5 w-5" strokeWidth={1.6} />
                   </div>
                   <h3 className="mt-5 text-[17px] font-semibold text-white">{card.title}</h3>
-                  <p className="mt-2.5 text-sm leading-relaxed text-[#94A3B8]">{card.desc}</p>
-                </article>
+                  <p className="mt-2.5 text-sm leading-relaxed text-[var(--lr-muted-on-dark)]">{card.desc}</p>
+                </motion.article>
               </Reveal>
             );
           })}
         </div>
       </section>
 
-      {/* CTA */}
-      <section className="relative bg-[#F7F2E7] px-6 py-[100px] text-center sm:px-8">
-        <div className="absolute left-1/2 top-0 h-14 w-px -translate-x-1/2 bg-[rgba(26,26,23,0.10)]" />
+      <section className="relative bg-[var(--lr-paper)] px-6 py-[100px] text-center sm:px-8">
+        <div className="absolute left-1/2 top-0 h-14 w-px -translate-x-1/2 bg-[var(--lr-line-light)]" />
         <Reveal>
-          <h2 className="font-display text-[clamp(28px,3.6vw,38px)] font-semibold text-[#1A1A17]">
+          <h2 className="font-display text-[clamp(28px,3.6vw,38px)] font-semibold text-[var(--lr-ink)]">
             {t.cta.title}
           </h2>
-          <p className="mx-auto mt-3.5 max-w-[460px] text-[15.5px] text-[#5E6470]">
+          <p className="mx-auto mt-3.5 max-w-[460px] text-[15.5px] text-[var(--lr-ink-soft)]">
             {t.cta.subtitle}
           </p>
           <Link
-            href="/register"
-            className="mt-8 inline-flex items-center gap-2.5 rounded-full border border-[#0A1220] bg-[#0A1220] px-[30px] py-[15px] text-[15px] font-semibold text-[#F4EEDD] transition hover:-translate-y-0.5 hover:bg-[#142640] hover:shadow-[0_16px_32px_rgba(20,30,50,0.18)]"
+            href="/login?tab=register"
+            className="lr-cta-pulse mt-8 inline-flex items-center gap-2.5 rounded-full border border-[var(--lr-royal-900)] bg-[var(--lr-royal-900)] px-[30px] py-[15px] text-[15px] font-semibold text-[var(--lr-ivory)] shadow-[0_0_28px_rgba(76,124,255,0.25)] transition hover:-translate-y-0.5 hover:bg-[var(--lr-royal-800)] hover:shadow-[0_16px_36px_rgba(11,26,77,0.28)]"
           >
             {hero.ctaRegister}
-            <span aria-hidden>→</span>
+            <motion.span aria-hidden animate={{ x: [0, 4, 0] }} transition={{ repeat: Infinity, duration: 1.6 }}>
+              →
+            </motion.span>
           </Link>
         </Reveal>
       </section>

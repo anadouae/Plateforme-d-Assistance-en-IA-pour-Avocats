@@ -4,10 +4,12 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/auth/password-input";
+import { PasswordRulesList } from "@/components/auth/password-rules-list";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AuthLayout } from "@/components/auth/auth-layout";
 import { api } from "@/lib/api";
+import { isPasswordStrong } from "@/lib/password";
 import { useTranslations } from "@/store/locale";
 
 function ResetPasswordForm() {
@@ -21,7 +23,6 @@ function ResetPasswordForm() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Anciens liens d'invitation → page d'activation dédiée
   useEffect(() => {
     if (isInvite && token) {
       router.replace(`/activate?token=${encodeURIComponent(token)}`);
@@ -39,6 +40,10 @@ function ResetPasswordForm() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    if (!isPasswordStrong(password)) {
+      setError(auth.pwdWeak);
+      return;
+    }
     if (password !== confirm) {
       setError(auth.pwdMismatch);
       return;
@@ -59,21 +64,35 @@ function ResetPasswordForm() {
       <Card className="border-sanad-gold/15 bg-white/90 shadow-xl shadow-sanad-gold/10 backdrop-blur-sm">
         <CardHeader className="text-center">
           <CardTitle className="text-sanad-navy">Réinitialiser le mot de passe</CardTitle>
+          <p className="mt-2 text-sm text-slate-500">{auth.forgotSecurityNote}</p>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
-            <Input
-              label={auth.password}
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-            <Input
+            <div>
+              <PasswordInput
+                label={auth.password}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+              />
+              {password && (
+                <PasswordRulesList
+                  password={password}
+                  labels={{
+                    length: auth.pwdRuleLength,
+                    upperLower: auth.pwdRuleCase,
+                    digit: auth.pwdRuleDigit,
+                    symbol: auth.pwdRuleSymbol,
+                  }}
+                  className="mt-2"
+                />
+              )}
+            </div>
+            <PasswordInput
               label={auth.confirmPassword}
-              type="password"
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
+              error={confirm && password !== confirm ? auth.pwdMismatch : undefined}
               required
             />
             {error && <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}

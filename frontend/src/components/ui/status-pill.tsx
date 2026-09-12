@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 type Tone = "gold" | "emerald" | "ink" | "muted";
 
 const tones: Record<Tone, string> = {
-  gold: "bg-[rgba(199,151,63,0.15)] text-[#8a6321]",
+  gold: "bg-[rgba(255,106,0,0.16)] text-[#E85A00]",
   emerald: "bg-[rgba(31,111,84,0.14)] text-[#155943]",
   ink: "bg-[rgba(14,21,38,0.08)] text-sanad-inkSoft",
   muted: "bg-sanad-stone/80 text-sanad-inkSoft",

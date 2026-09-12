@@ -18,7 +18,7 @@ export const PasswordInput = React.forwardRef<HTMLInputElement, PasswordInputPro
     return (
       <div className="space-y-1.5">
         {label && (
-          <label htmlFor={inputId} className="text-sm font-medium text-[#0B1F4A]">
+          <label htmlFor={inputId} className="text-sm font-medium text-[#0B1A4D]">
             {label}
           </label>
         )}
@@ -29,7 +29,7 @@ export const PasswordInput = React.forwardRef<HTMLInputElement, PasswordInputPro
             name={name}
             type={visible ? "text" : "password"}
             className={cn(
-              "flex h-11 w-full rounded-xl border border-sanad-border bg-white px-3 py-2 pe-11 text-sm text-[#0B1F4A] caret-[#0B1F4A] placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sanad-navy/30 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50",
+              "flex h-11 w-full rounded-xl border border-sanad-border bg-white px-3 py-2 pe-11 text-sm text-[#0B1A4D] caret-[#0B1A4D] placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sanad-navy/30 focus-visible:ring-offset-1 disabled:cursor-not-allowed disabled:opacity-50",
               error && "border-red-500 focus-visible:ring-red-500",
               className,
             )}
@@ -39,7 +39,7 @@ export const PasswordInput = React.forwardRef<HTMLInputElement, PasswordInputPro
             type="button"
             tabIndex={-1}
             onClick={() => setVisible((v) => !v)}
-            className="absolute end-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-[#0B1F4A]/70 transition hover:bg-sanad-navy/5 hover:text-sanad-navy"
+            className="absolute end-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-[#0B1A4D]/70 transition hover:bg-sanad-navy/5 hover:text-sanad-navy"
             aria-label={visible ? "Masquer le mot de passe" : "Afficher le mot de passe"}
           >
             {visible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}

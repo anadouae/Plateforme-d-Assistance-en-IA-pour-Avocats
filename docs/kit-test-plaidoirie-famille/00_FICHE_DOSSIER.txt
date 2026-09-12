@@ -1,0 +1,27 @@
+KIT FAMILLE LEXHUB — Fiche à recopier dans « Nouveau dossier »
+==============================================================
+Affaires fictives pour TEST uniquement. Ne pas déposer au greffe.
+
+--- Identité ---
+Client (mandant)     : فاطمة العلمي
+Matière              : Famille / أسرة
+Degré                : Première instance
+Ville du tribunal    : Rabat / الرباط
+Tribunal             : Tribunal de première instance de Rabat
+Rôle du client       : Demandeur / مدّعية
+Nature client        : Personne physique
+Domicile client      : حي الرياض، شارع النخيل، عمارة 12، الرباط
+Partie adverse       : كريم بنجلون
+Nature adverse       : Personne physique
+Domicile adverse     : شارع محمد الخامس رقم 45، سلا
+N° RG                : 2024/120   (optionnel — déjà « déposé » dans le scénario)
+Chambre              : قسم قضاء الأسرة
+Greffe               : كتابة ضبط قضاء الأسرة
+Juge                 : (laisser vide)
+Statut procédure     : Instruction / تحقيق
+Responsable          : vous-même
+Statut interne       : En cours
+Première audience    : 15/10/2026  (ou vide)
+
+--- Demande ---
+نفقة شهرية 2.000 درهم + حضانة الابن يوسف + نفاذ معجّل

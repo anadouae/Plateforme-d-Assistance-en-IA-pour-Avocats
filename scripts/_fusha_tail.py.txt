@@ -1,0 +1,54 @@
+def light_arabic_punctuation(text: str) -> str:
+    """Ajoute une ponctuation légère (، .) sans changer les mots."""
+    t = (text or "").strip()
+    if not t:
+        return ""
+    t = re.sub(r"\s+", " ", t)
+    t = re.sub(r"\s*([،؛:])\s*", r"\1 ", t)
+    t = re.sub(r"\s+([.!?؟])\s*", r"\1 ", t)
+    connectors = (
+        "وحيث", "حيث", "لذلك", "وعليه", "وبناء عليه", "وبناءً عليه",
+        "أولا", "ثانيا", "ثالثا", "لهذه الأسباب",
+    )
+    for c in connectors:
+        t = re.sub(rf"({re.escape(c)})(?![،:])\s+", rf"\1، ", t)
+    if len(t) > 40 and t[-1] not in ".!?؟۔":
+        t = t.rstrip(" ،,") + "."
+    return re.sub(r"\s{2,}", " ", t).strip()
+
+
+def light_arabic_fusha_form(text: str) -> str:
+    """Corrections de FORME fusḥā — sans résumer ni supprimer de faits."""
+    t = (text or "").strip()
+    if not t:
+        return ""
+    t = re.sub(r"\s+", " ", t)
+    replacements = [
+        (r"(?<!\S)ان(?=\s)", "إن"),
+        (r"(?<=[.。؟!\n،])\s*ان(?=\s)", "إن"),
+        (r"(?<!\S)الى(?=\s|[.،]|$)", "إلى"),
+        (r"القائها", "إلقائها"),
+        (r"القاءها", "إلقاءها"),
+        (r"القاء(?=\s)", "إلقاء"),
+        (r"(?<!\S)الاشخاص(?=\s|[.،]|$)", "الأشخاص"),
+        (r"(?<!\S)اشخاص(?=\s|[.،]|$)", "أشخاص"),
+        (r"(?<!\S)الاولى(?=\s)", "الأولى"),
+        (r"(?<!\S)اخر(?=\s)", "آخر"),
+        (r"(?<!\S)اخرين(?=\s)", "آخرين"),
+        (r"(?<!\S)ايضا(?=\s|[.،]|$)", "أيضاً"),
+        (r"(?<!\S)ايضاً(?=\s|[.،]|$)", "أيضاً"),
+        (r"والتي تورط (?!فيها)", "والتي تورط فيها "),
+        (r"والتي تورطت (?!فيها)", "والتي تورطت فيها "),
+        (r"باقسم (?=العقوبات)", "نطالب بأقصى "),
+        (r"(?<!\S)ايجار(?=\s)", "إيجار"),
+        (r"سيدي الرئيس(?![،,])", "سيدي الرئيس،"),
+    ]
+    for pat, repl in replacements:
+        t = re.sub(pat, repl, t)
+    for marker in ("ملف رقم", "وتاريخ الجلسة", "تاريخ الجلسة", "ولذلك", "وعليه"):
+        t = re.sub(rf"(?<![،.\n])\s+({re.escape(marker)})", rf"، \1", t)
+    t = re.sub(r"،\s*،+", "،", t)
+    t = re.sub(r"\s{2,}", " ", t).strip()
+    if len(t) > 40 and t[-1] not in ".!?؟۔":
+        t = t.rstrip(" ،,") + "."
+    return t

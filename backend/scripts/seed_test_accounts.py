@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Comptes de test Sanad — prêts à l'emploi (actifs, vérifiés).
+Comptes de test LexHub — prêts à l'emploi (actifs, vérifiés).
 
 Usage :
   cd backend
@@ -30,24 +30,24 @@ from app.models import (
 # Tous : mot de passe indiqué · is_active=True · is_verified=True
 ACCOUNTS = [
     {
-        "email": "demo@sanad.ma",
-        "password": "Sanad2026!",
+        "email": "demo@lexhub.space",
+        "password": "LexHub2026!",
         "full_name": "Me Douae El Assal",
         "role": UserRole.ADMIN_CABINET,
         "cabinet_key": "atlas",
         "phone": "+212600000001",
     },
     {
-        "email": "avocat@sanad.ma",
-        "password": "Sanad2026!",
+        "email": "avocat@lexhub.space",
+        "password": "LexHub2026!",
         "full_name": "Me Youssef Alami",
         "role": UserRole.AVOCAT,
         "cabinet_key": "atlas",
         "phone": "+212600000002",
     },
     {
-        "email": "assistant@sanad.ma",
-        "password": "Sanad2026!",
+        "email": "assistant@lexhub.space",
+        "password": "LexHub2026!",
         "full_name": "Sara Bennani",
         "role": UserRole.ASSISTANT,
         "cabinet_key": "atlas",
@@ -231,7 +231,7 @@ def _seed_demo_cases(db, cabinet: Cabinet, admin: User) -> None:
 def seed(with_demo_data: bool = False):
     db = SessionLocal()
     try:
-        print("\n=== Sanad — création des comptes de test ===\n")
+        print("\n=== LexHub — création des comptes de test ===\n")
         cabinets: dict[str, Cabinet] = {}
         for key in CABINETS:
             cabinets[key] = _get_or_create_cabinet(db, key)
@@ -242,7 +242,7 @@ def seed(with_demo_data: bool = False):
             users[account["email"]] = _get_or_create_user(db, account, cabinet)
 
         if with_demo_data:
-            _seed_demo_cases(db, cabinets["atlas"], users["demo@sanad.ma"])
+            _seed_demo_cases(db, cabinets["atlas"], users["demo@lexhub.space"])
 
         db.commit()
         print("\n=== Comptes prêts — connectez-vous sur http://localhost:3000/login ===\n")

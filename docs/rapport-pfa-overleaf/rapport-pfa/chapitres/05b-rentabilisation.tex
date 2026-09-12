@@ -1,0 +1,48 @@
+\chapter{Modèle économique et stratégie de rentabilisation}
+\label{ch:economie}
+
+LexHub est vendu comme un logiciel de cabinet, facturé à l'abonnement. Ce chapitre décrit l'offre telle qu'elle est présentée à l'admin cabinet sur \url{https://lexhub.space} : ce qui est inclus dans chaque plan, comment l'essai fonctionne, comment recharger des crédits, et qui a le droit de payer.
+
+\section{Plans et essai hybride}
+
+\begin{table}[H]
+\centering
+\caption{Plans LexHub (production)}
+\label{tab:plans}
+\small
+\begin{tabular}{@{}lrrrl@{}}
+\toprule
+\textbf{Plan} & \textbf{MAD/mois} & \textbf{MAD/an} & \textbf{Essai} & \textbf{Plaidoiries / crédits} \\
+\midrule
+Découverte & 0 & 0 & --- & 3 / 50 \\
+Solo & 299 & 2\,990 & 14~j & 35 / 600 \\
+Cabinet & 699 & 6\,990 & 30~j & 120 / 2\,000 \\
+Entreprise & 1\,290 & 12\,900 & 30~j & 350 / 5\,000 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+L'\textbf{essai hybride} ne facture pas ($0$~MAD) mais n'ouvre pas le forfait plein. Les plafonds d'essai sont inférieurs aux quotas payants : Solo $400$ crédits / $25$ plaidoiries ; Cabinet $1\,000$ / $60$ ; Entreprise $1\,800$ / $120$. Les packs prépayés ne sont pas proposés pendant l'essai.
+
+\section{Packs, sièges et usage à la demande}
+
+Trois objets restent distincts. L'\textbf{abonnement} donne l'accès et le forfait du mois. Les \textbf{packs} (500 crédits / $110$~MAD, $1\,000$ / $200$~MAD, $2\,500$ / $450$~MAD) ne s'achètent que si l'abonnement est \textbf{actif et payant} ; chaque lot expire au bout de $12$~mois (consommation FIFO). L'\textbf{usage à la demande} est désactivé par défaut ($\approx 0{,}25$~MAD par crédit) et indisponible sur Découverte.
+
+Ordre de consommation : forfait du mois, puis packs, puis usage à la demande s'il est activé ; sinon l'action est bloquée.
+
+Sur le plan Cabinet, $0$ à $5$ sièges avocats supplémentaires coûtent $99$~MAD par siège et par mois.
+
+Le paiement carte marocain (CMI / PayZone) dispose d'un \textbf{environnement technique prêt}. En production actuelle, le parcours de paiement reste une \textbf{simulation} : l'activation opérateur (identifiant marchand) n'est pas finalisée. Aucun débit réel n'est présenté comme déjà en service.
+
+\section{Parrainage entre cabinets}
+\label{sec:parrainage}
+
+Chaque cabinet peut recommander LexHub à un autre cabinet. L'admin obtient, dans les paramètres, un \textbf{lien d'inscription parrainé} (et un code court équivalent). Lorsqu'un nouveau cabinet s'inscrit \emph{via ce lien}, le système mémorise le parrain.
+
+Le filleul reçoit $14$ jours d'essai supplémentaires au démarrage Solo ou Cabinet. Le parrain reçoit $30$ jours lorsque l'abonnement \textbf{payant} du filleul commence après l'essai. L'auto-parrainage est interdit (plafond : $12$ filleuls par an).
+
+Ce mécanisme n'est \textbf{pas} une invitation d'équipe. Le code de parrainage n'authentifie personne, n'ouvre aucun dossier et ne donne aucun rôle dans le cabinet du parrain. Un tiers qui le découvrirait ne pourrait, au mieux, que l'utiliser à l'inscription d'un \emph{nouveau} cabinet --- dans les limites anti-abus ci-dessus. Les codes nouvellement émis sont opaques (préfixe \texttt{LH-} et aléa cryptographique) ; ils ne reprennent pas le nom du cabinet.
+
+\section{Répartition payeur / consommateur}
+
+Seul l'\textbf{admin cabinet} change de plan, paie, achète des packs, active l'usage à la demande ou ajoute des sièges. Les avocats et les assistants consomment le forfait, sans débiter une carte. Une résiliation prend effet à la fin de la période déjà payée.

@@ -1,4 +1,4 @@
-"""Language detection and multilingual prompts for Sanad LLM."""
+"""Language detection and multilingual prompts for LexHub LLM."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ _FR_WORDS = {
 
 
 def normalize_locale(value: str | None) -> SupportedLocale:
-    """Sanad Maroc : arabe par défaut ; FR optionnel ; EN → AR."""
+    """LexHub Maroc : arabe par défaut ; FR optionnel ; EN → AR."""
     if not value:
         return "ar"
     code = value.strip().lower()[:2]
@@ -113,7 +113,7 @@ def get_open_chat_prompt(locale: SupportedLocale, custom_prompt: str | None = No
     """Chat ouvert style Mistral / Gemini / ChatGPT — sources = enrichissement, pas cage."""
     prompts = {
         "fr": (
-            "Tu es Sanad-Legal, un assistant juridique de niveau Mistral Chat / Gemini / ChatGPT. "
+            "Tu es LexHub-Legal, un assistant juridique de niveau Mistral Chat / Gemini / ChatGPT. "
             "Réponds de façon OUVERTE, riche, structurée et utile — comme un excellent avocat-conseil. "
             "CONVERSATION : suis le message ACTUEL ; si l'utilisateur change de sujet, suis le nouveau. "
             "Les SOURCES / le web sont un ENRICHISSEMENT (citations, dates, numéros) — "
@@ -128,14 +128,14 @@ def get_open_chat_prompt(locale: SupportedLocale, custom_prompt: str | None = No
             "Réponds dans la langue de l'utilisateur (FR/AR/EN)."
         ),
         "ar": (
-            "أنت Sanad-Legal بمستوى Mistral Chat / Gemini: مساعد قانوني مفتوح وغني. "
+            "أنت LexHub-Legal بمستوى Mistral Chat / Gemini: مساعد قانوني مفتوح وغني. "
             "اتبع رسالة المستخدم الحالية؛ إن غيّر الموضوع فاتبعه. "
             "المصادر إثراء للاستشهاد وليس قفصاً — يمكنك الشرح والمقارنة وذكر عدة نصوص. "
             "لا تختلق رقم قانون/مادة/غرامة إن لم يرد في المصادر. استشهد بـ [1][2]. "
             "Markdown واضح. ~200 كلمة على الأقل. أجب بلغة المستخدم."
         ),
         "en": (
-            "You are Sanad-Legal at Mistral Chat / Gemini quality: open, rich, useful. "
+            "You are LexHub-Legal at Mistral Chat / Gemini quality: open, rich, useful. "
             "Follow the CURRENT user message; if they switch topics, switch with them. "
             "SOURCES enrich (citations, dates) — they do not cage you. "
             "Do not invent precise law/article/penalty numbers absent from sources. "
@@ -152,7 +152,7 @@ def get_clear_grounded_prompt(locale: SupportedLocale, custom_prompt: str | None
     """Rédaction riche avec sources en appui (pas « uniquement les extraits »)."""
     prompts = {
         "fr": (
-            "Tu es Sanad-Legal (niveau Mistral/Gemini). "
+            "Tu es LexHub-Legal (niveau Mistral/Gemini). "
             "Rédige une réponse COMPLÈTE et utile. "
             "Les SOURCES enrichissent et permettent de citer [1][2] — "
             "tu n'es PAS limité à répéter un seul extrait. "
@@ -162,12 +162,12 @@ def get_clear_grounded_prompt(locale: SupportedLocale, custom_prompt: str | None
             "Markdown clair, ~200+ mots."
         ),
         "ar": (
-            "أنت Sanad-Legal (مستوى Mistral/Gemini). "
+            "أنت LexHub-Legal (مستوى Mistral/Gemini). "
             "أجب إجابة كاملة. المصادر للإثراء و[1][2] — لست مقيداً بمقتطف واحد. "
             "لا تختلق أرقاماً غير موجودة. Markdown واضح."
         ),
         "en": (
-            "You are Sanad-Legal (Mistral/Gemini level). "
+            "You are LexHub-Legal (Mistral/Gemini level). "
             "Write a full useful answer. SOURCES enrich with [1][2] — "
             "you are not limited to one excerpt. Never invent missing numbers."
         ),
@@ -181,7 +181,7 @@ def get_clear_grounded_prompt(locale: SupportedLocale, custom_prompt: str | None
 def get_system_prompt(locale: SupportedLocale, custom_prompt: str | None = None) -> str:
     prompts = {
         "fr": (
-            "Tu es Sanad-Legal : assistant juridique OUVERT comme Mistral Chat / Gemini. "
+            "Tu es LexHub-Legal : assistant juridique OUVERT comme Mistral Chat / Gemini. "
             "Réponds clairement et complètement à toute question pertinente. "
             "Dossier/document fourni → PRIORITÉ. Sinon web/corpus = enrichissement. "
             "N'invente pas de numéros précis (article, loi, peine, date) sans source. "
@@ -190,12 +190,12 @@ def get_system_prompt(locale: SupportedLocale, custom_prompt: str | None = None)
             "Interdit « les sources fournies ne mentionnent pas » comme seule réponse."
         ),
         "ar": (
-            "أنت Sanad-Legal: مساعد قانوني مفتوح مثل Mistral/Gemini. "
+            "أنت LexHub-Legal: مساعد قانوني مفتوح مثل Mistral/Gemini. "
             "أجب بوضوح واكتمال. أولوية للملف/الوثيقة. "
             "لا تختلق أرقاماً دقيقة بلا مصدر. استشهد بـ [1][2]."
         ),
         "en": (
-            "You are Sanad-Legal: an OPEN legal assistant like Mistral/Gemini. "
+            "You are LexHub-Legal: an OPEN legal assistant like Mistral/Gemini. "
             "Answer fully. Prioritize case/document context. "
             "No invented precise citations. Cite [1][2] when using sources."
         ),
@@ -210,7 +210,7 @@ def get_synthesis_prompt(locale: SupportedLocale) -> str:
     """Synthèse intelligente (niveau Claude) — tout type de pièce, pas un squelette figé."""
     prompts = {
         "fr": (
-            "Tu es Sanad-Legal, un analyste juridique de cabinet au niveau Claude / GPT. "
+            "Tu es LexHub-Legal, un analyste juridique de cabinet au niveau Claude / GPT. "
             "Tu lis N'IMPORTE QUELLE pièce (contrat, jugement, assignation, lettre, facture, "
             "PV, rapport, e-mail, transcription audio, pièce jointe OCR, notes…) et tu produis "
             "une synthèse INTELLIGENTE, utile pour un avocat pressé.\n\n"
@@ -236,7 +236,7 @@ def get_synthesis_prompt(locale: SupportedLocale) -> str:
             "(2–4 actions concrètes pour l'avocat)."
         ),
         "ar": (
-            "أنت Sanad-Legal، محلل قانوني بمستوى Claude/GPT لمكتب محاماة. "
+            "أنت LexHub-Legal، محلل قانوني بمستوى Claude/GPT لمكتب محاماة. "
             "تقرأ أي وثيقة أو قطعة (عقد، حكم، مقال، رسالة، فاتورة، محضر، تقرير، بريد، "
             "تفريغ صوتي، OCR…) وتُنتج تلخيصاً ذكياً مفيداً للمحامي.\n\n"
             "أجب حصرياً بالعربية الفصحى.\n"
@@ -252,7 +252,7 @@ def get_synthesis_prompt(locale: SupportedLocale) -> str:
             "7) اختم summary بقسم قصير «ما يُستحسن فعله» (2–4 إجراءات عملية)."
         ),
         "en": (
-            "You are Sanad-Legal at Claude/GPT quality. Analyze ANY document type for a lawyer. "
+            "You are LexHub-Legal at Claude/GPT quality. Analyze ANY document type for a lawyer. "
             "Return ONLY valid JSON: document_type, parties, key_dates, amounts, risk_clauses, "
             "attention_points, summary (Markdown 280–500 words, adaptive headings). "
             "Never invent parties, laws, or amounts. Empty lists when absent. "
@@ -265,7 +265,7 @@ def get_synthesis_prompt(locale: SupportedLocale) -> str:
 def get_document_qa_prompt(locale: SupportedLocale) -> str:
     prompts = {
         "fr": (
-            "Tu es Sanad-Legal. Réponds UNIQUEMENT en français à partir du TEXTE DU DOCUMENT fourni. "
+            "Tu es LexHub-Legal. Réponds UNIQUEMENT en français à partir du TEXTE DU DOCUMENT fourni. "
             "INTERDIT : utiliser le corpus juridique général ou le web. "
             "Si l'information n'est pas dans le document, dis-le clairement. "
             "Structure ta réponse en Markdown :\n"
@@ -273,13 +273,13 @@ def get_document_qa_prompt(locale: SupportedLocale) -> str:
             "Cite le document comme source [1]. Sois précis et détaillé."
         ),
         "ar": (
-            "أنت Sanad-Legal. أجب حصرياً بالعربية من نص الوثيقة المقدم فقط. "
+            "أنت LexHub-Legal. أجب حصرياً بالعربية من نص الوثيقة المقدم فقط. "
             "ممنوع استخدام المكتبة القانونية العامة أو الإنترنت. "
             "إذا لم تكن المعلومة في الوثيقة، قل ذلك بوضوح. "
             "نظّم إجابتك: ## الإجابة ## العناصر الأساسية ## نقاط الانتباه"
         ),
         "en": (
-            "You are Sanad-Legal. Reply ONLY in English from the PROVIDED DOCUMENT TEXT. "
+            "You are LexHub-Legal. Reply ONLY in English from the PROVIDED DOCUMENT TEXT. "
             "FORBIDDEN: use general legal corpus or web. "
             "If information is not in the document, say so clearly. "
             "Structure: ## Answer ## Key elements ## Points of attention"
@@ -291,7 +291,7 @@ def get_document_qa_prompt(locale: SupportedLocale) -> str:
 def get_case_analysis_prompt(locale: SupportedLocale) -> str:
     prompts = {
         "fr": (
-            "Tu es Sanad-Legal. Analyse le dossier juridique à partir des pièces fournies. "
+            "Tu es LexHub-Legal. Analyse le dossier juridique à partir des pièces fournies. "
             "Réponds UNIQUEMENT en français. "
             "Structure : 1) Faits 2) Pièces clés 3) Enjeux juridiques "
             "4) Risques / délais 5) Points à vérifier. "
@@ -299,7 +299,7 @@ def get_case_analysis_prompt(locale: SupportedLocale) -> str:
             "Termine par : « Ceci ne constitue pas un avis juridique. »"
         ),
         "ar": (
-            "أنت Sanad-Legal. حلّل الملف القانوني من الوثائق المقدمة. "
+            "أنت LexHub-Legal. حلّل الملف القانوني من الوثائق المقدمة. "
             "أجب حصرياً باللغة العربية. "
             "نظّم إجابتك: 1) الوقائع 2) الوثائق الأساسية 3) المسائل القانونية "
             "4) المخاطر / الآجال 5) نقاط للتحقق. "
@@ -307,7 +307,7 @@ def get_case_analysis_prompt(locale: SupportedLocale) -> str:
             "اختم بـ: « هذا لا يشكل استشارة قانونية. »"
         ),
         "en": (
-            "You are Sanad-Legal. Analyze the legal case from the provided documents. "
+            "You are LexHub-Legal. Analyze the legal case from the provided documents. "
             "Reply ONLY in English. "
             "Structure: 1) Facts 2) Key documents 3) Legal issues "
             "4) Risks / deadlines 5) Points to verify. "
@@ -351,7 +351,7 @@ def msg_no_reliable_sources_for_topic(locale: SupportedLocale, topic_hint: str =
     return {
         "fr": (
             f"## Réponse\n\n"
-            f"Je n’ai pas trouvé, dans les sources indexées Sanad ni dans des extraits web fiables, "
+            f"Je n’ai pas trouvé, dans les sources indexées LexHub ni dans des extraits web fiables, "
             f"un texte précis sur **{topic}**. "
             f"Je préfère donc ne pas inventer un numéro de loi ni décrire de « renouvellements » fictifs.\n\n"
             f"## Cadre utile\n\n"
@@ -361,12 +361,12 @@ def msg_no_reliable_sources_for_topic(locale: SupportedLocale, topic_hint: str =
             f"3. Vérifier s’il s’agit d’un dahir, d’une loi, d’un décret ou d’une circulaire.\n\n"
             f"## En pratique\n\n"
             f"- Ouvrir : https://www.sgg.gov.ma/BulletinOfficiel.aspx\n"
-            f"- Ou déposer le PDF de la loi dans un dossier Sanad pour une analyse ciblée.\n"
+            f"- Ou déposer le PDF de la loi dans un dossier LexHub pour une analyse ciblée.\n"
             f"- Reformuler la question avec une année ou un numéro de BO si vous l’avez."
         ),
         "ar": (
             f"## الإجابة\n\n"
-            f"لم أعثر ضمن مصادر Sanad المفهرسة ولا في مقاطع ويب موثوقة على نص دقيق حول **{topic_ar}**. "
+            f"لم أعثر ضمن مصادر LexHub المفهرسة ولا في مقاطع ويب موثوقة على نص دقيق حول **{topic_ar}**. "
             f"لذلك لن أخترع رقم قانون ولن أصف «تجديدات» غير موثقة.\n\n"
             f"## إطار مفيد\n\n"
             f"للأسئلة من هذا النوع في المغرب، المنهجية الموثوقة هي:\n"
@@ -375,7 +375,7 @@ def msg_no_reliable_sources_for_topic(locale: SupportedLocale, topic_hint: str =
             f"3) التمييز بين ظهير / قانون / مرسوم / دورية.\n\n"
             f"## عملياً\n\n"
             f"- الرابط: https://www.sgg.gov.ma/BulletinOfficiel.aspx\n"
-            f"- أو ارفع ملف PDF للقانون داخل ملف Sanad لتحليله.\n"
+            f"- أو ارفع ملف PDF للقانون داخل ملف LexHub لتحليله.\n"
             f"- إن توفرت سنة أو رقم الجريدة الرسمية، أضفها في سؤالك."
         ),
         "en": (
@@ -388,7 +388,7 @@ def msg_no_reliable_sources_for_topic(locale: SupportedLocale, topic_hint: str =
             f"3) Identify whether it is a dahir, statute, decree or circular.\n\n"
             f"## In practice\n\n"
             f"- https://www.sgg.gov.ma/BulletinOfficiel.aspx\n"
-            f"- Or upload the law PDF into a Sanad case for targeted analysis."
+            f"- Or upload the law PDF into a LexHub case for targeted analysis."
         ),
     }[locale]
 
@@ -585,17 +585,17 @@ def msg_unclear_question(locale: SupportedLocale) -> str:
 def msg_no_laws_for_year(year: int, locale: SupportedLocale) -> str:
     return {
         "fr": (
-            f"Aucune loi indexée dans Sanad pour l'année **{year}** uniquement. "
+            f"Aucune loi indexée dans LexHub pour l'année **{year}** uniquement. "
             f"Notre base couvre les textes référencés jusqu'à 2024 (loi 22-24 CPC). "
             f"Pour {year}, consultez le Bulletin officiel : https://www.sgg.gov.ma/BulletinOfficiel.aspx\n\n"
             "Uploadez un PDF de loi/décret 2026 dans un dossier pour une analyse ciblée."
         ),
         "ar": (
-            f"لا توجد قوانين مفهرسة لسنة {year} فقط في Sanad. "
+            f"لا توجد قوانين مفهرسة لسنة {year} فقط في LexHub. "
             "راجع الجريدة الرسمية على sgg.gov.ma"
         ),
         "en": (
-            f"No laws indexed in Sanad for year {year} only. "
+            f"No laws indexed in LexHub for year {year} only. "
             "Check the official gazette at sgg.gov.ma"
         ),
     }[locale]
@@ -639,7 +639,7 @@ def detect_jurisdiction(text: str) -> Jurisdiction:
         return "fr"
     if any(h in q for h in ma_hints):
         return "ma"
-    # Défaut produit Sanad = droit marocain, sauf question clairement autre
+    # Défaut produit LexHub = droit marocain, sauf question clairement autre
     return "ma"
 
 
@@ -793,18 +793,18 @@ def resolve_greeting_locale(
 def msg_greeting(locale: SupportedLocale) -> str:
     return {
         "fr": (
-            "Bonjour ! Je suis Sanad-Legal. Posez une question juridique précise "
+            "Bonjour ! Je suis LexHub-Legal. Posez une question juridique précise "
             "(ex. : délai d'appel, validité d'un bail, clause de résiliation) "
             "ou sélectionnez un dossier avec des documents uploadés.\n\n"
             "Ceci ne constitue pas un avis juridique."
         ),
         "ar": (
-            "مرحباً! أنا Sanad-Legal. اطرح سؤالاً قانونياً محدداً "
+            "مرحباً! أنا LexHub-Legal. اطرح سؤالاً قانونياً محدداً "
             "أو اختر ملفاً يحتوي على وثائق مرفوعة.\n\n"
             "هذا لا يشكل استشارة قانونية."
         ),
         "en": (
-            "Hello! I am Sanad-Legal. Ask a specific legal question "
+            "Hello! I am LexHub-Legal. Ask a specific legal question "
             "(e.g. appeal deadline, lease validity) or select a case with uploaded documents.\n\n"
             "This does not constitute legal advice."
         ),
@@ -815,7 +815,7 @@ def msg_recent_laws_not_indexed(locale: SupportedLocale) -> str:
     return {
         "fr": (
             "Cette question porte sur des textes récents (2020–2026) absents du corpus indexé. "
-            "Sanad a consulté le web et les sources officielles disponibles, "
+            "LexHub a consulté le web et les sources officielles disponibles, "
             "mais aucun extrait fiable n'a pu être récupéré automatiquement.\n\n"
             "Consultez le Bulletin officiel : https://www.sgg.gov.ma/BulletinOfficiel.aspx\n"
             "Ou uploadez le PDF de la loi / décret dans un dossier pour une analyse ciblée."
@@ -879,7 +879,7 @@ def get_chat_answer_prompt(locale: SupportedLocale, custom_prompt: str | None = 
     )
     prompts = {
         "fr": (
-            "Tu es Sanad-Legal (qualité Mistral Chat / Gemini). "
+            "Tu es LexHub-Legal (qualité Mistral Chat / Gemini). "
             "Réponds en français. "
             f"{structure_fr} "
             'Retourne UNIQUEMENT un JSON valide : '
@@ -892,14 +892,14 @@ def get_chat_answer_prompt(locale: SupportedLocale, custom_prompt: str | None = 
             "5) INTERDIT « les sources fournies ne mentionnent pas… » comme seule réponse."
         ),
         "ar": (
-            "أنت Sanad-Legal (جودة Mistral/Gemini). "
+            "أنت LexHub-Legal (جودة Mistral/Gemini). "
             "أجب بالعربية. "
             f"{structure_ar} "
             'JSON: "answer", "summary". '
             "مفتوح، مفيد، استشهد بـ [1][2]. ممنوع الاكتفاء بـ «المصادر لا تذكر»."
         ),
         "en": (
-            "You are Sanad-Legal (Mistral/Gemini quality). "
+            "You are LexHub-Legal (Mistral/Gemini quality). "
             "Reply in English. "
             f"{structure_en} "
             'JSON: "answer", "summary". '

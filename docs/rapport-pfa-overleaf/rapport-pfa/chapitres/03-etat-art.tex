@@ -1,0 +1,71 @@
+\chapter{Étude de l'existant et positionnement}
+\label{ch:etat-art}
+
+\section{Périmètre de l'étude}
+
+Cette étude compare LexHub aux offres accessibles à un cabinet marocain, selon une grille stable : atelier voix~$\rightarrow$~plaidoirie, gestion de cabinet, SaaS multi-tenant, travail en équipe.
+
+Sources consultées : \texttt{smartavocat.ma}, \texttt{avocato.ma}, \texttt{avocatpro.ma}, \texttt{legaliq.ma}, \texttt{kanoun.com}, \texttt{adala.ai}, \texttt{diskod.ma}.
+
+\section{Analyse comparative (benchmarking)}
+\label{sec:benchmark}
+
+Le tableau~\ref{tab:benchmark} indique, pour chaque offre, ce qu'elle couvre et ce qui manque par rapport au besoin LexHub : une plaidoirie vocale intégrée au cabinet.
+
+\begin{table}[H]
+\centering
+\caption{Benchmarking marché --- applications existantes vs besoin LexHub}
+\label{tab:benchmark}
+\footnotesize
+\renewcommand{\arraystretch}{1.35}
+\begin{tabular}{@{}p{2.4cm}p{4.6cm}p{5.6cm}@{}}
+\toprule
+\textbf{Offre} & \textbf{Services offerts} & \textbf{Ce qui manque face à LexHub} \\
+\midrule
+SmartAvocat \newline {\scriptsize smartavocat.ma} &
+Gestion cabinet, dossiers bilingues &
+Pas de flux plaidoirie vocale \\
+\midrule
+Avocato \newline {\scriptsize avocato.ma} &
+Gestion + audiences / portail justice &
+Pas de parcours dictée $\rightarrow$ document métier \\
+\midrule
+AvocatPro \newline {\scriptsize avocatpro.ma} &
+Gestion + calendrier judiciaire, organisation &
+Pas de cœur plaidoirie \\
+\midrule
+Legaliq \newline {\scriptsize legaliq.ma} &
+IA juridique / fiscale, documents &
+Pas un SaaS cabinet complet \\
+\midrule
+Kanoun \newline {\scriptsize kanoun.com} &
+IA droit marocain + OHADA &
+Pas multi-tenant cabinet \\
+\midrule
+Adala \newline {\scriptsize adala.ai} &
+Assistant IA, Q\&A, documents &
+Pas d'équipe cabinet \\
+\midrule
+Dragon Legal / Diskod \newline {\scriptsize diskod.ma} &
+Dictée desktop (Nuance) &
+Pas SaaS, pas dossiers LexHub \\
+\midrule
+\textbf{LexHub} \newline {\scriptsize lexhub.space} &
+Atelier 5 étapes ; dossiers ; équipe ; SaaS &
+--- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Positionnement de la solution LexHub}
+
+LexHub, tel qu'il est en ligne, combine un SaaS de cabinet (isolation, rôles, dossiers), un atelier \textbf{Dossier \& pièces / Dictée / Transcription / Rédaction IA / Export}, et un document Word / PDF. L'IA assiste ; elle n'est pas un chatbot autonome.
+
+\section{Synthèse et choix retenus}
+
+\begin{enumerate}[leftmargin=1.4em]
+  \item Un outil de cabinet, pas un chatbot générique.
+  \item Un cœur produit en cinq étapes voix~$\rightarrow$~document, distinct d'un logiciel de greffe ou de comptabilité.
+  \item La fidélité à la dictée : aucun fait, article ou montant inventé.
+  \item Un SaaS facturable (essai, plans, packs, sièges), détaillé au chapitre~\ref{ch:economie}.
+\end{enumerate}

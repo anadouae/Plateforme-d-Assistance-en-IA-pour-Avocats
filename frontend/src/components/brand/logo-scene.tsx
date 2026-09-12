@@ -3,10 +3,6 @@
 import { Canvas } from "@react-three/fiber";
 import { SanadLogoMark3D, NAVY, GOLD } from "@/components/three/shapes";
 
-interface LogoSceneProps {
-  variant?: "full" | "knot" | "sphere";
-}
-
 function LogoLights() {
   return (
     <>

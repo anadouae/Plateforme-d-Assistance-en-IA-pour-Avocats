@@ -15,7 +15,7 @@ function escapeHtml(text: string): string {
     .replace(/"/g, "&quot;");
 }
 
-export function exportAiResponsePdf(result: AIResult, title = "Réponse Sanad IA") {
+export function exportAiResponsePdf(result: AIResult, title = "Réponse LexHub IA") {
   const sourcesHtml = result.sources
     .map(
       (src) =>
@@ -46,7 +46,7 @@ export function exportAiResponsePdf(result: AIResult, title = "Réponse Sanad IA
 </head>
 <body>
   <div class="header">
-    <div class="logo">Sanad — Avocat AI Assistance</div>
+    <div class="logo">LexHub — Avocat AI Assistance</div>
     <div class="date">Exporté le ${new Date().toLocaleString("fr-FR")}</div>
   </div>
   <h2>${escapeHtml(title)}</h2>

@@ -39,8 +39,8 @@ const STATUS_CONFIG: Record<
     className: "bg-sanad-gold/25 text-sanad-navy",
   },
   failed: {
-    labelFr: "Échec",
-    labelAr: "فشل",
+    labelFr: "Illisible",
+    labelAr: "غير قابل للقراءة",
     icon: XCircle,
     className: "bg-red-50 text-red-700",
   },
@@ -50,6 +50,8 @@ interface DocumentStatusBadgeProps {
   status: string;
   ocrScore?: number | null;
   ocrAlert?: boolean;
+  /** audio | pdf | docx | image — pour libellés corrects */
+  kind?: string | null;
   className?: string;
 }
 
@@ -57,14 +59,18 @@ export function DocumentStatusBadge({
   status,
   ocrScore,
   ocrAlert,
+  kind,
   className,
 }: DocumentStatusBadgeProps) {
   const locale = useLocaleStore((s) => s.locale);
   const ar = locale === "ar";
   const config = STATUS_CONFIG[status] || STATUS_CONFIG.pending;
   const Icon = config.icon;
-  const spinning = status === "processing";
+  const spinning = status === "processing" || status === "pending";
   const label = ar ? config.labelAr : config.labelFr;
+  const isDocx = (kind || "").toLowerCase().includes("doc");
+  const isAudio = (kind || "").toLowerCase() === "audio";
+  const isReady = ["indexed", "ready", "done"].includes(status);
 
   return (
     <div className={cn("flex flex-wrap items-center gap-2", className)}>
@@ -76,14 +82,32 @@ export function DocumentStatusBadge({
       >
         <Icon className={cn("h-3.5 w-3.5", spinning && "animate-spin")} />
         {label}
+        {spinning ? "…" : null}
       </span>
-      {ocrScore != null && (
-        <span className="text-xs text-slate-500">OCR {ocrScore}%</span>
+      {spinning && (
+        <span className="text-xs text-sanad-blue/80">
+          {ar ? "تحليل جارٍ…" : "Analyse en cours…"}
+        </span>
       )}
-      {ocrAlert && (
+      {isReady && isDocx && ocrScore == null && (
+        <span className="text-xs text-emerald-700">
+          {ar ? "Word · نص أصلي" : "Word · texte natif"}
+        </span>
+      )}
+      {isReady && isAudio && (
+        <span className="text-xs text-slate-500">
+          {ar ? "تفريغ صوتي" : "Transcription audio"}
+        </span>
+      )}
+      {ocrScore != null && !isDocx && !isAudio && (
+        <span className="text-xs text-slate-500">
+          {ar ? `جودة القراءة ${ocrScore}%` : `Qualité lecture ${ocrScore}%`}
+        </span>
+      )}
+      {ocrAlert && !isDocx && !isAudio && (
         <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
           <AlertTriangle className="h-3 w-3" />
-          {ar ? "جودة OCR ضعيفة" : "Qualité OCR faible"}
+          {ar ? "جودة قراءة ضعيفة — تحققوا من المستند" : "Qualité de lecture faible — vérifiez le document"}
         </span>
       )}
     </div>

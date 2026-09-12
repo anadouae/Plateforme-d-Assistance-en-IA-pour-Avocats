@@ -1,0 +1,178 @@
+\chapter{Analyse et spécification des besoins}
+\label{ch:analyse}
+
+\section{Identification des acteurs}
+
+LexHub est un SaaS multi-cabinets. L'unité d'isolation n'est pas l'utilisateur isolé, mais le \textbf{cabinet} : tous les dossiers, pièces, plaidoiries et journaux d'un locataire sont inaccessibles aux autres. Quatre rôles humains s'y articulent. Le tableau~\ref{tab:acteurs} décrit, pour chacun, la responsabilité métier --- ce que la personne vient \emph{faire} dans le produit, et ce qui lui est volontairement refusé.
+
+\begin{table}[H]
+\centering
+\caption{Acteurs de LexHub et responsabilités métier}
+\label{tab:acteurs}
+\small
+\renewcommand{\arraystretch}{1.28}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{3.1cm}>{\ttfamily}l>{\raggedright\arraybackslash}p{7.4cm}@{}}
+\toprule
+\textbf{Acteur} & \textbf{Rôle} & \textbf{Responsabilité dans le produit} \\
+\midrule
+Cabinet (locataire) & --- &
+Espace isolé créé à l'inscription. Porte les données, la charte graphique, l'abonnement et les quotas. N'est pas un utilisateur : c'est le périmètre de confidentialité. \\
+\midrule
+Avocat & avocat &
+Mène l'atelier de plaidoirie (dossier, dictée, correction, rédaction, export), gère ses dossiers et le planning, valide un brouillon pour le rendre visible à l'équipe. Ne paie pas et ne gère pas l'abonnement. \\
+\midrule
+Assistant juridique & assistant\_juridique &
+Consulte uniquement les plaidoiries \textbf{déjà validées}, y dépose des pièces, exporte Word / PDF. N'ouvre pas l'atelier de dictée, n'appelle pas les fonctions d'IA de rédaction, de synthèse documentaire ni de fiche orale. \\
+\midrule
+Admin cabinet & admin\_cabinet &
+Dispose de tout le périmètre avocat, plus l'équipe (invitations e-mail), l'abonnement, le logo, le parrainage inter-cabinets et la clôture du cabinet. \\
+\midrule
+Admin plateforme & admin\_webvoice &
+Supervise les cabinets (suspension, purge, plans globaux) sans ouvrir le contenu des affaires --- secret professionnel. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Cas d'utilisation}
+\label{sec:uc}
+
+La figure~\ref{fig:uc} retient les cas d'utilisation \textbf{spécifiques} à LexHub. Les parcours génériques (connexion, saisie d'un OTP, CRUD banal) ne sont pas diagrammés : ils n'apportent rien à la compréhension du produit. Cloudflare \textbf{Turnstile} n'est pas une ellipse métier : c'est un contrôle d'abus sur la connexion (section~\ref{sec:securite}). Les associations montrent qui déclenche quoi ; l'admin cabinet hérite des cas de l'avocat.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\footnotesize, x=1cm, y=1cm]
+  \draw[royal!70, thick, rounded corners=4pt] (2.0,-4.0) rectangle (12.2,5.15);
+  \node[font=\bfseries\small,royal] at (7.1,4.82) {Système LexHub};
+
+  \umlactor{0.45}{3.4}{Avocat};
+  \umlactor{0.45}{0.55}{Assistant};
+  \umlactor{0.45}{-2.5}{Admin cabinet};
+  \umlactor{13.55}{1.4}{Admin plateforme};
+
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.7cm] (d) at (4.35,3.85) {Dicter / importer\\audio};
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.7cm] (c) at (7.45,3.85) {Rédiger la\\plaidoirie};
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.7cm] (v) at (4.35,2.25) {Valider\\le brouillon};
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.7cm] (a) at (7.45,2.25) {Assigner\\un assistant};
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.7cm] (e) at (4.35,0.65) {Exporter\\Word / PDF};
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.7cm] (p) at (7.45,0.65) {Consulter\\plaidoiries validées};
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.7cm] (dos) at (4.35,-0.95) {Gérer\\dossiers};
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.7cm] (doc) at (7.45,-0.95) {Pièces / OCR};
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.7cm] (pl) at (10.35,2.25) {Planning};
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.7cm] (eq) at (10.35,0.65) {Inviter\\l'équipe};
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.7cm] (bill) at (10.35,-0.95) {Gérer\\l'abonnement};
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.7cm] (sus) at (10.35,3.85) {Suspendre\\un cabinet};
+
+  \draw (1.15,3.2) -- (d.west);
+  \draw (1.15,3.2) -- (c.west);
+  \draw (1.15,3.2) -- (v.west);
+  \draw (1.15,3.2) -- (a.west);
+  \draw (1.15,3.2) -- (e.west);
+  \draw (1.15,3.2) -- (dos.west);
+  \draw (1.15,3.2) -- (doc.west);
+  \draw (1.15,3.2) -- (pl.west);
+  \draw (1.15,0.35) -- (p.west);
+  \draw (1.15,0.35) -- (e.south west);
+  \draw (1.15,0.35) -- (doc.west);
+  \draw (1.15,-2.7) -- (eq.west);
+  \draw (1.15,-2.7) -- (bill.west);
+  \draw (1.15,-2.7) -- (pl.south);
+  \draw (12.85,1.2) -- (sus.east);
+\end{tikzpicture}
+\caption{Diagramme de cas d'utilisation --- LexHub (version déployée)}
+\label{fig:uc}
+\end{figure}
+
+\vspace{0.35em}
+\begin{center}
+\fbox{\parbox{0.90\textwidth}{\centering\vspace{1.6cm}
+\textit{Emplacement pour un export UML (StarUML / PlantUML) si une figure vectorielle distincte est exigée.}\\[0.35em]
+{\footnotesize Source : \texttt{diagrams/uc-lexhub.puml}}
+\vspace{1.6cm}}}
+\end{center}
+
+\section{Exigences fonctionnelles}
+
+Les exigences ci-dessous décrivent le \textbf{produit livré}. Elles ne portent pas de priorité de backlog : le rapport documente un système déjà en production, pas un arbitrage de sprint.
+
+\paragraph{Espace cabinet et accès.}
+\begin{itemize}[leftmargin=1.4em]
+  \item \textbf{EF-CAB-1.} Inscription d'un cabinet : vérification de l'e-mail par OTP, puis accès immédiat (cabinet créé actif, plan Découverte). L'admin plateforme peut ensuite suspendre ou réactiver un cabinet ; il n'y a pas de file d'approbation à l'inscription.
+  \item \textbf{EF-CAB-2.} Connexion e-mail / mot de passe, session authentifiée, interface bilingue français / arabe. Après trois échecs de login, un défi anti-robot Cloudflare Turnstile est exigé ; le jeton est vérifié côté API. L'inscription n'affiche pas ce widget (preuve d'e-mail par OTP).
+  \item \textbf{EF-CAB-3.} Isolation stricte des données par cabinet.
+\end{itemize}
+
+\paragraph{Atelier de plaidoirie.}
+\begin{itemize}[leftmargin=1.4em]
+  \item \textbf{EF-PL-1.} Parcours en cinq étapes : \textbf{Dossier \& pièces}, \textbf{Dictée}, \textbf{Transcription}, \textbf{Rédaction IA}, \textbf{Export}. La feuille de clarification et le chat de révision sont \emph{intégrés} aux étapes 3--4 ; ce ne sont pas des étapes supplémentaires du rail.
+  \item \textbf{EF-PL-2.} Dictée : micro du navigateur \emph{ou} import d'un fichier audio ; transcription par API vocale cloud.
+  \item \textbf{EF-PL-3.} Bouton \textbf{Corriger} : correction de forme (arabe standard), sans résumé ni invention ; surlignage des substitutions STT à relire ; alertes lorsque des faits contradictoires (numéros, dates, montants, noms) coexistent dans la dictée.
+  \item \textbf{EF-PL-4.} Composition de la plaidoirie à partir du dossier, des pièces et de la dictée corrigée, sans inventer un fait, un article ou un montant absent de ces sources.
+  \item \textbf{EF-PL-5.} Export Word et PDF au format de cabinet (en-tête, typographie arabe RTL, logo centré). Après export : statut \textbf{finalisée}.
+\end{itemize}
+
+\paragraph{Collaboration.}
+\begin{itemize}[leftmargin=1.4em]
+  \item \textbf{EF-COL-1.} Un brouillon reste invisible à l'assistant tant que son statut n'est pas \textbf{validé} (ou \textbf{finalisé}). Tous les assistants du cabinet voient alors cette plaidoirie.
+  \item \textbf{EF-COL-2.} L'action \textbf{Assigner} rattache un assistant, valide le brouillon s'il ne l'était pas, et met la plaidoirie en avant sur son tableau de bord. Ce n'est pas le filtre d'autorisation : le filtre est le statut validé / finalisé.
+  \item \textbf{EF-COL-3.} L'admin cabinet invite avocats et assistants par \textbf{e-mail}. L'invité ouvre le lien, choisit son mot de passe, et accède au cabinet. Il n'existe plus de code cabinet partagé.
+  \item \textbf{EF-COL-4.} Trois statuts : \texttt{draft} (brouillon), \texttt{validated} (partage assistant), \texttt{finalized} (exportée).
+\end{itemize}
+
+\paragraph{Dossier, documents, planning.}
+\begin{itemize}[leftmargin=1.4em]
+  \item \textbf{EF-DOS-1.} Dossiers (domaine, identité judiciaire). Pièces : OCR cloud, synthèse et questions, réservées à l'avocat et à l'admin cabinet.
+  \item \textbf{EF-DOS-2.} Fiche orale d'audience (\textbf{clé de barre}) : document de préparation généré depuis le dossier, distinct de la plaidoirie écrite.
+  \item \textbf{EF-DOS-3.} Planning d'audiences et de délais, avec rappels.
+\end{itemize}
+
+\paragraph{Pilotage et économie.}
+\begin{itemize}[leftmargin=1.4em]
+  \item \textbf{EF-ECO-1.} Abonnement, essai hybride, packs de crédits, sièges supplémentaires --- chapitre~\ref{ch:economie}.
+  \item \textbf{EF-ECO-2.} Parrainage d'un cabinet par un autre, via un lien d'inscription (le code n'ouvre aucun dossier).
+  \item \textbf{EF-ECO-3.} Journal d'activité, notifications, quitter / supprimer son compte (sauf admin plateforme).
+\end{itemize}
+
+\section{Exigences non fonctionnelles}
+
+\begin{table}[H]
+\centering
+\caption{Exigences non fonctionnelles}
+\label{tab:enf}
+\small
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{@{}clp{9.8cm}@{}}
+\toprule
+\textbf{ID} & \textbf{Catégorie} & \textbf{Exigence} \\
+\midrule
+ENF-1 & Confidentialité & Isolation par \texttt{cabinet\_id} ; HTTPS / TLS ; mots de passe robustes ; sessions JWT. Le navigateur n'ouvre aucune session SQL. \\
+ENF-2 & Audit & Journal des actions sensibles (authentification, validation, assignation, administration). \\
+ENF-3 & Disponibilité & Production sur VPS, reverse-proxy Caddy, conteneurs Docker. \\
+ENF-4 & Usabilité & Interface responsive ; parcours plaidoirie guidé ; bilingue FR / AR. \\
+ENF-5 & Intégrité IA & Pas d'invention de fond ; contrôle déterministe des contradictions factuelles. \\
+ENF-6 & Résistance & Limitation de débit sur l'authentification et les endpoints sensibles ; Cloudflare Turnstile après trois échecs de connexion (production). \\
+ENF-7 & Observabilité & E-mails transactionnels ; notifications temps réel ; page Activité. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Règles de gestion}
+
+\begin{enumerate}[leftmargin=1.4em]
+  \item Un brouillon n'est pas visible des assistants.
+  \item La \textbf{validation} rend la plaidoirie visible de \emph{tous} les assistants du cabinet.
+  \item L'\textbf{export} Word/PDF passe le statut à \textbf{finalisée} (distinct de la validation assistant).
+  \item L'\textbf{assignation} valide si besoin et met la plaidoirie en avant pour un assistant nommé ; elle ne crée pas un droit d'accès exclusif.
+  \item L'\textbf{épinglage} ordonne la liste, sans changer le statut.
+  \item L'admin plateforme suspend un cabinet ; il ne lit pas les dossiers.
+\end{enumerate}
+
+\section{Périmètre fonctionnel}
+\label{sec:perimetre}
+
+Le produit déployé sur \url{https://lexhub.space} couvre un \textbf{espace de travail de cabinet} dont le cœur est l'atelier voix~$\rightarrow$~document. Autour de ce cœur, dossiers, pièces, planning et équipe ne sont pas des annexes décoratives : sans eux, la plaidoirie n'aurait ni contexte, ni destinataire interne, ni trace.
+
+\paragraph{Dans le périmètre (livré).}
+L'atelier en cinq étapes ; l'isolation multi-cabinets et les quatre rôles ; l'invitation d'équipe par e-mail ; l'export officiel ; le modèle d'abonnement (essai, plans, packs, sièges) ; le parrainage inter-cabinets ; la supervision plateforme sans lecture des affaires.
+
+\paragraph{Hors périmètre (volontaire).}
+LexHub n'est pas un portail ministériel, ni un logiciel de comptabilité, ni un chatbot juridique autonome. Le paiement carte opérateur marocain dispose d'un environnement technique prêt ; le débit réel n'est pas activé à la date du rapport (simulation). Ces limites sont des choix de produit, pas des oublis de cadrage.

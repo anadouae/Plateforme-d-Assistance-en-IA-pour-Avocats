@@ -1,0 +1,122 @@
+\chapter{Réalisation et guide d'utilisation}
+\label{ch:realisation}
+
+\section{Stack de la version déployée}
+
+\begin{table}[H]
+\centering
+\caption{Technologies de production}
+\label{tab:stack}
+\begin{tabular}{@{}ll@{}}
+\toprule
+\textbf{Couche} & \textbf{Choix} \\
+\midrule
+Interface & Next.js, TypeScript, Tailwind \\
+API & FastAPI, SQLAlchemy, Alembic \\
+Données & PostgreSQL, stockage objet, Redis \\
+Voix $\rightarrow$ texte & Capture navigateur + STT cloud, puis correction de forme locale \\
+Langage & Routeur de modèles (composition), consignes anti-invention \\
+Export & Word et PDF (typographie arabe, en-tête) \\
+Temps réel & WebSocket + Redis \\
+Infra & Docker Compose, Caddy, VPS --- \url{https://lexhub.space} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Modules de l'application}
+
+L'avocat (et l'avocat admin) dispose du menu : \textbf{Plaidoirie}, \textbf{Dossiers}, \textbf{Documents}, \textbf{Planning}, \textbf{Activité}, et \textbf{Équipe} (admin). Le stagiaire / assistant voit les mêmes espaces, mais la plaidoirie se limite aux \textbf{pièces validées} (éventuellement assignées). Le tableau de bord synthétise l'activité du cabinet. Les paramètres permettent logo, sécurité et --- pour l'admin cabinet --- la fermeture du cabinet.
+
+\section{Inscription et accès cabinet}
+
+Le parcours actuel est le suivant :
+\begin{enumerate}[leftmargin=1.4em]
+  \item Demande d'un code OTP sur l'e-mail professionnel.
+  \item Vérification du code, puis création du cabinet et du compte admin cabinet.
+  \item Le cabinet est créé avec le statut \textbf{actif} : connexion immédiate à l'espace LexHub (pas de file d'attente d'approbation à l'inscription).
+  \item L'administrateur plateforme WebVoice conserve la capacité de \textbf{suspendre} ou de réactiver un cabinet (supervision, pas lecture des dossiers).
+\end{enumerate}
+
+\section{Guide --- les cinq étapes de la plaidoirie}
+\label{sec:guide}
+
+L'atelier de plaidoirie (voir la capture en annexe, figure~\ref{fig:plaidoirie}) est un parcours \textbf{séquentiel} en cinq étapes : on ne saute pas la relecture.
+
+\subsection{Étape 1 --- Dictée}
+L'avocat autorise le micro, dicte sa plaidoirie en \textbf{arabe}, puis arrête l'enregistrement. Le navigateur capture l'audio. Un indicateur de niveau signale un micro trop faible.
+
+\subsection{Étape 2 --- Transcription et correction de forme}
+\label{sec:fusha}
+
+Après l'arrêt du micro, l'interface propose :
+\begin{itemize}[leftmargin=1.4em]
+  \item le \textbf{texte brut} (éditable) issu de la reconnaissance vocale ;
+  \item un bouton \textbf{Corriger} : correction de \textbf{forme} (arabe standard / fusha) calculée localement --- orthographe et typographie --- \textbf{sans} résumer ni inventer de faits ;
+  \item un \textbf{surlignage orange} sur les substitutions issues du STT à relire en priorité ;
+  \item un contrôle des \textbf{contradictions} (numéros, dates, montants, noms) entre brut et corrigé.
+\end{itemize}
+
+L'avocat conserve le dernier mot : il peut encore modifier le texte avant de poursuivre. Cette étape prépare un texte lisible et fidèle pour la composition ; ce n'est pas encore le document officiel. Voir aussi la figure~\ref{fig:transcription} en annexe.
+
+\subsection{Étape 3 --- Réglages}
+On rattache éventuellement un \textbf{dossier} existant et on précise le type / la priorité. Ces métadonnées alimentent le classement, pas le fond juridique inventé.
+
+\subsection{Étape 4 --- Document}
+La composition produit une structure de plaidoirie (en-tête, développements, demandes). Si une information n'était pas dans la dictée, elle n'est \textbf{pas inventée} : l'interface signale les manques. L'avocat édite, enregistre un brouillon, puis \textbf{valide} ou \textbf{assigne} à un assistant.
+
+\subsection{Étape 5 --- Export}
+Téléchargement Word ou PDF, impression, éventuellement enregistrement comme modèle du cabinet. L'aperçu à l'écran reprend la mise en page officielle.
+
+\section{Validation, assignation et épinglage}
+
+\begin{table}[H]
+\centering
+\caption{Collaboration autour d'une plaidoirie}
+\label{tab:collab}
+\small
+\begin{tabular}{@{}lp{9.8cm}@{}}
+\toprule
+\textbf{Action} & \textbf{Comportement (version actuelle)} \\
+\midrule
+Valider & Statut \textit{validated} ; visible pour les assistants du cabinet ; notification / e-mail. \\
+Assigner & Choix d'un assistant du cabinet ; rattachement \texttt{assigned\_to} ; si brouillon, passage automatique à \textit{validated} ; notification ciblée. \\
+Épingler (pin) & Mise en avant dans la liste ; assistant uniquement sur pièce déjà validée. \\
+Dévalider & Retour en brouillon (retrait de la visibilité assistant). \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Parcours assistant}
+
+Dès la validation (ou l'assignation), une notification (application + courriel selon configuration) et un rafraîchissement temps réel permettent à l'assistant d'ouvrir le document, de l'imprimer ou de l'exporter --- sans accès aux brouillons non validés.
+
+\section{Sécurité mise en œuvre}
+
+\begin{itemize}[leftmargin=1.4em]
+  \item Authentification JWT / sessions ; limitation de débit sur les endpoints sensibles.
+  \item Contrôle d'accès par rôles (RBAC) et isolation multi-tenant par \texttt{cabinet\_id}.
+  \item Admin plateforme : suspension / réactivation sans ouverture du contenu des affaires.
+  \item Journaux d'audit ; e-mails transactionnels (OTP, alertes) via le domaine LexHub.
+  \item HTTPS (Caddy / TLS) en production.
+\end{itemize}
+
+\section{Autres modules (aperçu)}
+
+\paragraph{Dossiers.}
+Création et suivi des affaires, classement par \textbf{domaine} juridique, recherche / filtre, rattachement d'une plaidoirie ou d'une échéance.
+
+\paragraph{Documents.}
+Dépôt de pièces, OCR, synthèse \textbf{sourcée} (pas d'affirmation sans ancrage dans le texte extrait), lien au dossier.
+
+\paragraph{Planning.}
+Audiences et délais liés aux dossiers, pour préparer une plaidoirie dans son contexte temporel.
+
+\paragraph{Activité.}
+Journal des actions du cabinet (validation, assignation, invitations, etc.), utile à la traçabilité interne.
+
+\paragraph{Équipe.}
+Invitations, code d'adhésion, attribution des rôles avocat / assistant / admin cabinet.
+
+\section{Captures de la version déployée}
+
+Les figures de l'annexe (accueil, connexion, tableau de bord, atelier plaidoirie, transcription, dossiers, documents, planning, équipe, paramètres) correspondent aux écrans de production \url{https://lexhub.space}.

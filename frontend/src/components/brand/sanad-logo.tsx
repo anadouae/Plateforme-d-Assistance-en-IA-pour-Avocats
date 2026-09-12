@@ -2,14 +2,14 @@
 
 import Image from "next/image";
 import { cn } from "@/lib/utils";
-import { useLocaleStore } from "@/store/locale";
+import { useClientLocale } from "@/store/locale";
 
 interface SanadLogoProps {
   size?: "sm" | "md" | "lg" | "xl" | "hero" | "dock";
   className?: string;
   /** Soft gold aura around the logo. */
   glow?: boolean;
-  /** Affiche le nom سند / Sanad à côté du monogramme. */
+  /** Affiche le nom LexHub à côté du monogramme (identique en FR/AR). */
   withWordmark?: boolean;
   dark?: boolean;
 }
@@ -42,7 +42,7 @@ const wordmarkSize = {
 };
 
 /** Cube or transparent — asset unique partout. */
-const LOGO_SRC = "/logo-sanad-cube.png?v=cube-1";
+const LOGO_SRC = "/logo-lexhub-cube.png?v=cube-2";
 
 export function SanadLogo({
   size = "md",
@@ -51,9 +51,9 @@ export function SanadLogo({
   withWordmark = true,
   dark = false,
 }: SanadLogoProps) {
-  const locale = useLocaleStore((s) => s.locale);
+  const locale = useClientLocale();
   const dim = sizeDims[size];
-  const label = locale === "ar" ? "سند" : "Sanad";
+  const label = "LexHub";
 
   return (
     <span
@@ -82,8 +82,8 @@ export function SanadLogo({
             "font-display font-semibold tracking-tight drop-shadow-sm",
             wordmarkSize[size],
             dark
-              ? "text-white [text-shadow:0_1px_8px_rgba(0,0,0,0.55)]"
-              : "text-[#0E1526]",
+              ? "text-[#FFE6C2] [text-shadow:0_1px_12px_rgba(0,0,0,0.65)]"
+              : "text-[#0A1228]",
             locale === "ar" && "font-arabic",
           )}
         >
@@ -94,7 +94,10 @@ export function SanadLogo({
   );
 }
 
-/** @deprecated Use <SanadLogo /> */
+/** Alias LexHub — même composant (logo cube). */
+export const LexHubLogo = SanadLogo;
+
+/** @deprecated Use <LexHubLogo /> / <SanadLogo /> */
 export function SanadLogoWithText({
   size = "md",
   className,

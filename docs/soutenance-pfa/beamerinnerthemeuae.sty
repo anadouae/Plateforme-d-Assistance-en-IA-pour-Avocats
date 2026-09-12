@@ -1,0 +1,40 @@
+% UAE / ENSA Tétouan — inner theme
+\ProvidesPackage{beamerinnerthemeuae}[2026/05/27 UAE ENSA Beamer inner]
+
+\setbeamertemplate{blocks}[rounded][shadow=true]
+
+\setbeamertemplate{items}[circle]
+\setbeamertemplate{sections/subsections in toc}[sections numbered]
+\setbeamertemplate{section in toc}{%
+  \leavevmode\leftskip=1.5ex%
+  \llap{\color{UAELightBlue}\raise1.5pt\hbox{\scalebox{0.7}{$\blacktriangleright$}}}%
+  \inserttocsection\par%
+}
+\setbeamertemplate{subsection in toc}{%
+  \leavevmode\leftskip=3.5ex%
+  \llap{\color{UAESkyBlue}\raise1.5pt\hbox{\scalebox{0.6}{$\triangleright$}}}%
+  \inserttocsubsection\par%
+}
+
+\setbeamertemplate{theorem begin}{%
+  \begin{beamercolorbox}[wd=.98\paperwidth,sep=0.8ex,rounded=true,shadow=true]{block title example}%
+    \usebeamerfont*{block title example}\inserttheoremname
+    \ifx\inserttheoremaddition\@empty\else\ (\inserttheoremaddition)\fi
+  \end{beamercolorbox}%
+  \nointerlineskip
+  \begin{beamercolorbox}[wd=.98\paperwidth,sep=0.8ex,rounded=true,shadow=true,vmode]{block body example}%
+    \usebeamerfont*{block body example}%
+}
+\setbeamertemplate{theorem end}{\end{beamercolorbox}}
+
+\setbeamertemplate{definition begin}{%
+  \begin{beamercolorbox}[wd=.98\paperwidth,sep=0.8ex,rounded=true,shadow=true]{block title}%
+    \usebeamerfont*{block title}\inserttheoremname
+  \end{beamercolorbox}%
+  \nointerlineskip
+  \begin{beamercolorbox}[wd=.98\paperwidth,sep=0.8ex,rounded=true,shadow=true,vmode]{block body}%
+    \usebeamerfont*{block body}%
+}
+\setbeamertemplate{definition end}{\end{beamercolorbox}}
+
+\endinput

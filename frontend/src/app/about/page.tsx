@@ -3,27 +3,30 @@
 import Link from "next/link";
 import { PublicNavbar } from "@/components/layout/public-navbar";
 import { PublicFooter } from "@/components/layout/public-footer";
-import { SanadLogo } from "@/components/brand/sanad-logo";
+import { LexHubLogo } from "@/components/brand/lexhub-logo";
 import { Button } from "@/components/ui/button";
 import { FadeIn } from "@/components/motion/fade-in";
-import { useTranslations } from "@/store/locale";
+import { useClientLocale, useTranslations } from "@/store/locale";
+import { VisitorConvertNudge } from "@/components/billing/visitor-convert-nudge";
 
 export default function AboutPage() {
   const tr = useTranslations();
+  const ar = useClientLocale() === "ar";
 
   return (
-    <div className="min-h-screen bg-sanad-cream">
+    <div className="min-h-screen bg-sanad-cream" dir={ar ? "rtl" : "ltr"}>
       <PublicNavbar variant="light" />
+      <VisitorConvertNudge />
 
       <section className="relative overflow-hidden bg-sanad-navy py-24 text-sanad-ivory">
         <div className="sanad-orb sanad-orb-2 opacity-30" />
         <div className="relative mx-auto max-w-4xl px-4 text-center sm:px-6">
           <FadeIn>
             <div className="mx-auto mb-8 flex justify-center">
-              <SanadLogo size="hero" />
+              <LexHubLogo size="lg" withWordmark dark />
             </div>
-            <h1 className="font-display text-4xl font-semibold sm:text-5xl">{tr.about.title}</h1>
-            <p className="mx-auto mt-6 max-w-2xl text-lg text-sanad-ivory/75">{tr.about.subtitle}</p>
+            <h1 className="font-display text-4xl font-semibold text-white sm:text-5xl">{tr.about.title}</h1>
+            <p className="mx-auto mt-6 max-w-2xl text-lg text-white/90">{tr.about.subtitle}</p>
           </FadeIn>
         </div>
       </section>
@@ -48,8 +51,8 @@ export default function AboutPage() {
               ))}
             </div>
           </FadeIn>
-          <FadeIn className="text-center pt-8">
-            <Link href="/register">
+          <FadeIn className="pt-8 text-center">
+            <Link href="/login?tab=register">
               <Button size="lg" variant="gold" className="btn-3d">
                 {tr.cta.button}
               </Button>

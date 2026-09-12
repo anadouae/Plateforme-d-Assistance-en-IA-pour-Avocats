@@ -1,33 +1,45 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { LogOut, Settings } from "lucide-react";
-import { useAuthStore } from "@/store/auth";
+import { usePathname } from "next/navigation";
 import { useLocaleStore, useTranslations } from "@/store/locale";
+import { useAuthStore } from "@/store/auth";
+import { canManageTeam, isAssistant } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 
-const navConfig = [
+const micIcon = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    <path d="M12 1a4 4 0 0 0-4 4v6a4 4 0 0 0 8 0V5a4 4 0 0 0-4-4z" />
+    <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
+    <line x1="12" y1="18" x2="12" y2="22" />
+  </svg>
+);
+
+/** Pile de documents validés — espace assistant (pas micro). */
+const validatedPleaIcon = (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M8 6h9a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z" />
+    <path d="M6 8H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-1" opacity="0.55" />
+    <path d="M10 12l1.5 1.5L15 10" />
+  </svg>
+);
+
+const baseNavLawyer = [
   {
     href: "/redaction",
-    tab: "plaidoirie",
     key: "redaction" as const,
     labelFr: "Plaidoirie",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-        <path d="M12 1a4 4 0 0 0-4 4v6a4 4 0 0 0 8 0V5a4 4 0 0 0-4-4z" />
-        <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
-        <line x1="12" y1="18" x2="12" y2="22" />
-      </svg>
-    ),
+    hintFr: "Atelier dictée",
+    hintAr: "ورشة الإملاء",
+    icon: micIcon,
   },
   {
     href: "/cases",
-    tab: "dossiers",
     key: "cases" as const,
     labelFr: "Dossiers",
+    hintFr: "Affaires du cabinet",
+    hintAr: "ملفات المكتب",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
         <path d="M20 7h-3l-2-2H9L7 7H4a1 1 0 0 0-1 1v11a1 1 0 0 0 1 1h16a1 1 0 0 0 1-1V8a1 1 0 0 0-1-1z" />
@@ -36,9 +48,10 @@ const navConfig = [
   },
   {
     href: "/documents",
-    tab: "documents",
     key: "documents" as const,
     labelFr: "Documents",
+    hintFr: "Pièces & extraits",
+    hintAr: "القطع والمستخرجات",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -48,9 +61,10 @@ const navConfig = [
   },
   {
     href: "/agenda",
-    tab: "planning",
     key: "agenda" as const,
     labelFr: "Planning",
+    hintFr: "Audiences & ICS",
+    hintAr: "الجلسات والتصدير",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
         <rect x="3" y="4" width="18" height="18" rx="3" />
@@ -61,53 +75,88 @@ const navConfig = [
     ),
   },
   {
-    href: "/dashboard",
-    tab: "dashboard",
-    key: "dashboard" as const,
-    labelFr: "Tableau de bord",
+    href: "/activity",
+    key: "activity" as const,
+    labelFr: "Activité",
+    hintFr: "Journal du cabinet",
+    hintAr: "سجل المكتب",
     icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-        <rect x="3" y="3" width="7" height="9" rx="1.5" />
-        <rect x="14" y="3" width="7" height="5" rx="1.5" />
-        <rect x="14" y="12" width="7" height="9" rx="1.5" />
-        <rect x="3" y="16" width="7" height="5" rx="1.5" />
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
       </svg>
     ),
   },
 ];
 
-function initials(name?: string | null) {
-  if (!name) return "S";
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
+const teamNav = {
+  href: "/team",
+  key: "team" as const,
+  labelFr: "Équipe",
+  hintFr: "Invitations",
+  hintAr: "الدعوات",
+  icon: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  ),
+};
 
-function DockNav({ compact }: { compact?: boolean }) {
+function DockNav() {
   const pathname = usePathname();
-  const nav = useTranslations().app.nav;
+  const t = useTranslations().app;
   const locale = useLocaleStore((s) => s.locale);
+  const role = useAuthStore((s) => s.user?.role);
+  const assistant = isAssistant(role);
+
+  const navItems = (() => {
+    const items = baseNavLawyer.map((item) => {
+      if (item.key === "redaction" && assistant) {
+        return {
+          ...item,
+          icon: validatedPleaIcon,
+          labelFr: "Plaidoiries validées",
+          hintFr: "Textes validés",
+          hintAr: "مرافعات معتمدة",
+        };
+      }
+      return item;
+    });
+    return canManageTeam(role) ? [...items, teamNav] : items;
+  })();
 
   return (
-    <div className={cn("dock-nav", compact && "dock-nav--compact")}>
-      {navConfig.map((item) => {
-        const active = pathname.startsWith(item.href);
+    <div className="dock-nav">
+      {navItems.map((item) => {
+        const active =
+          pathname === item.href ||
+          (item.href !== "/dashboard" && pathname.startsWith(item.href));
         const label =
           locale === "ar"
-            ? (nav as Record<string, string>)[item.key] || item.labelFr
+            ? item.key === "redaction" && assistant
+              ? "مرافعات معتمدة"
+              : t.nav[item.key]
             : item.labelFr;
+        const hint = locale === "ar" ? item.hintAr : item.hintFr;
         return (
           <Link
             key={item.href}
             href={item.href}
+            prefetch
             className={cn("dock-item", active && "active")}
-            data-tab={item.tab}
             data-label={label}
+            data-tour-id={`nav-${item.key}`}
             aria-label={label}
             aria-current={active ? "page" : undefined}
           >
             <span className="pill" aria-hidden />
             {item.icon}
+            <span className="dock-item__text">
+              <span className="dock-item__label">{label}</span>
+              <span className="dock-item__hint">{hint}</span>
+            </span>
           </Link>
         );
       })}
@@ -115,93 +164,13 @@ function DockNav({ compact }: { compact?: boolean }) {
   );
 }
 
-function DockFoot() {
-  const { user, logout } = useAuthStore();
-  const t = useTranslations().app;
-  const router = useRouter();
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const locale = useLocaleStore((s) => s.locale);
-
-  useEffect(() => {
-    function onDoc(e: MouseEvent) {
-      if (!ref.current?.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
-  }, []);
-
-  return (
-    <div className="dock-foot" ref={ref}>
-      <button
-        type="button"
-        className="dock-avatar"
-        onClick={() => setOpen((v) => !v)}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-label={user?.full_name || "Menu"}
-      >
-        {initials(user?.full_name)}
-      </button>
-      {open && (
-        <div
-          role="menu"
-          style={{
-            position: "absolute",
-            bottom: 56,
-            [locale === "ar" ? "left" : "right"]: 0,
-            minWidth: 160,
-            background: "rgba(255,255,255,0.95)",
-            border: "1px solid var(--line)",
-            borderRadius: 18,
-            boxShadow: "var(--shadow)",
-            padding: "4px 0",
-            zIndex: 40,
-          }}
-        >
-          <button
-            type="button"
-            role="menuitem"
-            className="btn-ghost"
-            style={{ width: "100%", justifyContent: "flex-start", border: "none", borderRadius: 0 }}
-            onClick={() => {
-              setOpen(false);
-              router.push("/settings");
-            }}
-          >
-            <Settings width={16} height={16} /> {t.nav.settings}
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className="btn-ghost"
-            style={{
-              width: "100%",
-              justifyContent: "flex-start",
-              border: "none",
-              borderRadius: 0,
-              color: "#b91c1c",
-            }}
-            onClick={() => {
-              setOpen(false);
-              logout();
-            }}
-          >
-            <LogOut width={16} height={16} /> {t.logout}
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** Dock desktop — classes exactes `.dock` / `.dock-nav` / `.dock-item`. */
+/** Dock desktop — labels visibles comme l’admin plateforme. */
 export function AppSidebar() {
   return (
     <nav className="dock">
-      <Link href="/home" className="dock-brand" aria-label="Sanad">
+      <Link href="/dashboard" className="dock-brand" aria-label="LexHub" data-tour-id="brand">
         <Image
-          src="/logo-sanad-cube.png?v=cube-1"
+          src="/logo-lexhub-cube.png?v=cube-2"
           alt=""
           width={40}
           height={40}
@@ -211,12 +180,10 @@ export function AppSidebar() {
         />
       </Link>
       <DockNav />
-      <DockFoot />
     </nav>
   );
 }
 
-/** Mobile : même `.dock` via media query CSS (brand/foot masqués). */
 export function AppMobileDock() {
   return null;
 }

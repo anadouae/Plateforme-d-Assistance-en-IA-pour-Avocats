@@ -1,48 +1,56 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { locales, type Locale } from "@/lib/i18n/translations";
-import { useLocaleStore } from "@/store/locale";
+import { useClientLocale, useLocaleStore } from "@/store/locale";
 
+/**
+ * Client-only après mount : évite hydratation cassée par
+ * locale persistée ou extensions (ex. MetaMask) qui injectent des nœuds.
+ */
 export function LanguageSwitch({ variant = "light" }: { variant?: "light" | "dark" }) {
-  const locale = useLocaleStore((s) => s.locale);
+  const locale = useClientLocale();
   const setLocale = useLocaleStore((s) => s.setLocale);
+  const [ready, setReady] = useState(false);
 
-  if (variant === "dark") {
+  useEffect(() => {
+    setReady(true);
+  }, []);
+
+  const shellStyle =
+    variant === "dark"
+      ? ({ background: "rgba(255,255,255,0.12)", minHeight: 36, minWidth: 96 } as const)
+      : ({ minHeight: 36, minWidth: 96 } as const);
+
+  if (!ready) {
     return (
-      <div className="switch" role="group" aria-label="Language" style={{ background: "rgba(255,255,255,0.12)" }}>
-        {locales.map((l) => (
-          <span
-            key={l.code}
-            role="button"
-            tabIndex={0}
-            className={locale === l.code ? "on" : undefined}
-            onClick={() => setLocale(l.code as Locale)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") setLocale(l.code as Locale);
-            }}
-          >
-            {l.label}
-          </span>
-        ))}
-      </div>
+      <div
+        className="switch"
+        role="presentation"
+        aria-hidden
+        style={shellStyle}
+        suppressHydrationWarning
+      />
     );
   }
 
   return (
-    <div className="switch" role="group" aria-label="Language">
+    <div
+      className="switch"
+      role="group"
+      aria-label="Language"
+      style={variant === "dark" ? { background: "rgba(255,255,255,0.12)" } : undefined}
+    >
       {locales.map((l) => (
-        <span
+        <button
           key={l.code}
-          role="button"
-          tabIndex={0}
+          type="button"
           className={locale === l.code ? "on" : undefined}
-          onClick={() => setLocale(l.code as Locale)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") setLocale(l.code as Locale);
-          }}
+          aria-pressed={locale === l.code}
+          onClick={() => setLocale(l.code)}
         >
           {l.label}
-        </span>
+        </button>
       ))}
     </div>
   );
