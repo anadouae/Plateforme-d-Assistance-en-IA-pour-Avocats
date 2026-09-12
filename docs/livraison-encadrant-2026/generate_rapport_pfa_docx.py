@@ -560,40 +560,39 @@ def build():
             ["Solo", "299 MAD / mois", "2 990 MAD / an", "14 jours", "35 plaidoiries / 600 crédits", "Avocat individuel indépendant"],
             ["Cabinet (Recommandé)", "699 MAD / mois", "6 990 MAD / an", "30 jours", "120 plaidoiries / 2 000 crédits", "Cabinet de 2 à 5 collaborateurs"],
             ["Entreprise", "1 290 MAD / mois", "12 900 MAD / an", "7 jours (qualifié)", "350 plaidoiries / 5 000 crédits", "Grand cabinet d'affaires structuré"],
+            ["Sur mesure", "Sur devis", "Devis annuel", "Sur cadrage", "Illimité / Sur mesure", "Structures > 15 avocats, réseaux"],
         ],
-        col_widths=[3.0, 2.5, 2.5, 2.5, 3.5, 3.5],
+        col_widths=[2.8, 2.4, 2.4, 2.4, 3.5, 3.5],
     )
 
-    heading(doc, "5.3 Qualification commerciale Entreprise et Deux Piliers anti-fraude", 2)
+    heading(doc, "5.3 Analyse détaillée de chaque plan de la grille", 2)
+    add_para(doc, "Chaque formule tarifaire a été modélisée pour répondre précisément aux besoins organisationnels et économiques des différentes catégories de praticiens marocains :")
+    
+    bullet(doc, "Plan Découverte (0 MAD — Freemium d'acquisition) : Conçu pour lever tous les freins à l'adoption, ce forfait offre 1 compte utilisateur, 3 dossiers, 3 plaidoiries complètes et 50 crédits d'accueil. Il permet à l'avocat d'éprouver immédiatement la qualité de la reconnaissance vocale et de la mise en page Word sans engagement et sans carte bancaire (repère journalier de 12 crédits/jour).")
+    bullet(doc, "Plan Solo (299 MAD HT/mois ou 2 990 MAD/an) : Dédié à l'avocat exerçant en individuel, il inclut 1 siège avocat + 1 siège assistant juridique offert (2 utilisateurs), 35 plaidoiries et 600 crédits par mois. L'essai hybride de 14 jours (400 crédits) permet de valider le produit sur des dossiers réels avec un repère de confort de 35 crédits/jour en essai, passant à 50 crédits/jour en formule payante.")
+    bullet(doc, "Plan Cabinet (699 MAD HT/mois ou 6 990 MAD/an — Formule recommandée) : Cœur de cible du marché, il comprend 5 sièges avocats + 3 sièges assistants (8 collaborateurs inclus), 120 plaidoiries et 2 000 crédits mensuels. L'essai de 30 jours est plafonné à 1 000 crédits (repère journalier de 90 cr./j en essai, 180 cr./j en payé). Il offre la possibilité exclusive d'ajouter jusqu'à 5 sièges avocats à 99 MAD/mois par collaborateur.")
+    bullet(doc, "Plan Entreprise (1 290 MAD HT/mois ou 12 900 MAD/an) : Adapté aux cabinets d'affaires de premier plan, il inclut 15 sièges avocats + 10 sièges assistants (25 collaborateurs inclus), 350 plaidoiries et 5 000 crédits mensuels (repère de 105 cr./j en essai et 300 cr./j en payé). Son accès fait l'objet d'un processus commercial qualifié strict.")
+    bullet(doc, "Palier Sur mesure (Sur devis) : Pour les structures dépassant 15 avocats, proposant un hébergement souverain isolé (Single-Tenant), des connecteurs ERP personnalisés et un support d'astreinte 24/7.")
+
+    heading(doc, "5.4 Qualification commerciale Entreprise et Deux Piliers anti-fraude", 2)
     add_para(
         doc,
         "L'expérience des plateformes SaaS d'IA montre que les forfaits à haute capacité (5 000 crédits) sont la cible privilégiée d'abus et de faux comptes "
         "éphémères. Pour LexHub, la souscription directe en libre-service web à l'offre Entreprise a été délibérément supprimée :",
     )
-    bullet(doc, "Formulaire de cadrage préalable : Tout clic sur l'offre Entreprise redirige vers /commercial?intent=enterprise, imposant la saisie de 7 informations de qualification (Barreau de rattachement, taille du cabinet, volumétrie mensuelle, besoins d'intégration). Le prospect est enregistré en base dans la table commercial_leads.")
-    bullet(doc, "Pilier 1 — KYC léger déontologique : Avant toute ouverture d'accès à l'essai Entreprise, l'équipe commerciale vérifie l'inscription effective du demandeur au tableau officiel de l'Ordre des Avocats du Barreau concerné, conformément à la loi n° 28-08.")
-    bullet(doc, "Pilier 2 — Double Verrou (Durée & Plafond) : La durée de l'essai Entreprise est fixée à 7 jours seulement (accélérant le cycle de vente PLG), et son plafond d'utilisation est bridé à 1 800 crédits (au lieu des 5 000 crédits du forfait payant actif), protégeant l'entreprise d'accueil contre des coûts LLM disproportionnés.")
-    add_para(
-        doc,
-        "Palier 5 « Sur mesure » : Pour les structures d'envergure nationale ou internationale dépassant 15 avocats, une offre personnalisée sur devis est proposée "
-        "(déploiement sur infrastructure dédiée, intégration sur mesure avec les ERP juridiques internes).",
-    )
+    bullet(doc, "Rupture du libre-service (Self-Service) : Tout clic sur l'offre Entreprise redirige obligatoirement vers /commercial?intent=enterprise, imposant la saisie de 7 informations de qualification vérifiables (Nom, email pro, téléphone direct, cabinet, ville et barreau, nombre d'avocats, cadrage du besoin). La demande est enregistrée dans la table PostgreSQL commercial_leads.")
+    bullet(doc, "Pilier 1 — KYC léger déontologique : Conformément à la loi n° 28-08 régissant la profession d'avocat au Maroc, l'équipe commerciale vérifie l'inscription effective du demandeur au tableau officiel de l'Ordre des Avocats du Barreau déclaré. Tout demandeur fictif est immédiatement écarté.")
+    bullet(doc, "Pilier 2 — Double Verrou (Durée & Plafond) : L'essai pilote est resserré à 7 jours seulement (créant une dynamique d'évaluation active sur 2-3 dossiers réels), et son plafond d'utilisation est strictement bridé à 1 800 crédits (au lieu des 5 000 crédits du forfait payant actif), protégeant l'entreprise d'accueil contre des coûts LLM disproportionnés.")
 
-    heading(doc, "5.4 Packs de crédits prépayés et sièges additionnels", 2)
+    heading(doc, "5.5 Stratégie de croissance globale (Growth Plan) et Unit Economics", 2)
     add_para(
         doc,
-        "Les packs de crédits (500 crédits à 110 MAD, 1 000 crédits à 200 MAD, 2 500 crédits à 450 MAD) sont strictement réservés aux cabinets disposant d'un abonnement "
-        "payant actif (accès bloqué avec code HTTP 403 en période d'essai). Ils sont gérés selon la règle comptable FIFO (First In, First Out) avec une validité de 12 mois. "
-        "Par ailleurs, le plan Cabinet permet l'ajout de sièges collaborateurs à la carte (99 MAD / mois / avocat supplémentaire), évitant au cabinet de basculer prématurément sur le palier Entreprise.",
+        "La viabilité commerciale de LexHub s'appuie sur une mécanique de croissance en trois temps articulée avec une rentabilité unitaire élevée :",
     )
-
-    heading(doc, "5.5 Programme de parrainage confraternel", 2)
-    add_para(
-        doc,
-        "Chaque cabinet dispose d'un code unique de parrainage (ex. LH-CAS-8842). Lorsqu'un cabinet confrère s'inscrit via ce code, le filleul bénéficie de +14 jours d'essai "
-        "supplémentaires, et le parrain reçoit un bonus de +30 jours d'abonnement gratuit dès lors que le filleul effectue son premier paiement réel. Ce mécanisme favorise "
-        "une croissance organique virale au sein des barreaux marocains.",
-    )
+    bullet(doc, "Entonnoir Product-Led Growth (PLG) : L'expérience utilisateur immédiate (Time-to-Value < 3 minutes) convertit les visiteurs en utilisateurs Découverte, qui découvrent naturellement la valeur sur un cas concret avant de basculer vers un essai Solo ou Cabinet.")
+    bullet(doc, "Expansion du panier moyen (Land & Expand) : Les abonnés actifs augmentent leur valeur vie (LTV) par l'achat de packs prépayés FIFO valables 12 mois (500 crédits à 110 MAD, 1 000 à 200 MAD, 2 500 à 450 MAD) et par l'ajout de sièges collaborateurs à la carte (99 MAD / mois).")
+    bullet(doc, "Moteur viral de parrainage confraternel : Grâce à un code unique par cabinet (ex. LH-CAS-8842), le filleul bénéficie de +14 jours d'essai offerts, et le parrain reçoit +30 jours d'abonnement gratuit crédités automatiquement au premier paiement du filleul (plafond de 12 parrainages/an).")
+    bullet(doc, "Maîtrise des COGS et marge brute de 80% : Grâce à la reconnaissance vocale Web Speech API locale (zéro coût serveur) et à l'optimisation des prompts LLM, le coût direct d'une plaidoirie complète est inférieur à 0,70 MAD, garantissant une marge brute de plus de 80% pour l'entreprise d'accueil WEBVOICE dès quelques dizaines de cabinets abonnés.")
 
     # -------------------------------------------------------------
     # Chapitre 6 — Réalisation et aspects techniques
