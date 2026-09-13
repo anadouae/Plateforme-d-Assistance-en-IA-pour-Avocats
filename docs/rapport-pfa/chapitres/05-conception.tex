@@ -166,28 +166,142 @@ Trois familles suffisent à documenter LexHub sans noyer le lecteur dans des par
 \label{fig:seq-val}
 \end{figure}
 
-\subsection{Modèle de données (extrait)}
+\subsection{Modèle de données relationnel et architecture des tables}
+\label{sec:modele-donnees}
+
+La base de données relationnelle PostgreSQL de LexHub est constituée de \textbf{29 tables métier} (accompagnées de la table technique de migration \texttt{alembic\_version}). Loin d'être un schéma redondant ou artificiellement gonflé, cette structure découle d'une modélisation rigoureuse en \textbf{3\textsuperscript{e} forme normale (3NF)}, garantissant l'intégrité référentielle, l'étanchéité multi-tenant par \texttt{cabinet\_id}, la traçabilité déontologique (loi n$^\circ$~28-08) et l'absence totale de verrous bloquants lors des accès concurrents.
+
+Le tableau~\ref{tab:domaines-bdd} synthétise la répartition des tables selon les sept sous-systèmes fonctionnels de la plateforme.
+
+\begin{table}[H]
+\centering
+\caption{Cartographie modulaire des 29 tables de la base de données LexHub}
+\label{tab:domaines-bdd}
+\small
+\renewcommand{\arraystretch}{1.12}
+\begin{tabular}{@{}p{3.8cm}p{4.2cm}p{6.2cm}@{}}
+\toprule
+\textbf{Sous-système métier} & \textbf{Tables PostgreSQL} & \textbf{Responsabilité applicative} \\
+\midrule
+\textbf{1. Multi-Tenancy \& Gouvernance} &
+\texttt{cabinets}, \texttt{cabinet\_invites}, \texttt{membership\_requests}, \texttt{cabinet\_notifications} &
+Isolation étanche des locataires, charte graphique, codes d'adhésion, invitations par e-mail et notifications internes. \\
+\addlinespace
+\textbf{2. Sécurité \& Authentification} &
+\texttt{users}, \texttt{auth\_sessions}, \texttt{email\_otps}, \texttt{email\_tokens}, \texttt{mfa\_recovery\_codes} &
+Comptes utilisateurs, RBAC, rotation des refresh tokens JWT, codes OTP e-mail à 6 chiffres, jetons temporaires et MFA. \\
+\addlinespace
+\textbf{3. Gestion Juridique \& Contentieux} &
+\texttt{cases}, \texttt{case\_notes}, \texttt{case\_tasks}, \texttt{case\_comments}, \texttt{agenda\_events} &
+Dossiers judiciaires (art. 32 CPC), notes d'audience, planning de tâches, fil collaboratif et calendrier des délais de recours. \\
+\addlinespace
+\textbf{4. Atelier Plaidoirie \& IA} &
+\texttt{plaidoirie\_drafts}, \texttt{plaidoirie\_revisions}, \texttt{cabinet\_plaidoirie\_templates}, \texttt{documents} &
+Cycle de vie des conclusions (brouillon $\rightarrow$ validé $\rightarrow$ finalisé), versioning des textes, modèles types et pièces OCR MinIO. \\
+\addlinespace
+\textbf{5. Facturation \& Monétisation SaaS} &
+\texttt{subscription\_plans}, \texttt{cabinet\_subscriptions}, \texttt{billing\_credit\_pack\_purchases}, \texttt{billing\_invoices}, \texttt{usage\_counters}, \texttt{cabinet\_referrals}, \texttt{payment\_transfer\_requests} &
+Catalogue des forfaits, abonnements actifs, packs de crédits FIFO (12 mois), facturation HT/TTC, compteurs de quotas et parrainage. \\
+\addlinespace
+\textbf{6. Croissance Commerciale} &
+\texttt{commercial\_leads} &
+Qualification humaine en 7 critères pour l'offre Entreprise et les devis personnalisés Sur mesure. \\
+\addlinespace
+\textbf{7. Traçabilité \& Rétention} &
+\texttt{audit\_logs}, \texttt{activity\_archives}, \texttt{admin\_audit\_archives} &
+Journal d'audit immuable (Loi 28-08) et archivage automatisé des flux au-delà de 90 jours pour préserver la performance SQL. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+La figure~\ref{fig:classes} expose les relations clés entre les entités centrales du domaine.
 
 \begin{figure}[H]
 \centering
 \begin{tikzpicture}[
-  cls/.style={draw=royal,fill=royal!4,align=left,font=\scriptsize,inner sep=5pt,rounded corners=1pt}
+  cls/.style={draw=royal,fill=royal!4,align=left,font=\scriptsize,inner sep=4pt,rounded corners=2pt},
+  subsys/.style={draw=royal!40,fill=royal!2,dashed,rounded corners=4pt}
 ]
-  \node[cls] (c) at (0,0) {\textbf{Cabinet}\\id / nom / statut\\logo / referral\_code};
-  \node[cls] (u) at (5.0,0.8) {\textbf{User}\\email / rôle\\cabinet\_id / actif};
-  \node[cls] (k) at (0,-2.8) {\textbf{Case}\\titre / domaine\\identité judiciaire};
-  \node[cls] (p) at (5.0,-2.6) {\textbf{PlaidoirieDraft}\\texte / draft$\vert$validated$\vert$finalized\\assigned\_to / pinned};
-  \node[cls] (d) at (9.6,-0.6) {\textbf{Document}\\métadonnées + objet\\OCR};
-  \node[cls] (inv) at (9.6,-2.8) {\textbf{CabinetInvite}\\e-mail / jeton\\rôle / expiration};
-  \draw[-{Stealth}] (u) -- node[above,font=\tiny]{1..*} (c);
-  \draw[-{Stealth}] (k) -- (c);
-  \draw[-{Stealth}] (p) -- (c);
-  \draw[-{Stealth}] (d) -- (c);
-  \draw[-{Stealth}] (p) -- node[right,font=\tiny]{0..1} (k);
-  \draw[-{Stealth}] (p.east) -- node[above,font=\tiny]{assigné} (u.south);
-  \draw[-{Stealth}] (inv) -- (c);
+  % Zone Tenancy & Utilisateurs
+  \node[cls] (c) at (0,3.2) {\textbf{Cabinet}\\
+  \underline{id} : UUID\\
+  nom, ville, barreau, ice\\
+  referral\_code, status};
+
+  \node[cls] (u) at (6.5,3.2) {\textbf{User}\\
+  \underline{id} : UUID\\
+  cabinet\_id (FK)\\
+  email, role, is\_active};
+
+  \node[cls] (s) at (11.5,3.2) {\textbf{AuthSession}\\
+  \underline{id} : UUID\\
+  user\_id (FK)\\
+  token\_hash, expires\_at};
+
+  % Zone Affaires & Agenda
+  \node[cls] (k) at (0,-0.2) {\textbf{Case}\\
+  \underline{id} : UUID\\
+  cabinet\_id (FK), responsible\_id (FK)\\
+  reference, tribunal, status\\
+  appeal\_deadline\_at};
+
+  \node[cls] (ev) at (6.5,-0.2) {\textbf{AgendaEvent}\\
+  \underline{id} : UUID\\
+  cabinet\_id (FK), case\_id (FK)\\
+  event\_type, starts\_at};
+
+  % Zone Plaidoirie & Pièces
+  \node[cls] (p) at (0,-3.6) {\textbf{PlaidoirieDraft}\\
+  \underline{id} : UUID\\
+  cabinet\_id (FK), case\_id (FK), user\_id (FK)\\
+  body, status (draft/validated/finalized)\\
+  assigned\_to\_user\_id (FK)};
+
+  \node[cls] (rev) at (6.5,-3.6) {\textbf{PlaidoirieRevision}\\
+  \underline{id} : UUID\\
+  draft\_id (FK), user\_id (FK)\\
+  body\_snapshot, created\_at};
+
+  \node[cls] (d) at (11.5,-0.2) {\textbf{Document}\\
+  \underline{id} : UUID\\
+  case\_id (FK), storage\_path\\
+  extracted\_text, ocr\_score};
+
+  % Zone Monétisation
+  \node[cls] (sub) at (0,-6.6) {\textbf{CabinetSubscription}\\
+  \underline{id} : UUID\\
+  cabinet\_id (FK), plan\_id (FK)\\
+  status (trial/active), trial\_ends\_at\\
+  prepaid\_ai\_credits, on\_demand\_enabled};
+
+  \node[cls] (plan) at (6.5,-6.6) {\textbf{SubscriptionPlan}\\
+  \underline{id} : UUID\\
+  slug, price\_mad\_monthly\\
+  max\_avocats, max\_ai\_credits\_month};
+
+  \node[cls] (pack) at (11.5,-6.6) {\textbf{BillingCreditPackPurchase}\\
+  \underline{id} : UUID\\
+  cabinet\_id (FK)\\
+  credits\_remaining, expires\_at (12 m)};
+
+  % Liens relationnels et cardinalités
+  \draw[-{Stealth},thick] (u) -- node[above,font=\tiny]{1..* $\rightarrow$ 1} (c);
+  \draw[-{Stealth},thick] (s) -- node[above,font=\tiny]{1..* $\rightarrow$ 1} (u);
+  
+  \draw[-{Stealth},thick] (k) -- node[left,font=\tiny]{1..* $\rightarrow$ 1} (c);
+  \draw[-{Stealth},thick] (k.north east) -- node[above,font=\tiny,sloped]{responsable} (u.south west);
+  \draw[-{Stealth},thick] (ev) -- node[above,font=\tiny]{0..* $\rightarrow$ 1} (k);
+
+  \draw[-{Stealth},thick] (p) -- node[left,font=\tiny]{0..* $\rightarrow$ 1} (k);
+  \draw[-{Stealth},thick] (p) -- node[above,font=\tiny,sloped]{rédigé par} (u);
+  \draw[-{Stealth},thick] (rev) -- node[above,font=\tiny]{1..* $\rightarrow$ 1} (p);
+  \draw[-{Stealth},thick] (d) -- node[above,font=\tiny]{1..* $\rightarrow$ 1} (k);
+
+  \draw[-{Stealth},thick] (sub) -- node[left,font=\tiny]{1 $\rightarrow$ 1} (c);
+  \draw[-{Stealth},thick] (sub) -- node[above,font=\tiny]{1..* $\rightarrow$ 1} (plan);
+  \draw[-{Stealth},thick] (pack) -- node[above,font=\tiny]{0..* $\rightarrow$ 1} (c.south east);
 \end{tikzpicture}
-\caption{Classes persistantes (extrait) --- isolation par \texttt{cabinet\_id}}
+\caption{Schéma relationnel UML des entités maîtresses de LexHub (Production)}
 \label{fig:classes}
 \end{figure}
 

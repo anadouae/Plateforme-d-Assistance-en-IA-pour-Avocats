@@ -499,11 +499,27 @@ def build():
     bullet(doc, "Niveau Traitement Asynchrone : File de messages Redis associée à des workers Celery pour les tâches d'arrière-plan (génération de documents lourds, rappels e-mail).")
     bullet(doc, "Niveau Persistance : SGBD relationnel PostgreSQL 15 hébergeant les schémas relationnels avec migrations versionnées Alembic, et stockage objet MinIO / S3 pour les pièces jointes.")
 
-    heading(doc, "4.2 Architecture des données et modèle relationnel", 2)
+    heading(doc, "4.2 Architecture des données et modèle relationnel (29 tables)", 2)
     add_para(
         doc,
-        "Le modèle de données est structuré autour du concept central de Cabinet (locataire SaaS). Chaque table applicative (users, cases, plaidoirie_drafts, "
-        "documents, agenda_events, cabinet_notifications) intègre une clé étrangère cabinet_id indexée, garantissant l'étanchéité des requêtes SQL.",
+        "Contrairement aux projets d'étude simplistes reposant sur quelques tables isolées, la base de données relationnelle PostgreSQL 15 de LexHub "
+        "intègre 29 tables métier rigoureusement normalisées (3e Forme Normale - 3NF), complétées par la table technique alembic_version. "
+        "Aucune table n'est orpheline : chaque entité correspond à une exigence métier concrète (sécurité, déontologie, gestion judiciaire, pipeline d'IA, "
+        "facturation SaaS et conformité légale). Le modèle garantit un cloisonnement multi-tenant absolu grâce à la clé étrangère cabinet_id indexée sur toutes les tables d'affaires.",
+    )
+    table(
+        doc,
+        ["Sous-système fonctionnel", "Tables PostgreSQL associées", "Rôle et justification métier"],
+        [
+            ["1. Multi-Tenancy & Gouvernance", "cabinets, cabinet_invites, membership_requests, cabinet_notifications", "Isolation étanche des cabinets, charte graphique, codes d'adhésion d'équipe, invitations sécurisées et notifications internes."],
+            ["2. Sécurité & Authentification", "users, auth_sessions, email_otps, email_tokens, mfa_recovery_codes", "Comptes utilisateurs (avocat, assistant, admin), rotation et révocation des refresh tokens JWT, OTP par email (6 chiffres) et MFA."],
+            ["3. Gestion Juridique & Dossiers", "cases, case_notes, case_tasks, case_comments, agenda_events", "Fiches dossiers (art. 32 CPC, n° RG, chambre, juge), notes d'audience, planning de tâches, commentaires d'équipe et agenda des délais de recours."],
+            ["4. Atelier de Plaidoirie & IA", "plaidoirie_drafts, plaidoirie_revisions, cabinet_plaidoirie_templates, documents", "Cycle de vie des conclusions (brouillon -> validé -> finalisé), historique des versions, modèles réutilisables et pièces scannées avec OCR MinIO."],
+            ["5. Monétisation & Facturation SaaS", "subscription_plans, cabinet_subscriptions, billing_credit_pack_purchases, billing_invoices, usage_counters, cabinet_referrals, payment_transfer_requests", "Catalogue des forfaits (Découverte, Solo, Cabinet, Entreprise), abonnements, packs de crédits FIFO (12 mois), factures, compteurs de quotas et parrainage."],
+            ["6. Qualification Commerciale", "commercial_leads", "Recueil et traitement des 7 critères de qualification pour l'offre Entreprise et les devis personnalisés Sur mesure."],
+            ["7. Traçabilité & Rétention Légale", "audit_logs, activity_archives, admin_audit_archives", "Journal d'audit immuable (art. 30 Loi 28-08) et archivage automatique à 90 jours pour préserver la performance de la base de données."],
+        ],
+        col_widths=[4.0, 5.0, 7.5],
     )
 
     heading(doc, "4.3 Audit et administration de la base de données : choix d'Adminer sécurisé", 2)
