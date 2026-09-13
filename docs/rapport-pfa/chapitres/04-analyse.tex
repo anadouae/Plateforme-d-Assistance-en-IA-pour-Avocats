@@ -41,14 +41,22 @@ La figure~\ref{fig:uc} retient les cas d'utilisation \textbf{spécifiques} à Le
 \begin{figure}[H]
 \centering
 \begin{tikzpicture}[font=\footnotesize, x=1cm, y=1cm]
+  % Frontière du système LexHub
   \draw[royal!70, thick, rounded corners=4pt] (2.0,-4.0) rectangle (12.2,5.15);
-  \node[font=\bfseries\small,royal] at (7.1,4.82) {Système LexHub};
+  \node[font=\bfseries\small,royal] at (7.1,4.82) {Système LexHub (Frontière applicative)};
 
+  % Acteurs principaux (humains)
   \umlactor{0.45}{3.4}{Avocat};
   \umlactor{0.45}{0.55}{Assistant};
   \umlactor{0.45}{-2.5}{Admin cabinet};
+  
+  % Acteurs secondaires (administration & systèmes externes)
   \umlactor{13.55}{1.4}{Admin plateforme};
 
+  % Héritage UML (généralisation Admin cabinet -> Avocat)
+  \draw[-{Triangle[open,length=5pt,width=5pt]},thick,royal] (0.45,-1.8) -- (0.45,2.6) node[midway,left,font=\tiny\bfseries]{hérite};
+
+  % Cas d'utilisation de l'atelier de plaidoirie
   \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.7cm] (d) at (4.35,3.85) {Dicter / importer\\audio};
   \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.7cm] (c) at (7.45,3.85) {Rédiger la\\plaidoirie};
   \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.7cm] (v) at (4.35,2.25) {Valider\\le brouillon};
@@ -60,8 +68,12 @@ La figure~\ref{fig:uc} retient les cas d'utilisation \textbf{spécifiques} à Le
   \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.7cm] (pl) at (10.35,2.25) {Planning};
   \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.7cm] (eq) at (10.35,0.65) {Inviter\\l'équipe};
   \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.7cm] (bill) at (10.35,-0.95) {Gérer\\l'abonnement};
-  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.7cm] (sus) at (10.35,3.85) {Suspendre\\un cabinet};
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.7cm] (sus) at (10.35,3.85) {Superviser\\les cabinets};
 
+  % Relations d'inclusion <<include>>
+  \draw[dashed,-{Stealth},thick,royal!80] (d) -- node[above,font=\tiny]{<<include>>} (c);
+
+  % Associations acteurs -> cas d'utilisation
   \draw (1.15,3.2) -- (d.west);
   \draw (1.15,3.2) -- (c.west);
   \draw (1.15,3.2) -- (v.west);
@@ -70,15 +82,18 @@ La figure~\ref{fig:uc} retient les cas d'utilisation \textbf{spécifiques} à Le
   \draw (1.15,3.2) -- (dos.west);
   \draw (1.15,3.2) -- (doc.west);
   \draw (1.15,3.2) -- (pl.west);
+  
   \draw (1.15,0.35) -- (p.west);
   \draw (1.15,0.35) -- (e.south west);
   \draw (1.15,0.35) -- (doc.west);
+  
   \draw (1.15,-2.7) -- (eq.west);
   \draw (1.15,-2.7) -- (bill.west);
   \draw (1.15,-2.7) -- (pl.south);
+  
   \draw (12.85,1.2) -- (sus.east);
 \end{tikzpicture}
-\caption{Diagramme de cas d'utilisation --- LexHub (version déployée)}
+\caption{Diagramme de cas d'utilisation UML --- LexHub (version de production)}
 \label{fig:uc}
 \end{figure}
 

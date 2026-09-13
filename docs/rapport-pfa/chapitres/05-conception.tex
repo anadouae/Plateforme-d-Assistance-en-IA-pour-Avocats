@@ -96,22 +96,36 @@ Trois familles suffisent à documenter LexHub sans noyer le lecteur dans des par
 
 \begin{figure}[H]
 \centering
-\begin{tikzpicture}[font=\scriptsize, x=2.4cm, y=-0.52cm]
-  \foreach \x/\lab in {0/Avocat, 1/Navigateur, 2/{API FastAPI}, 3/STT cloud, 4/PostgreSQL} {
+\begin{tikzpicture}[font=\scriptsize, x=2.35cm, y=-0.52cm]
+  % Lignes de vie
+  \foreach \x/\lab in {0/{Avocat}, 1/{Navigateur\\(Web Speech)}, 2/{API FastAPI}, 3/{Routeur LLM\\(IA)}, 4/{PostgreSQL}} {
     \node[align=center,font=\small\bfseries] at (\x,0) {\lab};
-    \draw[linegray,thick] (\x,0.35) -- (\x,12.0);
+    \draw[linegray,thick,dashed] (\x,0.7) -- (\x,12.2);
   }
-  \draw[-{Stealth}] (0,1) -- node[above,font=\tiny]{parole ou fichier} (1,1);
-  \draw[-{Stealth}] (1,2.2) -- node[above,font=\tiny]{audio + JWT} (2,2.2);
-  \draw[-{Stealth}] (2,3.4) -- node[above,font=\tiny]{fichier} (3,3.4);
-  \draw[-{Stealth}] (3,4.6) -- node[above,font=\tiny]{texte brut} (2,4.6);
-  \draw[-{Stealth}] (2,5.8) -- node[above,font=\tiny]{audit} (4,5.8);
-  \draw[-{Stealth}] (2,7.0) -- node[above,font=\tiny]{transcription} (1,7.0);
-  \draw[-{Stealth}] (1,8.4) -- node[above,font=\tiny]{Corriger (forme)} (2,8.4);
-  \draw[-{Stealth}] (2,9.6) -- node[above,font=\tiny]{texte + marques STT} (1,9.6);
-  \node[align=left,font=\tiny] at (2.2,11.0) {Puis rédaction, édition,\\validation / assignation.};
+
+  % Barres d'activation UML
+  \draw[fill=royal!15,draw=royal] (-0.08,1.0) rectangle (0.08,11.5);
+  \draw[fill=royal!15,draw=royal] (0.92,1.2) rectangle (1.08,11.2);
+  \draw[fill=royal!15,draw=royal] (1.92,4.8) rectangle (2.08,10.2);
+  \draw[fill=emerald!20,draw=emerald] (2.92,5.8) rectangle (3.08,8.2);
+  \draw[fill=royal!15,draw=royal] (3.92,8.8) rectangle (4.08,9.8);
+
+  % Messages synchrones et asynchrones
+  \draw[-{Stealth},thick] (0.08,1.4) -- node[above,font=\tiny]{1. Dictée vocale (micro)} (0.92,1.4);
+  \draw[-{Stealth},thick] (1.08,2.2) -- node[above,font=\tiny]{2. Transcription locale temps réel} (1.5,2.2) -- (1.5,2.8) -- (1.08,2.8);
+  \draw[dashed,-{Stealth}] (0.92,3.4) -- node[above,font=\tiny]{3. Affichage texte brut en direct} (0.08,3.4);
+
+  \draw[-{Stealth},thick] (0.08,4.8) -- node[above,font=\tiny]{4. Clic « Corriger la forme » (JWT)} (1.92,4.8);
+  \draw[-{Stealth},thick] (2.08,5.8) -- node[above,font=\tiny]{5. Prompt structuré + contexte dossier} (2.92,5.8);
+  \draw[dashed,-{Stealth}] (2.92,8.0) -- node[above,font=\tiny]{6. Arabe Fusha + surlignage + contrôle} (2.08,8.0);
+
+  \draw[-{Stealth},thick] (2.08,9.0) -- node[above,font=\tiny]{7. Enregistrement brouillon (draft)} (3.92,9.0);
+  \draw[dashed,-{Stealth}] (3.92,9.6) -- node[above,font=\tiny]{8. Confirmation persistance} (2.08,9.6);
+
+  \draw[dashed,-{Stealth}] (1.92,10.2) -- node[above,font=\tiny]{9. Restitution plaidoirie annotée} (1.08,10.2);
+  \draw[dashed,-{Stealth}] (0.92,11.2) -- node[above,font=\tiny]{10. Affichage et révision interactive} (0.08,11.2);
 \end{tikzpicture}
-\caption{Séquence : dictée ou fichier audio, transcription, correction de forme}
+\caption{Diagramme de séquence UML --- Atelier vocal et correction IA}
 \label{fig:seq-stt}
 \end{figure}
 
@@ -120,19 +134,35 @@ Trois familles suffisent à documenter LexHub sans noyer le lecteur dans des par
 \begin{figure}[H]
 \centering
 \begin{tikzpicture}[font=\scriptsize, x=2.35cm, y=-0.52cm]
-  \foreach \x/\lab in {0/Avocat, 1/{API FastAPI}, 2/PostgreSQL, 3/{Temps réel}, 4/Assistant} {
+  % Lignes de vie
+  \foreach \x/\lab in {0/{Avocat}, 1/{API FastAPI}, 2/{PostgreSQL}, 3/{Redis\\Pub/Sub}, 4/{Assistant}} {
     \node[align=center,font=\small\bfseries] at (\x,0) {\lab};
-    \draw[linegray,thick] (\x,0.35) -- (\x,11.2);
+    \draw[linegray,thick,dashed] (\x,0.7) -- (\x,11.8);
   }
-  \draw[-{Stealth}] (0,1.1) -- node[above,font=\tiny]{valider \emph{ou} assigner} (1,1.1);
-  \draw[-{Stealth}] (1,2.3) -- node[above,font=\tiny]{statut = validated} (2,2.3);
-  \draw[-{Stealth}] (1,3.5) -- node[above,font=\tiny]{assigned\_to (opt.)} (2,3.5);
-  \draw[-{Stealth}] (1,4.7) -- node[above,font=\tiny]{événement} (3,4.7);
-  \draw[-{Stealth}] (3,5.9) -- node[above,font=\tiny]{rafraîchir liste} (4,5.9);
-  \draw[-{Stealth}] (1,7.3) -- node[above,font=\tiny]{notification / e-mail} (4,7.3);
-  \draw[-{Stealth}] (4,9.0) -- node[above,font=\tiny]{export / impression} (1,9.0);
+
+  % Barres d'activation UML
+  \draw[fill=royal!15,draw=royal] (-0.08,1.0) rectangle (0.08,4.0);
+  \draw[fill=royal!15,draw=royal] (0.92,1.2) rectangle (1.08,6.8);
+  \draw[fill=royal!15,draw=royal] (1.92,2.0) rectangle (2.08,3.6);
+  \draw[fill=royal!15,draw=royal] (2.92,4.4) rectangle (3.08,6.0);
+  \draw[fill=royal!15,draw=royal] (3.92,5.6) rectangle (4.08,11.2);
+  \draw[fill=royal!15,draw=royal] (0.92,8.8) rectangle (1.08,10.6);
+
+  % Messages
+  \draw[-{Stealth},thick] (0.08,1.4) -- node[above,font=\tiny]{1. Valider le brouillon (assigner opt.)} (0.92,1.4);
+  \draw[-{Stealth},thick] (1.08,2.2) -- node[above,font=\tiny]{2. UPDATE status = 'validated'} (1.92,2.2);
+  \draw[dashed,-{Stealth}] (1.92,3.2) -- node[above,font=\tiny]{3. Statut persisté} (1.08,3.2);
+
+  \draw[-{Stealth},thick] (1.08,4.6) -- node[above,font=\tiny]{4. Émission événement (draft:validated)} (2.92,4.6);
+  \draw[-{Stealth},thick] (2.92,5.8) -- node[above,font=\tiny]{5. Notification temps réel WebSocket} (3.92,5.8);
+
+  \draw[dashed,-{Stealth}] (0.92,6.6) -- node[above,font=\tiny]{6. Accusé de validation affiché} (0.08,6.6);
+
+  \draw[-{Stealth},thick] (3.92,9.0) -- node[above,font=\tiny]{7. Demande export Word (.docx)} (1.08,9.0);
+  \draw[-{Stealth},thick] (1.08,9.6) -- node[above,font=\tiny]{8. Contrôle RBAC \& génération python-docx} (1.5,9.6) -- (1.5,10.2) -- (1.08,10.2);
+  \draw[dashed,-{Stealth}] (1.08,10.6) -- node[above,font=\tiny]{9. Téléchargement document officiel} (3.92,10.6);
 \end{tikzpicture}
-\caption{Séquence : validation, assignation et visibilité de l'assistant}
+\caption{Diagramme de séquence UML --- Validation et gouvernance collaborative}
 \label{fig:seq-val}
 \end{figure}
 
@@ -164,38 +194,58 @@ Trois familles suffisent à documenter LexHub sans noyer le lecteur dans des par
 \subsection{Activité --- atelier plaidoirie}
 \label{sec:activite}
 
+Conformément à la norme internationale OMG UML~2.5, le diagramme d'activité de l'atelier de plaidoirie (Figure~\ref{fig:activite}) modélise le flux d'exécution séquentiel et les embranchements décisionnels. Le point d'entrée est représenté par un \textbf{nœud initial} (disque plein noir), les étapes par des \textbf{actions} (rectangles à coins arrondis), les arbitrages par des \textbf{losanges de décision} dotés de conditions de garde explicites, et l'aboutissement par un \textbf{nœud final d'activité} (œil-de-bœuf constitué d'un cercle plein entouré d'un cercle extérieur).
+
 \begin{figure}[H]
 \centering
 \begin{tikzpicture}[
   font=\small,
-  startstop/.style={ellipse, draw=royal, thick, fill=royal!8, minimum width=1.6cm, align=center},
-  process/.style={rectangle, rounded corners=3pt, draw=royal, thick, fill=white, align=center, minimum width=3.5cm, minimum height=0.68cm},
-  decision/.style={diamond, draw=royal, thick, fill=gold!15, align=center, aspect=2.2, inner sep=1pt, font=\scriptsize}
+  initnode/.style={circle, fill=royal!90!black, inner sep=5.5pt},
+  action/.style={rectangle, rounded corners=5pt, draw=royal, thick, fill=royal!5, align=center, minimum width=4.2cm, minimum height=0.75cm},
+  decision/.style={diamond, draw=royal, thick, fill=gold!20, align=center, aspect=2.0, inner sep=2pt, font=\scriptsize},
+  finalouter/.style={circle, draw=royal!90!black, thick, inner sep=6.0pt},
+  finalinner/.style={circle, fill=royal!90!black, inner sep=3.5pt}
 ]
-  \node[startstop] (s) at (0,0) {Début};
-  \node[process] (dos) at (0,-1.25) {Dossier et pièces};
-  \node[process] (d) at (0,-2.5) {Dicter ou importer l'audio};
-  \node[process] (t) at (0,-3.75) {Transcrire (STT cloud)};
-  \node[process] (c) at (0,-5.0) {Corriger la forme};
-  \node[decision] (q1) at (0,-6.6) {Faits OK ?};
-  \node[process] (r) at (4.35,-6.6) {Relire / trancher};
-  \node[process] (comp) at (0,-8.25) {Rédiger le document};
-  \node[decision] (q2) at (0,-9.85) {Valider ?};
-  \node[process] (exp) at (0,-11.4) {Exporter Word (.docx)};
-  \node[startstop] (e) at (0,-12.55) {Fin};
+  % Nœud initial UML
+  \node[initnode] (s) at (0,0) {};
+
+  % Actions du workflow
+  \node[action] (dos) at (0,-1.3) {Sélection dossier \& pièces (OCR)};
+  \node[action] (d) at (0,-2.6) {Capture vocale (Web Speech API) / audio};
+  \node[action] (c) at (0,-3.9) {Correction de forme \& arabe standard};
+  
+  % Décision 1 : Contrôle des contradictions
+  \node[decision] (q1) at (0,-5.5) {Faits OK ?};
+  \node[action] (r) at (4.5,-5.5) {Arbitrage avocat\\(feuille de clarification)};
+  
+  \node[action] (comp) at (0,-7.2) {Rédaction IA de l'acte \& révision};
+  
+  % Décision 2 : Validation déontologique
+  \node[decision] (q2) at (0,-8.8) {Valider ?};
+  \node[action] (wait) at (4.5,-8.8) {Maintien en brouillon\\(édition ultérieure)};
+  
+  \node[action] (exp) at (0,-10.5) {Génération \& export Word (.docx)};
+  
+  % Nœud final d'activité UML (œil-de-bœuf)
+  \node[finalouter] (e_out) at (0,-11.9) {};
+  \node[finalinner] (e_in) at (0,-11.9) {};
+
+  % Transitions
   \draw[-{Stealth},thick] (s) -- (dos);
   \draw[-{Stealth},thick] (dos) -- (d);
-  \draw[-{Stealth},thick] (d) -- (t);
-  \draw[-{Stealth},thick] (t) -- (c);
+  \draw[-{Stealth},thick] (d) -- (c);
   \draw[-{Stealth},thick] (c) -- (q1);
-  \draw[-{Stealth},thick] (q1) -- node[above,font=\tiny]{non} (r);
+  
+  \draw[-{Stealth},thick] (q1) -- node[above,font=\scriptsize]{\textbf{[Contradictions]}} (r);
   \draw[-{Stealth},thick] (r) |- (c);
-  \draw[-{Stealth},thick] (q1) -- node[right,font=\tiny]{oui} (comp);
+  \draw[-{Stealth},thick] (q1) -- node[right,font=\scriptsize]{\textbf{[Faits cohérents]}} (comp);
+  
   \draw[-{Stealth},thick] (comp) -- (q2);
-  \draw[-{Stealth},thick] (q2) -- node[right,font=\tiny]{oui} (exp);
-  \draw[-{Stealth},thick] (exp) -- (e);
+  \draw[-{Stealth},thick] (q2) -- node[above,font=\scriptsize]{\textbf{[Brouillon]}} (wait);
+  \draw[-{Stealth},thick] (q2) -- node[right,font=\scriptsize]{\textbf{[Validé]}} (exp);
+  \draw[-{Stealth},thick] (exp) -- (e_out);
 \end{tikzpicture}
-\caption{Diagramme d'activité --- atelier plaidoirie}
+\caption{Diagramme d'activité UML 2.5 --- Atelier de plaidoirie (norme stricte)}
 \label{fig:activite}
 \end{figure}
 
