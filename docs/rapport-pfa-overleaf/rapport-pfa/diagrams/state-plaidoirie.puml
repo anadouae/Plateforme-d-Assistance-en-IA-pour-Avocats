@@ -1,0 +1,21 @@
+@startuml state-plaidoirie
+!theme plain
+skinparam shadowing false
+title États d'une plaidoirie (PlaidoirieDraft.status)
+
+[*] --> draft : POST /drafts
+draft --> draft : PATCH (édition)
+draft --> validated : POST .../validate\nou .../assign
+validated --> draft : POST .../unvalidate
+validated --> finalized : PATCH après export\n(markFinalizedAfterExport)
+draft --> finalized : PATCH après export\n(sans validation préalable)
+finalized --> [*]
+
+note right of validated
+  Visible à tous les assistants
+  du cabinet (filtre API).
+end note
+note right of draft
+  Invisible aux assistants.
+end note
+@enduml

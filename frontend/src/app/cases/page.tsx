@@ -284,16 +284,19 @@ export default function CasesPage() {
     try {
       await api.deleteCase(c.id);
       setCases((prev) => prev.filter((x) => x.id !== c.id));
-    } catch {
+    } catch (err) {
       await confirm({
         title: ar ? "تعذّر الحذف." : "Suppression impossible.",
-        description: assistant
-          ? ar
-            ? "دور المساعد لا يسمح بحذف الملفات."
-            : "Le rôle assistant ne permet pas de supprimer un dossier."
-          : ar
-            ? "تحققوا من الصلاحيات أو أعيدوا المحاولة."
-            : "Vérifiez vos droits ou réessayez.",
+        description:
+          err instanceof Error && err.message
+            ? err.message
+            : assistant
+              ? ar
+                ? "دور المساعد لا يسمح بحذف الملفات."
+                : "Le rôle assistant ne permet pas de supprimer un dossier."
+              : ar
+                ? "تحققوا من الصلاحيات أو أعيدوا المحاولة."
+                : "Vérifiez vos droits ou réessayez.",
         confirmLabel: ar ? "حسناً" : "OK",
         cancelLabel: ar ? "إغلاق" : "Fermer",
       });

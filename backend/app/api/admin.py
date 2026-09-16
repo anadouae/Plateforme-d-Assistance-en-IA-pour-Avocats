@@ -136,12 +136,8 @@ def get_cabinet_detail(
             .all()
         )
         for i in inv_rows:
-            st = (i.status or "").lower()
-            kind = (
-                "trial_receipt"
-                if int(i.amount_mad or 0) == 0 or "trial" in st or "essai" in st
-                else "invoice"
-            )
+            if not billing_svc.is_paid_invoice_row(amount_mad=i.amount_mad, status=i.status):
+                continue
             invoices_out.append(
                 AdminInvoiceOut(
                     id=i.id,
@@ -151,7 +147,7 @@ def get_cabinet_detail(
                     status=i.status,
                     billing_cycle=i.billing_cycle,
                     issued_at=i.issued_at or i.created_at,
-                    kind=kind,
+                    kind="invoice",
                 )
             )
         db.commit()

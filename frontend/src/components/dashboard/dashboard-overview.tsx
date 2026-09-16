@@ -108,11 +108,11 @@ export function DashboardOverview() {
   ];
 
   return (
-    <div dir={ar ? "rtl" : "ltr"} className="mx-auto max-w-5xl space-y-6">
+    <div dir={ar ? "rtl" : "ltr"} className="mx-auto max-w-5xl space-y-4 sm:space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <div className="section-title">{t.title}</div>
-          <div className="section-sub">
+          <div className="section-sub hidden sm:block">
             {t.welcome}
             {user?.full_name ? `, ${user.full_name}` : ""}
           </div>
@@ -123,7 +123,7 @@ export function DashboardOverview() {
         </Link>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:gap-3">
         {stats.map((s) => {
           const Icon = s.icon;
           return (

@@ -766,6 +766,10 @@ def delete_plaidoirie_draft(
     if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Brouillon introuvable")
     title = row.title[:80]
+    # Révisions d’abord (FK draft_id sans CASCADE en base)
+    db.query(PlaidoirieRevision).filter(PlaidoirieRevision.draft_id == draft_id).delete(
+        synchronize_session=False
+    )
     db.delete(row)
     log_audit(db, "plaidoirie.draft_delete", user=user, request=request, details=title)
     db.commit()

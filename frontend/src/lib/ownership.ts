@@ -1,13 +1,13 @@
-/** Qui peut supprimer un dossier / une pièce — créateur uniquement. */
-
+/** Qui peut supprimer un dossier — admin cabinet (tout) ou avocat responsable. */
 export function canDeleteCase(opts: {
   role?: string | null;
   userId?: string | null;
   responsibleId?: string | null;
 }): boolean {
   if (opts.role === "assistant_juridique") return false;
+  if (opts.role === "admin_cabinet") return true;
   if (opts.responsibleId) return opts.userId === opts.responsibleId;
-  return opts.role === "admin_cabinet";
+  return false;
 }
 
 export function canDeleteDocument(opts: {

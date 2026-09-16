@@ -21,6 +21,8 @@ import {
 } from "@/lib/plaidoirie-templates";
 import { CASE_DOMAIN_META, type CaseDomain } from "@/lib/case-domains";
 import { useLocaleStore } from "@/store/locale";
+import { useActionToast } from "@/store/action-toast";
+import { clearPleaSession } from "@/lib/plea-session";
 import { cn } from "@/lib/utils";
 
 export const PLEA_DRAFT_RESTORE_KEY = "lexhub_plea_draft_restore";
@@ -63,6 +65,7 @@ export function TemplatePicker({
   const [draftsLoading, setDraftsLoading] = useState(true);
   const [draftBusyId, setDraftBusyId] = useState<string | null>(null);
   const titleId = useId();
+  const pushToast = useActionToast((s) => s.push);
 
   useEffect(() => {
     let cancelled = false;
@@ -407,7 +410,11 @@ export function TemplatePicker({
                   className="flex flex-col gap-3 rounded-[14px] border border-[rgba(26,43,74,0.1)] bg-[rgba(255,252,246,0.75)] p-4 sm:flex-row sm:items-center sm:justify-between"
                 >
                   <div className="min-w-0">
-                    <p className="truncate font-semibold text-[var(--ink)]">
+                    <p
+                      className="line-clamp-2 break-words font-semibold text-[var(--ink)]"
+                      dir="auto"
+                      title={d.title || undefined}
+                    >
                       {d.title || (isAr ? "بدون عنوان" : "Sans titre")}
                     </p>
                     <p className="mt-0.5 text-xs text-[var(--ink-mute)]">{when}</p>
@@ -466,7 +473,24 @@ export function TemplatePicker({
                         setDraftBusyId(d.id);
                         void api
                           .deletePlaidoirieDraft(d.id)
-                          .then(() => setDrafts((prev) => prev.filter((x) => x.id !== d.id)))
+                          .then(() => {
+                            setDrafts((prev) => prev.filter((x) => x.id !== d.id));
+                            if ((d.status || "draft") === "draft") clearPleaSession();
+                            pushToast(
+                              isAr ? "تم حذف المرافعة بنجاح." : "Plaidoirie supprimée avec succès.",
+                              "success",
+                            );
+                          })
+                          .catch((e) => {
+                            pushToast(
+                              e instanceof Error
+                                ? e.message
+                                : isAr
+                                  ? "تعذّر الحذف."
+                                  : "Suppression impossible.",
+                              "error",
+                            );
+                          })
                           .finally(() => setDraftBusyId(null));
                       }}
                     >

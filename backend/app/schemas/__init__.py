@@ -7,16 +7,23 @@ from app.core.password_policy import validate_password_strength
 
 
 class RegisterRequest(BaseModel):
-    cabinet_name: str = Field(..., min_length=2, max_length=255)
-    city: str = Field(..., min_length=2, max_length=100)
-    address: str = Field(..., min_length=5, max_length=500)
-    barreau: str = Field(..., min_length=2, max_length=100)
-    ice: Optional[str] = Field(None, max_length=50)
-    manager_name: str = Field(..., min_length=2, max_length=255)
+    """Inscription minimale : e-mail + mot de passe (+ OTP).
+
+    Les infos cabinet (ville, barreau, adresse, ICE…) sont optionnelles
+    et se complètent ensuite dans Paramètres → Cabinet.
+    """
+
     email: EmailStr
-    phone: Optional[str] = Field(None, max_length=30)
     password: str = Field(..., min_length=12, max_length=72)
     email_otp: str = Field(..., min_length=6, max_length=6)
+    # Optionnels — complétés après accès à l'espace
+    cabinet_name: Optional[str] = Field(None, max_length=255)
+    city: Optional[str] = Field(None, max_length=100)
+    address: Optional[str] = Field(None, max_length=500)
+    barreau: Optional[str] = Field(None, max_length=100)
+    ice: Optional[str] = Field(None, max_length=50)
+    manager_name: Optional[str] = Field(None, max_length=255)
+    phone: Optional[str] = Field(None, max_length=30)
     referral_code: Optional[str] = Field(None, max_length=24)
 
     @field_validator("email")
@@ -96,7 +103,10 @@ class UserResponse(BaseModel):
     cabinet_name: str
     cabinet_name_ar: Optional[str] = None
     cabinet_city: Optional[str] = None
+    cabinet_barreau: Optional[str] = None
+    cabinet_address: Optional[str] = None
     cabinet_has_logo: bool = False
+    cabinet_profile_complete: bool = True
     totp_enabled: bool = False
     mfa_required: bool = False
     has_seen_onboarding_tour: bool = False

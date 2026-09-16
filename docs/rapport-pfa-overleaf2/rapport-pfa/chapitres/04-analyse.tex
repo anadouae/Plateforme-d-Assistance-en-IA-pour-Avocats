@@ -22,7 +22,7 @@ Avocat & avocat &
 Mène l'atelier de plaidoirie (dossier, dictée, correction, rédaction, export), gère ses dossiers et le planning, valide un brouillon pour le rendre visible à l'équipe. Ne paie pas et ne gère pas l'abonnement. \\
 \midrule
 Assistant juridique & assistant\_juridique &
-Consulte uniquement les plaidoiries \textbf{déjà validées}, y dépose des pièces, exporte Word / PDF. N'ouvre pas l'atelier de dictée, n'appelle pas les fonctions d'IA de rédaction, de synthèse documentaire ni de fiche orale. \\
+Consulte uniquement les plaidoiries \textbf{déjà validées} ou \textbf{finalisées}, y dépose des pièces, exporte Word (.docx) et PDF. N'ouvre pas l'atelier de dictée, n'appelle pas les fonctions d'IA de rédaction, de synthèse documentaire ni de fiche orale. \\
 \midrule
 Admin cabinet & admin\_cabinet &
 Dispose de tout le périmètre avocat, plus l'équipe (invitations e-mail), l'abonnement, le logo, le parrainage inter-cabinets et la clôture du cabinet. \\
@@ -36,59 +36,103 @@ Supervise les cabinets (suspension, purge, plans globaux) sans ouvrir le contenu
 \section{Cas d'utilisation}
 \label{sec:uc}
 
-La figure~\ref{fig:uc} retient les cas d'utilisation \textbf{spécifiques} à LexHub. Les parcours génériques (connexion, saisie d'un OTP, CRUD banal) ne sont pas diagrammés : ils n'apportent rien à la compréhension du produit. Cloudflare \textbf{Turnstile} n'est pas une ellipse métier : c'est un contrôle d'abus sur la connexion (section~\ref{sec:securite}). Les associations montrent qui déclenche quoi ; l'admin cabinet hérite des cas de l'avocat.
+La figure~\ref{fig:uc} retient les cas d'utilisation \textbf{spécifiques} à LexHub (hors login / OTP génériques). L'admin cabinet hérite de l'atelier avocat. La source Mermaid (aperçu GitHub / mermaid.live) est fournie dans \texttt{diagrams/uc-lexhub.mmd}.
 
 \begin{figure}[H]
 \centering
 \begin{tikzpicture}[font=\footnotesize, x=1cm, y=1cm]
-  \draw[royal!70, thick, rounded corners=4pt] (2.0,-4.0) rectangle (12.2,5.15);
-  \node[font=\bfseries\small,royal] at (7.1,4.82) {Système LexHub};
+  \draw[royal!65, thick, rounded corners=5pt] (2.2,-3.6) rectangle (11.6,4.6);
+  \node[font=\bfseries\small,royal] at (6.9,4.25) {LexHub};
 
-  \umlactor{0.45}{3.4}{Avocat};
-  \umlactor{0.45}{0.55}{Assistant};
-  \umlactor{0.45}{-2.5}{Admin cabinet};
-  \umlactor{13.55}{1.4}{Admin plateforme};
+  \umlactor{0.5}{2.8}{Avocat};
+  \umlactor{0.5}{0.2}{Assistant};
+  \umlactor{0.5}{-2.2}{Admin cabinet};
+  \umlactor{13.3}{1.0}{Admin plateforme};
 
-  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.7cm] (d) at (4.35,3.85) {Dicter / importer\\audio};
-  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.7cm] (c) at (7.45,3.85) {Rédiger la\\plaidoirie};
-  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.7cm] (v) at (4.35,2.25) {Valider\\le brouillon};
-  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.7cm] (a) at (7.45,2.25) {Assigner\\un assistant};
-  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.7cm] (e) at (4.35,0.65) {Exporter\\Word / PDF};
-  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.7cm] (p) at (7.45,0.65) {Consulter\\plaidoiries validées};
-  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.7cm] (dos) at (4.35,-0.95) {Gérer\\dossiers};
-  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.7cm] (doc) at (7.45,-0.95) {Pièces / OCR};
-  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.7cm] (pl) at (10.35,2.25) {Planning};
-  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.7cm] (eq) at (10.35,0.65) {Inviter\\l'équipe};
-  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.7cm] (bill) at (10.35,-0.95) {Gérer\\l'abonnement};
-  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.7cm] (sus) at (10.35,3.85) {Suspendre\\un cabinet};
+  \draw[-{Triangle[open,length=5pt,width=5pt]},thick,royal!70]
+    (0.5,-1.55) -- (0.5,2.05) node[midway,left,font=\tiny]{hérite};
 
-  \draw (1.15,3.2) -- (d.west);
-  \draw (1.15,3.2) -- (c.west);
-  \draw (1.15,3.2) -- (v.west);
-  \draw (1.15,3.2) -- (a.west);
-  \draw (1.15,3.2) -- (e.west);
-  \draw (1.15,3.2) -- (dos.west);
-  \draw (1.15,3.2) -- (doc.west);
-  \draw (1.15,3.2) -- (pl.west);
-  \draw (1.15,0.35) -- (p.west);
-  \draw (1.15,0.35) -- (e.south west);
-  \draw (1.15,0.35) -- (doc.west);
-  \draw (1.15,-2.7) -- (eq.west);
-  \draw (1.15,-2.7) -- (bill.west);
-  \draw (1.15,-2.7) -- (pl.south);
-  \draw (12.85,1.2) -- (sus.east);
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2.5pt,fill=white,minimum width=2.55cm] (uc1) at (4.2,3.3) {Dossier\\\& pièces};
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2.5pt,fill=white,minimum width=2.55cm] (uc2) at (6.9,3.3) {Dicter /\\audio};
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2.5pt,fill=white,minimum width=2.55cm] (uc3) at (9.6,3.3) {Corriger\\forme};
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2.5pt,fill=white,minimum width=2.55cm] (uc4) at (4.2,1.6) {Rédiger\\plaidoirie};
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2.5pt,fill=white,minimum width=2.55cm] (uc5) at (6.9,1.6) {Valider};
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2.5pt,fill=white,minimum width=2.55cm] (uc6) at (9.6,1.6) {Assigner};
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2.5pt,fill=white,minimum width=2.55cm] (uc7) at (4.2,-0.1) {Exporter\\Word/PDF};
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2.5pt,fill=white,minimum width=2.55cm] (uc8) at (6.9,-0.1) {Voir\\validées};
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2.5pt,fill=white,minimum width=2.55cm] (uc9) at (9.6,-0.1) {Inviter\\équipe};
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.35cm] (uc10) at (4.2,-1.8) {Abonnement};
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.35cm] (uc11) at (6.9,-1.8) {Planning};
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.35cm] (uc12) at (9.6,-1.55) {Suspendre\\cabinet};
+  \node[ellipse,draw=royal,thick,align=center,inner sep=2pt,fill=white,minimum width=2.35cm] (uc12a) at (9.6,-3.0) {Usage\\\& plans};
+
+  \draw[dashed,-{Stealth},thick,royal!60] (uc2) -- node[above,font=\tiny]{<<i>>} (uc3);
+  \draw[dashed,-{Stealth},thick,royal!60] (uc6) -- node[above,font=\tiny]{<<i>>} (uc5);
+
+  \draw (1.2,2.6) -- (uc1.west);
+  \draw (1.2,2.6) -- (uc2.west);
+  \draw (1.2,2.6) -- (uc3.west);
+  \draw (1.2,2.6) -- (uc4.west);
+  \draw (1.2,2.6) -- (uc5.west);
+  \draw (1.2,2.6) -- (uc6.west);
+  \draw (1.2,2.6) -- (uc7.west);
+  \draw (1.2,2.6) -- (uc11.west);
+
+  \draw (1.2,0.0) -- (uc8.west);
+  \draw (1.2,0.0) -- (uc7.south west);
+
+  \draw (1.2,-2.4) -- (uc9.west);
+  \draw (1.2,-2.4) -- (uc10.west);
+
+  \draw (12.6,0.8) -- (uc12.east);
+  \draw (12.6,0.8) -- (uc12a.east);
 \end{tikzpicture}
-\caption{Diagramme de cas d'utilisation --- LexHub (version déployée)}
+\caption{Diagramme de cas d'utilisation UML --- LexHub (cas principaux)}
 \label{fig:uc}
 \end{figure}
 
+\section{Contrôle d'accès (RBAC) --- vérité produit}
+\label{sec:acces}
+
+Le « diagramme d'accès » de LexHub n'est pas un schéma réseau : c'est la \textbf{matrice des droits} réellement appliquée par l'API (JWT + rôle + \texttt{cabinet\_id}). La figure~\ref{fig:acces} synthétise ce qui est autorisé ; tout le reste est refusé côté serveur (pas seulement masqué dans l'UI).
+
+\begin{table}[H]
+\centering
+\caption{Matrice de contrôle d'accès LexHub (production)}
+\label{fig:acces}
+\small
+\renewcommand{\arraystretch}{1.22}
+\begin{tabular}{@{}p{4.4cm}cccc@{}}
+\toprule
+\textbf{Capacité} & \textbf{Avocat} & \textbf{Assistant} & \textbf{Admin cab.} & \textbf{Admin plat.} \\
+\midrule
+Isolation par cabinet & oui & oui & oui & n/a \\
+Atelier dictée / rédaction IA & oui & non & oui & non \\
+Voir brouillons (\texttt{draft}) & oui & non & oui & non \\
+Voir plaidoiries validées / finalisées & oui & oui & oui & non \\
+Exporter Word (.docx) / PDF & oui & oui\textsuperscript{*} & oui & non \\
+Valider / assigner & oui & non & oui & non \\
+Inviter l'équipe & non & non & oui & non \\
+Abonnement / packs / logo & non & non & oui & non \\
+Suspendre / purger un cabinet & non & non & non & oui \\
+Plans globaux, leads, logs, coach & non & non & non & oui \\
+Lire le contenu des affaires & oui\textsuperscript{\dag} & limité\textsuperscript{*} & oui\textsuperscript{\dag} & \textbf{non} \\
+\bottomrule
+\end{tabular}
+
 \vspace{0.35em}
-\begin{center}
-\fbox{\parbox{0.90\textwidth}{\centering\vspace{1.6cm}
-\textit{Emplacement pour un export UML (StarUML / PlantUML) si une figure vectorielle distincte est exigée.}\\[0.35em]
-{\footnotesize Source : \texttt{diagrams/uc-lexhub.puml}}
-\vspace{1.6cm}}}
-\end{center}
+{\footnotesize
+\textsuperscript{*}~uniquement les plaidoiries au statut \textit{validated} ou \textit{finalized} (pas les brouillons).
+\textsuperscript{\dag}~uniquement dans \emph{son} cabinet (\texttt{cabinet\_id}).
+}
+\end{table}
+
+\paragraph{Règles à retenir pour la soutenance.}
+\begin{itemize}[leftmargin=1.4em]
+  \item L'\textbf{assignation} oriente le travail ; elle \textbf{ne crée pas} un droit exclusif. Tout assistant du cabinet voit les plaidoiries validées.
+  \item L'\textbf{admin plateforme} gère l'exploitation (cabinets, plans, audit) \textbf{sans} ouvrir dossiers ni pièces --- secret professionnel.
+  \item Après trois échecs de login : Cloudflare Turnstile ; le jeton est vérifié par l'API.
+\end{itemize}
 
 \section{Exigences fonctionnelles}
 
@@ -104,10 +148,11 @@ Les exigences ci-dessous décrivent le \textbf{produit livré}. Elles ne portent
 \paragraph{Atelier de plaidoirie.}
 \begin{itemize}[leftmargin=1.4em]
   \item \textbf{EF-PL-1.} Parcours en cinq étapes : \textbf{Dossier \& pièces}, \textbf{Dictée}, \textbf{Transcription}, \textbf{Rédaction IA}, \textbf{Export}. La feuille de clarification et le chat de révision sont \emph{intégrés} aux étapes 3--4 ; ce ne sont pas des étapes supplémentaires du rail.
-  \item \textbf{EF-PL-2.} Dictée : micro du navigateur \emph{ou} import d'un fichier audio ; transcription par API vocale cloud.
-  \item \textbf{EF-PL-3.} Bouton \textbf{Corriger} : correction de forme (arabe standard), sans résumé ni invention ; surlignage des substitutions STT à relire ; alertes lorsque des faits contradictoires (numéros, dates, montants, noms) coexistent dans la dictée.
-  \item \textbf{EF-PL-4.} Composition de la plaidoirie à partir du dossier, des pièces et de la dictée corrigée, sans inventer un fait, un article ou un montant absent de ces sources.
-  \item \textbf{EF-PL-5.} Export Word et PDF au format de cabinet (en-tête, typographie arabe RTL, logo centré). Après export : statut \textbf{finalisée}.
+  \item \textbf{EF-PL-2.} Dictée : reconnaissance vocale native du navigateur (Chrome / Edge, Web Speech API) avec aperçu instantané, ou capture micro via \textbf{MediaRecorder $\rightarrow$ Whisper} (OpenAI) --- notamment sous Firefox --- ou import fichier audio. La langue de dictée (arabe / français) peut être détectée \textbf{automatiquement} sans basculer toute l'interface.
+  \item \textbf{EF-PL-3.} Bouton \textbf{Corriger} : correction de forme (arabe standard), tolérante aux fautes de frappe / STT, sans résumé ni invention ; surlignage des substitutions à relire ; alertes lorsque des faits contradictoires (numéros, dates, montants, noms) coexistent dans la dictée.
+  \item \textbf{EF-PL-4.} Composition de la plaidoirie à partir du dossier, des pièces et de la dictée corrigée, sans inventer un fait, un article ou un montant absent de ces sources. Avant rédaction : \textbf{clarification QCM} (0 à 5 questions) générée par le LLM après lecture anonymisée du dossier et de la dictée ; l'avocat confirme ou passe.
+  \item \textbf{EF-PL-5.} Après rédaction : panneau \textbf{Assistant IA --- modifications} (chat) : question et/ou consigne en langage naturel (fautes acceptées) ; l'IA \textbf{répond} dans le chat \textbf{et} met à jour le document (ex.\ remplir \texttt{خامساً} / \texttt{لهذه الأسباب}). Contrôles : \textbf{Annuler} / \textbf{Modifier la requête}, micro avec bandeau d'écoute et bouton \textbf{Terminé} (détection FR/AR).
+  \item \textbf{EF-PL-6.} Export officiel Word (.docx) --- standard modifiable des tribunaux marocains (en-tête bilingue, Noto Naskh RTL, armoiries) --- \textbf{et} export PDF (même mise en page). Après export réussi : statut \textbf{finalisée} (mise à jour côté client).
 \end{itemize}
 
 \paragraph{Collaboration.}
@@ -160,7 +205,7 @@ ENF-7 & Observabilité & E-mails transactionnels ; notifications temps réel ; p
 \begin{enumerate}[leftmargin=1.4em]
   \item Un brouillon n'est pas visible des assistants.
   \item La \textbf{validation} rend la plaidoirie visible de \emph{tous} les assistants du cabinet.
-  \item L'\textbf{export} Word/PDF passe le statut à \textbf{finalisée} (distinct de la validation assistant).
+  \item L'\textbf{export} Word (.docx) / PDF, puis statut \textbf{finalisée} via l'UI (distinct de la validation assistant).
   \item L'\textbf{assignation} valide si besoin et met la plaidoirie en avant pour un assistant nommé ; elle ne crée pas un droit d'accès exclusif.
   \item L'\textbf{épinglage} ordonne la liste, sans changer le statut.
   \item L'admin plateforme suspend un cabinet ; il ne lit pas les dossiers.
@@ -169,10 +214,8 @@ ENF-7 & Observabilité & E-mails transactionnels ; notifications temps réel ; p
 \section{Périmètre fonctionnel}
 \label{sec:perimetre}
 
-Le produit déployé sur \url{https://lexhub.space} couvre un \textbf{espace de travail de cabinet} dont le cœur est l'atelier voix~$\rightarrow$~document. Autour de ce cœur, dossiers, pièces, planning et équipe ne sont pas des annexes décoratives : sans eux, la plaidoirie n'aurait ni contexte, ni destinataire interne, ni trace.
-
 \paragraph{Dans le périmètre (livré).}
-L'atelier en cinq étapes ; l'isolation multi-cabinets et les quatre rôles ; l'invitation d'équipe par e-mail ; l'export officiel ; le modèle d'abonnement (essai, plans, packs, sièges) ; le parrainage inter-cabinets ; la supervision plateforme sans lecture des affaires.
+Atelier en cinq étapes ; isolation multi-cabinets et quatre rôles ; invitation d'équipe ; export Word/PDF ; abonnement (essai, plans, packs, sièges) ; parrainage ; supervision plateforme sans lecture des affaires.
 
 \paragraph{Hors périmètre (volontaire).}
-LexHub n'est pas un portail ministériel, ni un logiciel de comptabilité, ni un chatbot juridique autonome. Le paiement carte opérateur marocain dispose d'un environnement technique prêt ; le débit réel n'est pas activé à la date du rapport (simulation). Ces limites sont des choix de produit, pas des oublis de cadrage.
+Pas de portail ministériel, ni de comptabilité cabinet, ni de chatbot juridique autonome. Le paiement carte opérateur dispose d'un environnement technique prêt ; le débit réel n'est pas activé à la date du rapport (simulation).

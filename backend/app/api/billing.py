@@ -450,15 +450,10 @@ def billing_history(
                 "issued_at": i.issued_at.isoformat() if i.issued_at else (
                     i.created_at.isoformat() if i.created_at else None
                 ),
-                "kind": (
-                    "trial_receipt"
-                    if int(i.amount_mad or 0) == 0
-                    or "trial" in (i.status or "").lower()
-                    or "essai" in (i.status or "").lower()
-                    else "invoice"
-                ),
+                "kind": "invoice",
             }
             for i in invoices
+            if billing_svc.is_paid_invoice_row(amount_mad=i.amount_mad, status=i.status)
         ],
     }
 
@@ -753,7 +748,7 @@ def get_invoice(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    from app.models import BillingInvoice
+    from app.models import BillingInvoice, Cabinet
 
     inv = db.query(BillingInvoice).filter(BillingInvoice.id == invoice_id).first()
     if not inv:
@@ -765,13 +760,20 @@ def get_invoice(
             status_code=403,
             detail="Seul le responsable du cabinet peut consulter les factures.",
         )
+    cab = db.query(Cabinet).filter(Cabinet.id == inv.cabinet_id).first()
+    html_doc = billing_svc.invoice_html_from_row(
+        inv,
+        cabinet_name=(cab.name if cab else "") or "",
+        address=getattr(cab, "address", None) or "",
+        city=getattr(cab, "city", None) or "",
+    )
     return {
         "id": inv.id,
         "number": inv.number,
         "plan_name": inv.plan_name,
         "amount_mad": inv.amount_mad,
         "status": inv.status,
-        "html": inv.pdf_html,
+        "html": html_doc,
         "issued_at": inv.issued_at.isoformat() if inv.issued_at else None,
         "kind": (
             "trial_receipt"
@@ -784,14 +786,16 @@ def get_invoice(
 
 
 @router.get("/invoices/{invoice_id}/download")
-def download_invoice_html(
+def download_invoice_pdf(
     invoice_id: str,
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Téléchargement HTML imprimable (Enregistrer en PDF via le navigateur)."""
-    from fastapi.responses import HTMLResponse
-    from app.models import BillingInvoice
+    """Télécharge un vrai fichier PDF (pas la boîte Imprimer du navigateur)."""
+    from urllib.parse import quote
+
+    from fastapi.responses import Response
+    from app.models import BillingInvoice, Cabinet
 
     inv = db.query(BillingInvoice).filter(BillingInvoice.id == invoice_id).first()
     if not inv:
@@ -803,12 +807,35 @@ def download_invoice_html(
             status_code=403,
             detail="Seul le responsable du cabinet peut télécharger les factures.",
         )
-    html = inv.pdf_html or f"<html><body><p>Facture {inv.number} — contenu indisponible.</p></body></html>"
-    filename = f"LexHub-{inv.number}.html".replace("/", "-")
-    return HTMLResponse(
-        content=html,
+    cab = db.query(Cabinet).filter(Cabinet.id == inv.cabinet_id).first()
+    try:
+        pdf_bytes = billing_svc.build_invoice_pdf_bytes(
+            number=inv.number or "facture",
+            issued_at=inv.issued_at,
+            cabinet_name=(cab.name if cab else "") or "Cabinet",
+            address=getattr(cab, "address", None) or "",
+            city=getattr(cab, "city", None) or "",
+            plan_name=inv.plan_name or "LexHub",
+            period_label=inv.period_label or "",
+            amount_mad=int(inv.amount_mad or 0),
+            billing_cycle=inv.billing_cycle or "",
+            status=inv.status or "",
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Export PDF impossible: {exc}",
+        ) from exc
+
+    safe_ascii = f"LexHub-{(inv.number or 'facture').replace('/', '-')}.pdf"
+    encoded = quote(safe_ascii)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
         headers={
-            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Disposition": (
+                f'attachment; filename="{safe_ascii}"; filename*=UTF-8\'\'{encoded}'
+            ),
             "Cache-Control": "no-store",
         },
     )

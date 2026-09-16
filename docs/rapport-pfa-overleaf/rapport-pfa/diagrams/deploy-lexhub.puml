@@ -1,26 +1,34 @@
 @startuml deploy-lexhub
 skinparam shadowing false
 node "Client" {
-  [Navigateur]
+  [Navigateur\n(Web Speech ou MediaRecorder)] as Nav
 }
 node "VPS lexhub.space" {
   [Caddy TLS] as Caddy
   [Frontend Next.js] as FE
   [Backend FastAPI] as BE
+  [Celery] as CEL
   database PostgreSQL
   queue Redis
   storage MinIO
 }
 cloud "Services cloud" {
-  [STT API]
+  [Whisper STT]
+  [OCR API]
   [LLM API]
+  [E-mail]
+  [Cloudflare Turnstile]
 }
-[Navigateur] --> Caddy
+Nav --> Caddy : HTTPS
 Caddy --> FE
 Caddy --> BE
 BE --> PostgreSQL
 BE --> Redis
 BE --> MinIO
-BE --> [STT API]
+BE --> CEL
+BE --> [Whisper STT]
+BE --> [OCR API]
 BE --> [LLM API]
+BE --> [E-mail]
+BE ..> [Cloudflare Turnstile] : vérif. login
 @enduml

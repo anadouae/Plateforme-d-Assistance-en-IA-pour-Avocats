@@ -1,0 +1,61 @@
+%% Diagramme de cas d'utilisation LexHub — source Mermaid
+%% Fichier : diagrams/uc-lexhub.mmd
+
+flowchart LR
+  Avocat((Avocat))
+  AdminCab((Admin cabinet))
+  Asst((Assistant))
+  Plat((Admin plateforme))
+
+  AdminCab -.->|hérite atelier| Avocat
+
+  subgraph LEX["Système LexHub"]
+    direction TB
+
+    subgraph ATELIER["Atelier plaidoirie"]
+      UC1([Gérer dossier et pièces])
+      UC2([Dicter / importer audio])
+      UC3([Corriger la forme])
+      UC4([Rédiger la plaidoirie])
+      UC5([Valider le brouillon])
+      UC6([Assigner un assistant])
+      UC7([Exporter Word .docx et PDF])
+    end
+
+    subgraph CAB["Espace cabinet"]
+      UC8([Consulter plaidoiries validées])
+      UC9([Inviter l'équipe])
+      UC10([Gérer l'abonnement])
+      UC11([Gérer le planning])
+    end
+
+    subgraph SUP["Supervision"]
+      UC12a([Vue usage et plans])
+      UC12([Suspendre / purger cabinet])
+      UC12b([Journal d'audit])
+      UC12c([Coach exploitation])
+    end
+  end
+
+  Avocat --> UC1
+  Avocat --> UC2
+  Avocat --> UC3
+  Avocat --> UC4
+  Avocat --> UC5
+  Avocat --> UC6
+  Avocat --> UC7
+  Avocat --> UC11
+
+  UC2 -.->|include| UC3
+  UC6 -.->|include| UC5
+
+  Asst --> UC8
+  Asst --> UC7
+
+  AdminCab --> UC9
+  AdminCab --> UC10
+
+  Plat --> UC12a
+  Plat --> UC12
+  Plat --> UC12b
+  Plat --> UC12c

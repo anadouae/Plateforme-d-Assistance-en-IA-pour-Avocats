@@ -15,15 +15,19 @@ export function stripExportHeaderFromBody(body: string): string {
   let inHeader = true;
   const headerRe =
     /^(?:المملكة\s*المغربية|Royaume\s+du\s+Maroc|المحكمة|الجهة\s*القضائية|رقم\s*الملف|تاريخ\s*(?:الجلسة|التحرير)|المكتب|المحامي|المحامية|محامي|محامية)/i;
+  const introKeepRe =
+    /^(?:سيدي\s*الرئيس|حضرة\s*(?:المحكمة|القاضي)|السيد\s+رئيس|السادة\s+القضاة|Monsieur\s+le\s+[Pp]r[eé]sident|Madame\s+la\s+[Pp]r[eé]sidente)/i;
 
   for (const raw of lines) {
     const line = raw.trim();
     if (inHeader) {
       if (!line) continue;
       if (headerRe.test(line) || /^[\.\…]{3,}$/.test(line)) continue;
-      if (/^[\d]+[\)\.]?\s*[\u0600-\u06FF]/.test(line) && line.length < 80) {
+      if (introKeepRe.test(line)) {
         inHeader = false;
-      } else if (/^(تحديد|أولاً|ثانياً|III|II|I[\.\)]|مرافعة|مذكرة|استنتاجات)/.test(line)) {
+      } else if (/^[\d]+[\)\.]?\s*[\u0600-\u06FF]/.test(line) && line.length < 80) {
+        inHeader = false;
+      } else if (/^(تحديد|أولاً|ثانياً|ثالثاً|رابعاً|خامساً|III|II|I[\.\)]|مرافعة|مذكرة|استنتاجات)/.test(line)) {
         inHeader = false;
       } else if (!headerRe.test(line) && line.length > 40) {
         inHeader = false;

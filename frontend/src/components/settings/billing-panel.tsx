@@ -1092,14 +1092,14 @@ export function BillingPanel() {
         <CardContent className="space-y-3 text-sm">
           <div className="rounded-xl border border-dashed border-slate-200 bg-[#F7F8FC] px-4 py-3 text-xs text-slate-600">
             {ar
-              ? "إيصالات التجربة والفواتير تظهر هنا. معاينة، ثم PDF (طباعة / حفظ كـ PDF) أو تنزيل الملف."
-              : "Reçus d’essai et factures d’abonnement. Aperçu, puis PDF (Imprimer → Enregistrer en PDF) ou téléchargement du fichier."}
+              ? "تظهر هنا فقط الفواتير المدفوعة (أشهر مدفوعة، أكثر من 0 درهم). معاينة أو PDF (طباعة ← حفظ كـ PDF)."
+              : "Seules les factures payantes (> 0 MAD) apparaissent ici. Aperçu, ou PDF (Imprimer → Enregistrer en PDF)."}
           </div>
           {inTrial ? (
             <p className="text-xs text-amber-800">
               {ar
-                ? "أثناء التجربة: قد يظهر إيصال تأكيد (0 درهم). الفواتير المدفوعة تظهر بعد نهاية التجربة."
-                : "Pendant l’essai : un reçu de confirmation (0 MAD) peut apparaître. Les factures payantes viennent après la fin d’essai."}
+                ? "أثناء التجربة: لا فاتورة بـ 0 درهم في هذه القائمة. الفواتير تظهر بعد الدفع الحقيقي."
+                : "Pendant l’essai : aucun reçu à 0 MAD dans cette liste. Les factures apparaissent après un paiement réel."}
             </p>
           ) : null}
           <InvoicesList

@@ -130,7 +130,9 @@ export function UnifiedAuth({ initialTab = "login" }: { initialTab?: AuthTab }) 
       </header>
 
       <div className="relative z-10 mx-auto grid max-w-6xl gap-6 px-4 py-6 lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:px-8">
-        <AuthProductDemo />
+        <div className="hidden lg:block">
+          <AuthProductDemo />
+        </div>
 
         <div className="order-2 lg:order-1">
           <div className="auth-glass-card border border-[rgba(140,170,255,0.28)] p-5 shadow-xl sm:p-7">
@@ -452,7 +454,6 @@ function LoginPanel({ onGo }: { onGo: (t: AuthTab) => void }) {
 }
 
 function RegisterStepper({ onGo }: { onGo: (t: AuthTab) => void }) {
-  const router = useRouter();
   const setAuth = useAuthStore((s) => s.setAuth);
   const auth = useTranslations().auth;
   const locale = useClientLocale();
@@ -479,7 +480,7 @@ function RegisterStepper({ onGo }: { onGo: (t: AuthTab) => void }) {
       saveBillingIntent({ plan, cycle, intent: intent || (plan === "free" ? "free" : "trial") });
     }
     if (draft) {
-      setStep(draft.step);
+      setStep(Math.min(2, draft.step));
       setForm({
         ...draft.form,
         email: emailQ || draft.form.email,
@@ -572,20 +573,6 @@ function RegisterStepper({ onGo }: { onGo: (t: AuthTab) => void }) {
         if (!ok) return;
       }
       setStep(2);
-      return;
-    }
-    if (step === 2) {
-      if (form.cabinet_name.trim().length < 2) return setError(auth.fieldRequired);
-      if (form.city.trim().length < 2) return setError(auth.fieldRequired);
-      if (form.barreau.trim().length < 2) return setError(auth.fieldRequired);
-      if (form.address.trim().length < 5) return setError(auth.fieldRequired);
-      // Téléphone optionnel — compléter plus tard dans Paramètres
-      setStep(3);
-      return;
-    }
-    if (step === 3) {
-      if (form.manager_name.trim().length < 2) return setError(auth.fieldRequired);
-      setStep(4);
     }
   }
 
@@ -599,14 +586,7 @@ function RegisterStepper({ onGo }: { onGo: (t: AuthTab) => void }) {
     try {
       const email = normalizeEmail(form.email);
       await api.register({
-        cabinet_name: form.cabinet_name.trim(),
-        city: form.city.trim(),
-        address: form.address.trim(),
-        barreau: form.barreau.trim(),
-        ice: form.ice.trim() || undefined,
-        manager_name: form.manager_name.trim(),
         email,
-        phone: form.phone.trim() || undefined,
         password: form.password,
         email_otp: emailOtp,
         referral_code: form.referral_code.trim() || undefined,
@@ -629,15 +609,11 @@ function RegisterStepper({ onGo }: { onGo: (t: AuthTab) => void }) {
         : otpSent
           ? auth.confirmOtp
           : auth.sendOtp
-      : step === 4
-        ? auth.registerSubmit
-        : auth.continue;
+      : auth.registerSubmit;
 
   const regSteps = [
     { key: 1, label: auth.stepEmail },
-    { key: 2, label: auth.stepCabinet },
-    { key: 3, label: auth.stepManager },
-    { key: 4, label: auth.stepSecurity },
+    { key: 2, label: auth.stepSecurity },
   ];
 
   return (
@@ -645,7 +621,7 @@ function RegisterStepper({ onGo }: { onGo: (t: AuthTab) => void }) {
       <h2 className="text-center font-serif text-2xl text-[#0B1A4D]">{auth.registerTitle}</h2>
       <p className="mt-1 text-center text-sm text-slate-500">{auth.registerSubtitle}</p>
 
-      <div className="auth-stepper mt-5">
+      <div className="auth-stepper auth-stepper--2 mt-5">
         {regSteps.map((s) => (
           <div
             key={s.key}
@@ -667,6 +643,7 @@ function RegisterStepper({ onGo }: { onGo: (t: AuthTab) => void }) {
             <Input
               label={auth.email}
               type="email"
+              autoComplete="email"
               value={form.email}
               onChange={(e) => update("email", e.target.value)}
               disabled={emailVerified || loading}
@@ -690,96 +667,6 @@ function RegisterStepper({ onGo }: { onGo: (t: AuthTab) => void }) {
         )}
 
         {step === 2 && (
-          <div className="space-y-3">
-            <p className="text-xs leading-relaxed text-slate-500">{auth.stepCabinetHint}</p>
-            <div className="grid gap-3 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <Input
-                label={auth.cabinetName}
-                hint={auth.cabinetNameHint}
-                placeholder={auth.cabinetNamePlaceholder}
-                value={form.cabinet_name}
-                onChange={(e) => update("cabinet_name", e.target.value)}
-                className="h-11 rounded-xl bg-white"
-              />
-            </div>
-            <Input
-              label={auth.city}
-              hint={auth.cityHint}
-              placeholder={auth.cityPlaceholder}
-              value={form.city}
-              onChange={(e) => update("city", e.target.value)}
-              className="h-11 rounded-xl bg-white"
-            />
-            <Input
-              label={auth.barreau}
-              hint={auth.barreauHint}
-              placeholder={auth.barreauPlaceholder}
-              value={form.barreau}
-              onChange={(e) => update("barreau", e.target.value)}
-              className="h-11 rounded-xl bg-white"
-            />
-            <div className="sm:col-span-2">
-              <Input
-                label={auth.address}
-                hint={auth.addressHint}
-                placeholder={auth.addressPlaceholder}
-                value={form.address}
-                onChange={(e) => update("address", e.target.value)}
-                className="h-11 rounded-xl bg-white"
-              />
-            </div>
-            <Input
-              label={`${auth.phone} (${auth.optional})`}
-              hint={
-                ar
-                  ? "اختياري — يمكن إضافته لاحقاً من الإعدادات"
-                  : "Optionnel — vous pourrez le compléter dans Paramètres"
-              }
-              placeholder={auth.phonePlaceholder}
-              type="tel"
-              value={form.phone}
-              onChange={(e) => update("phone", e.target.value)}
-              className="h-11 rounded-xl bg-white"
-            />
-            <Input
-              label={`${auth.ice} (${auth.optional})`}
-              hint={auth.iceHint}
-              placeholder={auth.icePlaceholder}
-              value={form.ice}
-              onChange={(e) => update("ice", e.target.value)}
-              className="h-11 rounded-xl bg-white"
-            />
-            <div className="sm:col-span-2">
-              <Input
-                label={ar ? "رمز الإحالة (اختياري)" : "Code de parrainage (optionnel)"}
-                hint={
-                  ar
-                    ? "إذا دعاكم مكتب آخر — +14 يوماً عند بدء Solo/Cabinet"
-                    : "Si un cabinet vous a invité — +14 jours d’essai en démarrant Solo/Cabinet"
-                }
-                placeholder="LH-XXXX-XXXX"
-                value={form.referral_code}
-                onChange={(e) => update("referral_code", e.target.value.toUpperCase())}
-                className="h-11 rounded-xl bg-white font-mono tracking-wide"
-              />
-            </div>
-            </div>
-          </div>
-        )}
-
-        {step === 3 && (
-          <Input
-            label={auth.managerName}
-            hint={auth.managerNameHint}
-            placeholder={auth.managerNamePlaceholder}
-            value={form.manager_name}
-            onChange={(e) => update("manager_name", e.target.value)}
-            className="h-11 rounded-xl bg-white"
-          />
-        )}
-
-        {step === 4 && (
           <>
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
@@ -803,7 +690,7 @@ function RegisterStepper({ onGo }: { onGo: (t: AuthTab) => void }) {
                         />
                       ))}
                     </div>
-                    <ul className="grid gap-1 text-[11px] text-[#2C3B5C] sm:col-span-2">
+                    <ul className="grid gap-1 text-[11px] text-[#2C3B5C]">
                       {(
                         [
                           ["length", auth.pwdRuleLength, rules.length],
@@ -833,6 +720,18 @@ function RegisterStepper({ onGo }: { onGo: (t: AuthTab) => void }) {
                 error={!passwordsMatch ? auth.pwdMismatch : undefined}
               />
             </div>
+            <Input
+              label={ar ? "رمز الإحالة (اختياري)" : "Code de parrainage (optionnel)"}
+              hint={
+                ar
+                  ? "إذا دعاكم مكتب آخر — يمكن إضافته لاحقاً"
+                  : "Si un cabinet vous a invité — vous pourrez aussi l'ajouter plus tard"
+              }
+              placeholder="LH-XXXX-XXXX"
+              value={form.referral_code}
+              onChange={(e) => update("referral_code", e.target.value.toUpperCase())}
+              className="h-11 rounded-xl bg-white font-mono tracking-wide"
+            />
             <label className="flex items-start gap-2.5 text-sm text-[#2C3B5C]">
               <input
                 type="checkbox"
@@ -860,6 +759,11 @@ function RegisterStepper({ onGo }: { onGo: (t: AuthTab) => void }) {
                 .
               </span>
             </label>
+            <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-600">
+              {ar
+                ? "بعد الدخول، يمكنكم إكمال بيانات المكتب (الاسم، المدينة، الهيئة، العنوان) من الإعدادات."
+                : "Après connexion, complétez les infos du cabinet (nom, ville, barreau, adresse) dans Paramètres."}
+            </p>
           </>
         )}
 
@@ -882,7 +786,7 @@ function RegisterStepper({ onGo }: { onGo: (t: AuthTab) => void }) {
               className="flex-1"
               onClick={() => {
                 setError("");
-                setStep((s) => Math.max(1, s - 1));
+                setStep(1);
               }}
             >
               {auth.previous}
@@ -892,7 +796,7 @@ function RegisterStepper({ onGo }: { onGo: (t: AuthTab) => void }) {
             type="button"
             className="h-11 flex-[1.4] rounded-xl bg-[#0B1A4D] font-serif text-white hover:bg-[#12307A]"
             disabled={loading}
-            onClick={() => void (step === 4 ? submit() : nextStep())}
+            onClick={() => void (step === 2 ? submit() : nextStep())}
           >
             {loading ? "…" : primaryLabel}
           </Button>
@@ -912,4 +816,3 @@ function RegisterStepper({ onGo }: { onGo: (t: AuthTab) => void }) {
     </div>
   );
 }
-

@@ -1,0 +1,42 @@
+@startuml seq-login-turnstile
+!theme plain
+skinparam shadowing false
+title Connexion — échecs, Turnstile, JWT (optionnel 2FA)
+
+actor Utilisateur
+participant Navigateur
+participant "API /api/auth" as API
+participant "Cloudflare\nTurnstile" as CF
+database PostgreSQL
+
+Utilisateur -> Navigateur : e-mail + mot de passe
+Navigateur -> API : GET /captcha-config
+API --> Navigateur : site_key + seuil\n(CAPTCHA_AFTER_FAILURES = 3)
+
+Navigateur -> API : POST /login
+alt < 3 échecs récents
+  API -> PostgreSQL : vérifie credentials
+  alt OK (sans 2FA)
+    API --> Navigateur : JWT (access + refresh)
+  else OK mais 2FA activé
+    API --> Navigateur : exige code TOTP
+    Utilisateur -> Navigateur : code 2FA
+    Navigateur -> API : POST /login (+ totp)
+    API --> Navigateur : JWT
+  else mauvais mot de passe
+    API --> Navigateur : 401 (+ compteur échecs)
+  end
+else ≥ 3 échecs
+  note over Navigateur : widget Turnstile affiché
+  Navigateur -> CF : challenge humain
+  CF --> Navigateur : token
+  Navigateur -> API : POST /login + turnstile_token
+  API -> CF : verify_turnstile
+  alt token invalide
+    API --> Navigateur : 403 captcha
+  else token OK
+    API -> PostgreSQL : vérifie credentials
+    API --> Navigateur : JWT ou 401
+  end
+end
+@enduml

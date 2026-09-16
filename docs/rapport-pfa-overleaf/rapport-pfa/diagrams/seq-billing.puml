@@ -1,0 +1,35 @@
+@startuml seq-billing
+!theme plain
+skinparam shadowing false
+title Abonnement / packs — essai, plans, factures payantes (> 0 MAD)
+
+actor "Admin cabinet" as Ad
+participant Navigateur
+participant "API /api/billing" as API
+database PostgreSQL
+
+note over Ad, PostgreSQL
+  À l'inscription : start_free_for_cabinet\n(plan Découverte / essai — pas de facture 0 MAD listée).
+end note
+
+Ad -> API : GET /plans + GET /entitlements
+API --> Ad : plans + quotas + packs (si payant actif)
+
+alt Choisir un plan payant
+  Ad -> API : POST /select-plan\n(plan_slug, cycle, carte)
+  API -> PostgreSQL : abonnement + période d'essai\n(carte enregistrée en simulation)
+  API -> PostgreSQL : BillingInvoice (reçu essai 0 MAD\nou facture selon parcours)
+  note right : Les reçus à 0 MAD / trial\nne sont PAS listés côté UI
+else Pack de crédits IA
+  Ad -> API : POST /credit-packs/checkout
+  Ad -> API : POST /credit-packs/confirm-payment
+  API -> PostgreSQL : crédits prépayés\n+ BillingInvoice (montant > 0)
+end
+
+Ad -> API : GET /history (ou entitlements.invoices)
+API -> PostgreSQL : factures cabinet
+API --> Ad : uniquement is_paid_invoice_row\n(amount_mad > 0, hors trial)
+
+Ad -> API : GET /invoices/{id}\n(aperçu HTML style Cursor + logo)
+Ad -> API : GET /invoices/{id}/download\n(PDF binaire)
+@enduml

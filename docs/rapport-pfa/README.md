@@ -10,6 +10,7 @@
 ## Finalisation (contenu)
 
 - Facturation à jour : **essai hybride** (durée + plafond), **repère IA du jour** (choix continuer / demain, tous plans), **popups** forfait essai / mois épuisé, **packs prépayés** (abo actif seulement), sièges Cabinet, PAYG optionnel, parrainage
+- Atelier : clarification QCM, assistant de révision (répond + édite), micro **Terminé** + détection auto FR/AR
 - Perspectives = **évolution produit** (latence STT, précision AR, modèles par domaine, versions, indicateurs, CMI/PayZone) — **pas** le CI/CD (déjà en place)
 - UML : UC, séquences, classes, activité, déploiement
 - Annexe : cartographie diagrammes + matrice de complétude
@@ -23,11 +24,11 @@ Dédicace · Remerciements · Résumé · Abstract · Abréviations · Listes fi
 1. Introduction générale
 2. Étude de l'existant et positionnement
 3. Analyse et spécification des besoins
-4. Conception du système
-5. **Modèle économique et stratégie de rentabilisation**
+4. **Conception et urbanisation du SI** (architecture + MADI + UML)
+5. Modèle économique et stratégie de rentabilisation
 6. Réalisation et guide d'utilisation
-7. Tests, déploiement et résultats
-8. Conclusion générale et perspectives
+7. Tests, déploiement, limites et perspectives
+8. Conclusion générale
 
 Bibliographie / Webographie · Annexe A (captures)
 

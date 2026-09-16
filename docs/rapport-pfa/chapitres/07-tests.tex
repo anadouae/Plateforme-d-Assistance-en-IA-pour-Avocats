@@ -3,7 +3,7 @@
 
 \section{Stratégie de test}
 
-Les scénarios suivent \url{https://lexhub.space} : inscription OTP et accès immédiat (sans approbation plateforme) ; atelier en cinq étapes UI ; assistant limité aux plaidoiries \textbf{validées} ou \textbf{finalisées} ; isolation entre cabinets ; packs masqués pendant l'essai ; invitation e-mail (pas de code d'adhésion en production) ; popups de quotas (repère du jour, forfait essai / mois épuisé) ; export PDF RTL (logo centré) et statut \textit{finalized}.
+Les scénarios suivent \url{https://lexhub.space} : inscription OTP puis login JWT ; atelier en cinq étapes ; assistant limité aux plaidoiries \textbf{validées} ou \textbf{finalisées} ; isolation entre cabinets ; packs masqués pendant l'essai ; invitation e-mail ; popups de quotas ; export Word (.docx) et PDF ; factures listées uniquement si montant $> 0$~MAD.
 
 \begin{table}[H]
 \centering
@@ -19,11 +19,15 @@ Inscription + OTP & Cabinet actif, connexion & Conforme \\
 Brouillon & Invisible assistant & Conforme \\
 Valider pour l'assistant & Visible de tous les assistants & Conforme \\
 Assigner & Validé + mise en avant & Conforme \\
-Export Word (.docx) & RTL + armoiries royales + en-tête ; finalisée & Conforme \\
+Clarification QCM & 0--5 questions puis rédaction & Conforme \\
+Assistant révision (chat) & Réponse + document mis à jour & Conforme \\
+Micro requête (Terminé) & Whisper auto FR/AR & Conforme \\
+Export Word (.docx) / PDF & RTL + armoiries + en-tête ; finalisée & Conforme \\
 Isolation Rabat / Atlas & Aucune donnée croisée & Conforme \\
 Essai : pas de packs & Offre masquée & Conforme \\
 Repère IA du jour & Popup continuer / demain & Conforme \\
 Forfait essai / mois épuisé & Popup de guidance & Conforme \\
+Multi-support mobile ($\le 880$\,px) & Dock fixé, rôles OK (avocat / assistant / admin) & Conforme \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -31,11 +35,11 @@ Forfait essai / mois épuisé & Popup de guidance & Conforme \\
 \section{Déploiement et intégration continue (CI/CD)}
 \label{sec:cicd}
 
-La production s'appuie sur Caddy, Docker Compose et Alembic. GitHub Actions publie les images \texttt{frontend}, \texttt{backend} et \texttt{celery} vers GHCR. Cette chaîne est livrée ; les perspectives du chapitre~\ref{ch:conclusion} concernent le produit.
+La production s'appuie sur Caddy, Docker Compose et Alembic. GitHub Actions publie les images \texttt{frontend}, \texttt{backend} et \texttt{celery} vers GHCR. Cette chaîne est livrée.
 
 \section{Résultats obtenus}
 
-L'atelier en cinq étapes, l'export officiel, la règle « validé = visible par l'assistant », l'isolation multi-tenant et le modèle économique du chapitre~\ref{ch:economie} sont en production. Le paiement marchand réel n'est pas encore activé.
+L'atelier en cinq étapes, la clarification QCM, l'assistant de révision (réponse + édition), l'export officiel, la règle « validé = visible par l'assistant », l'isolation multi-tenant, l'\textbf{expérience multi-support} (desktop et mobile, section~\ref{sec:mobile}) et le modèle économique du chapitre~\ref{ch:economie} sont en production. Le paiement marchand réel n'est pas encore activé.
 
 \section{Risques et limites}
 \label{sec:limites}
@@ -46,4 +50,14 @@ L'atelier en cinq étapes, l'export officiel, la règle « validé = visible par
   \item La correction de forme n'est pas une vérification juridique.
   \item LexHub n'intègre pas Mahakim et n'est pas un ERP de facturation.
   \item L'avocat reste responsable du contenu.
+\end{enumerate}
+
+\section{Perspectives}
+\label{sec:perspectives}
+
+\begin{enumerate}[leftmargin=1.4em]
+  \item Activer l'\textbf{encaissement réel} (carte opérateur) sur le socle de paiement déjà préparé.
+  \item Améliorer la \textbf{qualité STT} et les aides de relecture pour les conditions acoustiques difficiles.
+  \item Renforcer la continuité \textbf{dossier $\rightarrow$ audience} (rappels, clé de barre, exports).
+  \item Préparer des \textbf{interopérabilités} (calendriers, imports de pièces) sans casser les maîtres de donnée MADI.
 \end{enumerate}

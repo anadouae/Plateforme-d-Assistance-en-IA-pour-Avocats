@@ -9,6 +9,7 @@ import { useConfirm } from "@/components/ui/confirm-dialog";
 import { api, type AgendaEventItem, type CaseListItem } from "@/lib/api";
 import { AGENDA_EVENT_TYPES } from "@/lib/case-judicial";
 import { useLocaleStore } from "@/store/locale";
+import { useIsMobile } from "@/hooks/use-is-mobile";
 
 const START_HOUR = 7;
 const END_HOUR = 20;
@@ -139,6 +140,10 @@ export default function AgendaPage() {
   const [cases, setCases] = useState<CaseListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<CalView>("week");
+  const isMobileCal = useIsMobile(880);
+  useEffect(() => {
+    if (isMobileCal) setView((v) => (v === "week" || v === "month" || v === "year" ? "day" : v));
+  }, [isMobileCal]);
   const [anchor, setAnchor] = useState(() => startOfDay(new Date()));
   const [miniMonth, setMiniMonth] = useState(() => startOfDay(new Date()));
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");

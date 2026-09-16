@@ -266,7 +266,10 @@ def _transcribe_openai(data: bytes, filename: str, lang: str | None) -> tuple[st
             logger.warning("OpenAI STT HTTP %s: %s", res.status_code, res.text[:240])
             return None, "none"
         text = (res.json().get("text") or "").strip()
-        if lang == "ar":
+        # Auto-detect : répare l'arabe si le texte contient de l'arabe
+        if lang == "ar" or (
+            lang is None and any("\u0600" <= ch <= "\u06FF" for ch in text)
+        ):
             text = _strip_arabic_hallucinations(repair_arabic_stt(text))
         if not text:
             return None, "none"

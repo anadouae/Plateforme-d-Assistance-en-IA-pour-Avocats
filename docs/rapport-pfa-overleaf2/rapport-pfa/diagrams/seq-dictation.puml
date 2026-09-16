@@ -1,18 +1,53 @@
 @startuml seq-dictation
 !theme plain
-actor Avocat
-participant Navigateur
-participant "API LexHub" as API
-participant STT
-database Base
+skinparam shadowing false
+title Atelier plaidoirie — voix → texte → forme → rédaction (rôles avocat / admin_cabinet)
 
-Avocat -> Navigateur : parole (micro)
-Navigateur -> API : audio + JWT
-API -> STT : fichier
-STT --> API : texte brut
-API -> Base : audit
-API --> Navigateur : transcription
-Navigateur -> API : Corriger (forme)
-API --> Navigateur : texte + marques orange
-note over Avocat, Base : Puis composition, édition,\nvalidation ou assignation, export
+actor "Avocat /\nadmin cabinet" as Av
+participant Navigateur
+participant "API /api/dictation" as API
+participant "Whisper\n(STT)" as STT
+participant "LLM" as LLM
+database PostgreSQL
+
+== Étape Dictée / Transcription ==
+Av -> Navigateur : micro ou fichier audio
+alt Web Speech (Chrome / Edge)
+  Navigateur --> Av : texte live (audio non envoyé)
+else MediaRecorder / Firefox / import
+  Navigateur -> API : POST /transcribe (+ JWT)
+  API -> STT : fichier audio
+  STT --> API : texte brut (+ langue)
+  API --> Navigateur : TranscribeResponse
+end
+
+== Étape Correction de forme ==
+Av -> Navigateur : bouton Corriger
+Navigateur -> API : POST /polish
+API -> LLM : forme (dossier anonymisé)
+LLM --> API : fusḥā / FR soigné + alertes STT
+API --> Navigateur : PolishResponse
+
+== Clarification QCM (0–5) puis rédaction ==
+Navigateur -> API : POST /clarify
+API -> LLM : QCM depuis dossier + dictée anonymisés
+LLM --> API : questions
+API --> Navigateur : ClarifyResponse
+Av -> Navigateur : réponses ou « passer »
+Navigateur -> API : POST /compose
+API -> LLM : composition sans inventer de faits
+LLM --> API : corps de plaidoirie
+API --> Navigateur : ComposeResponse
+Navigateur -> API : POST /drafts (plaidoirie-templates)\nbrouillon lié au dossier
+API -> PostgreSQL : PlaidoirieDraft (status=draft)
+
+== Révision assistée (optionnelle) ==
+Av -> Navigateur : demande de révision
+Navigateur -> API : POST /revise
+API -> LLM : édition ciblée
+API --> Navigateur : ReviseResponse
+
+note over Av, PostgreSQL
+  Suite métier : validation / assignation assistant,\nexport Word (.docx) et PDF — diagrammes dédiés.
+end note
 @enduml

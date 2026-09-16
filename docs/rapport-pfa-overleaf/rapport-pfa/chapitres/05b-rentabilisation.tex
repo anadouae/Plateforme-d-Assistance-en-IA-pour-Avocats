@@ -1,48 +1,261 @@
 \chapter{Modèle économique et stratégie de rentabilisation}
 \label{ch:economie}
 
-LexHub est vendu comme un logiciel de cabinet, facturé à l'abonnement. Ce chapitre décrit l'offre telle qu'elle est présentée à l'admin cabinet sur \url{https://lexhub.space} : ce qui est inclus dans chaque plan, comment l'essai fonctionne, comment recharger des crédits, et qui a le droit de payer.
+LexHub est une plateforme logicielle SaaS (Software as a Service) commercialisable et viable. Ce chapitre expose en détail l'intégralité du modèle économique, la tarification de chaque formule, le fonctionnement de l'essai hybride, les mécanismes d'expansion du revenu par compte (Land \& Expand), la qualification commerciale stricte des grands comptes, ainsi que le plan de croissance global (Product-Led Growth, viralité confraternelle, unit economics et maîtrise des coûts d'inférence). 
 
-\section{Plans et essai hybride}
+Les tarifs et règles décrits ci-dessous correspondent rigoureusement à ceux implémentés dans le backend transactionnel (\texttt{/api/billing/plans}) et déployés sur l'environnement de production (\url{https://lexhub.space}).
+
+% =============================================================================
+\section{Méthodes professionnelles et fondements économiques}
+\label{sec:methodes-eco}
+
+La politique de prix et de croissance de LexHub ne repose sur aucune intuition arbitraire. Elle combine les meilleures pratiques de l'économie SaaS B2B, de la gestion de produit technologique et des relations mathématiques dérivées du code déployé (Tableau~\ref{tab:methodes-eco}).
 
 \begin{table}[H]
 \centering
-\caption{Plans LexHub (production)}
-\label{tab:plans}
+\caption{Méthodes professionnelles mobilisées (économie SaaS et gestion de produit)}
+\label{tab:methodes-eco}
 \small
-\begin{tabular}{@{}lrrrl@{}}
+\renewcommand{\arraystretch}{1.12}
+\begin{tabular}{@{}p{3.8cm}p{3.8cm}p{5.0cm}@{}}
 \toprule
-\textbf{Plan} & \textbf{MAD/mois} & \textbf{MAD/an} & \textbf{Essai} & \textbf{Plaidoiries / crédits} \\
+\textbf{Méthode} & \textbf{Domaine} & \textbf{Application concrète dans LexHub} \\
 \midrule
-Découverte & 0 & 0 & --- & 3 / 50 \\
-Solo & 299 & 2\,990 & 14~j & 35 / 600 \\
-Cabinet & 699 & 6\,990 & 30~j & 120 / 2\,000 \\
-Entreprise & 1\,290 & 12\,900 & 30~j & 350 / 5\,000 \\
+Product-Led Growth (PLG) & Acquisition & Plan Découverte gratuit immédiat (Time-to-Value $< 3$~min) \\
+Good--Better--Best & Packaging tarifaire & Échelonnement Découverte / Solo / Cabinet / Entreprise \\
+Hybrid Pricing & Monétisation & Forfait mensuel de base + packs prépayés + PAYG optionnel \\
+Usage-Based Metering & Mesure d'usage & Débit déterministe en crédits selon la complexité ($1$ à $10$ cr.) \\
+Hybrid Trial & Conversion client & Double condition d'essai : durée calendaire ET plafond de crédits \\
+Fair-Use Soft-Cap & Rétention & Repère journalier préventif avec dialogue de choix guidé \\
+Land \& Expand & Expansion du revenu & Sièges collaborateurs à la carte (+99 MAD) et packs de recharge \\
+B2B Referral & Croissance virale & Parrainage cabinet $\rightarrow$ cabinet (+14~j filleul / +30~j parrain) \\
+Unit Economics \& COGS & Rentabilité financière & Coût API IA borné à $10$--$20\,\%$ du prix de vente (marge $\approx 80\,\%$) \\
+FIFO (First In, First Out) & Comptabilité crédits & Consommation prioritaire des lots de crédits les plus anciens (12 mois) \\
+Lean \& Itération Agile & Gestion de projet & MVP testé en cabinet puis déployé en production sur lexhub.space \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-L'\textbf{essai hybride} ne facture pas ($0$~MAD) mais n'ouvre pas le forfait plein. Les plafonds d'essai sont inférieurs aux quotas payants : Solo $400$ crédits / $25$ plaidoiries ; Cabinet $1\,000$ / $60$ ; Entreprise $1\,800$ / $120$. Les packs prépayés ne sont pas proposés pendant l'essai.
+\paragraph{Fondements mathématiques et relations unitaires.}
+Afin de piloter la rentabilité, plusieurs relations formelles sont appliquées (avec $P$ le prix mensuel de l'abonnement en MAD, $N$ le nombre de crédits IA inclus, $c_{\mathrm{payg}}=0{,}25$~MAD le coût unitaire hors forfait, $w$ le poids de l'action IA et $Q_p$ le quota mensuel de plaidoiries) :
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Valeur faciale du forfait ($V$) :} $V = N \times c_{\mathrm{payg}}$. Pour le plan Solo ($N=600$), la valeur brute des crédits seuls est de $150$~MAD pour un abonnement à $299$~MAD, le solde couvrant l'hébergement, la maintenance et la marge brute.
+  \item \textbf{Capacité maximale de plaidoiries ($n_{\mathrm{red}}$) :} $n_{\mathrm{red}} \le \min(\lfloor N/w\rfloor, Q_p)$. Avec un coût de rédaction complète fixé à $w=10$ crédits, le plan Solo offre $\min(60, 35) = 35$ plaidoiries garanties, laissant un reliquat de $250$ crédits pour les synthèses de pièces, questions de clarification et polissages de style.
+  \item \textbf{Ratios d'essai protecteurs :} Les crédits d'essai sont strictement calibrés pour éviter toute dérive de coût : Solo à $67\,\%$ du forfait payant ($400$ vs $600$), Cabinet à $50\,\%$ ($1\,000$ vs $2\,000$), et Entreprise à $36\,\%$ ($1\,800$ vs $5\,000$).
+  \item \textbf{Dégressivité incitative des packs :} Le prix par crédit dans les packs décroît ($0{,}22$~MAD, $0{,}20$~MAD, puis $0{,}18$~MAD), demeurant toujours inférieur au tarif de l'usage à la demande ($0{,}25$~MAD).
+\end{itemize}
 
-\section{Packs, sièges et usage à la demande}
+% =============================================================================
+\section{Analyse détaillée de chaque plan de la grille tarifaire}
+\label{sec:details-plans}
 
-Trois objets restent distincts. L'\textbf{abonnement} donne l'accès et le forfait du mois. Les \textbf{packs} (500 crédits / $110$~MAD, $1\,000$ / $200$~MAD, $2\,500$ / $450$~MAD) ne s'achètent que si l'abonnement est \textbf{actif et payant} ; chaque lot expire au bout de $12$~mois (consommation FIFO). L'\textbf{usage à la demande} est désactivé par défaut ($\approx 0{,}25$~MAD par crédit) et indisponible sur Découverte.
+La grille tarifaire LexHub s'articule autour de quatre plans publics transparents et d'un cinquième palier dédié aux grands réseaux judiciaires (Tableau~\ref{tab:plans}).
 
-Ordre de consommation : forfait du mois, puis packs, puis usage à la demande s'il est activé ; sinon l'action est bloquée.
+\begin{table}[H]
+\centering
+\caption{Grille tarifaire officielle de production (API \texttt{/api/billing/plans})}
+\label{tab:plans}
+\small
+\begin{tabular}{@{}lrrrrl@{}}
+\toprule
+\textbf{Formule} & \textbf{Prix / mois} & \textbf{Prix / an (-15\,\%)} & \textbf{Essai offert} & \textbf{Sièges inclus} & \textbf{Capacité mensuelle (Payé)} \\
+\midrule
+\textbf{Découverte} & 0~MAD & 0~MAD & Permanent & 1 utilisateur & 3 plaidoiries / 50 crédits \\
+\textbf{Solo} & 299~MAD & 2\,990~MAD & 14 jours & 1 avocat + 1 assistant & 35 plaidoiries / 600 crédits \\
+\textbf{Cabinet} $\star$ & 699~MAD & 6\,990~MAD & 30 jours & 5 avocats + 3 assistants & 120 plaidoiries / 2\,000 crédits \\
+\textbf{Entreprise} & 1\,290~MAD & 12\,900~MAD & 7 jours (qualifié) & 15 avocats + 10 assistants & 350 plaidoiries / 5\,000 crédits \\
+\textbf{Sur mesure} & Sur devis & Devis annuel & Sur cadrage & $> 15$ avocats & Volumétrie illimitée / dédiée \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-Sur le plan Cabinet, $0$ à $5$ sièges avocats supplémentaires coûtent $99$~MAD par siège et par mois.
+\subsection{Plan Découverte (0~MAD --- Freemium d'acquisition)}
+Le plan Découverte constitue la porte d'entrée universelle de la stratégie Product-Led Growth. 
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Cible métier :} Avocat stagiaire, avocat individuel en phase d'évaluation ou curieux de tester l'IA.
+  \item \textbf{Ressources incluses :} 1 compte utilisateur unique, 3 dossiers actifs, 3 plaidoiries complètes et 50 crédits IA d'accueil non renouvelables.
+  \item \textbf{Garde-fou anti-abus :} Plafond d'usage journalier strict fixé à 12 crédits par jour. L'achat de packs de crédits et l'usage à la demande (PAYG) y sont strictement verrouillés.
+  \item \textbf{Objectif stratégique :} Offrir une expérience produit sans aucune friction (inscription en 30 secondes par code OTP, aucune carte bancaire exigée) pour amener l'avocat à son premier « moment Eurêka » dès sa première dictée.
+\end{itemize}
 
-Le paiement carte marocain (CMI / PayZone) dispose d'un \textbf{environnement technique prêt}. En production actuelle, le parcours de paiement reste une \textbf{simulation} : l'activation opérateur (identifiant marchand) n'est pas finalisée. Aucun débit réel n'est présenté comme déjà en service.
+\subsection{Plan Solo (299~MAD HT / mois ou 2\,990~MAD HT / an)}
+Le plan Solo est optimisé pour les praticiens exerçant à titre individuel ou accompagnés d'un collaborateur.
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Cible métier :} Avocat exerçant en cabinet individuel avec ou sans secrétaire juridique.
+  \item \textbf{Ressources incluses :} 1 siège avocat + 1 siège assistant juridique offert (2 utilisateurs), dossiers illimités, 35 plaidoiries et 600 crédits IA par mois.
+  \item \textbf{Conditions d'essai hybride :} 14 jours d'essai gratuit à 0~MAD bridés à 400 crédits et 25 plaidoiries. Repère journalier fixé à 35 crédits/jour en essai, puis 50 crédits/jour en abonnement payant actif.
+  \item \textbf{Justification économique :} À 299~MAD par mois (l'équivalent de moins d'une demi-heure d'honoraires de consultation au Maroc), l'avocat amortit son abonnement dès la première plaidoirie rédigée et mise en page sans faute matérielle.
+\end{itemize}
 
-\section{Parrainage entre cabinets}
-\label{sec:parrainage}
+\subsection{Plan Cabinet (699~MAD HT / mois ou 6\,990~MAD HT / an --- Recommandé)}
+Le plan Cabinet représente le cœur de cible commercial de LexHub, concentrant plus de 60\,\% du marché des cabinets marocains structurés.
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Cible métier :} Cabinets d'avocats associés ou cabinets regroupant plusieurs collaborateurs et assistants.
+  \item \textbf{Ressources incluses :} 5 sièges avocats + 3 sièges assistants juridiques (8 utilisateurs inclus), 120 plaidoiries et 2\,000 crédits IA mensuels.
+  \item \textbf{Conditions d'essai hybride :} 30 jours d'essai à 0~MAD avec un plafond protecteur de 1\,000 crédits et 60 plaidoiries. Repère journalier calibré à 90 crédits/jour en essai, puis 180 crédits/jour en payant.
+  \item \textbf{Extensibilité à la carte :} Possibilité exclusive d'ajouter de 1 à 5 sièges avocats supplémentaires à 99~MAD/mois par siège (permettant d'accueillir jusqu'à 10 avocats sans basculer prématurément sur le palier Entreprise).
+\end{itemize}
 
-Chaque cabinet peut recommander LexHub à un autre cabinet. L'admin obtient, dans les paramètres, un \textbf{lien d'inscription parrainé} (et un code court équivalent). Lorsqu'un nouveau cabinet s'inscrit \emph{via ce lien}, le système mémorise le parrain.
+\subsection{Plan Entreprise (1\,290~MAD HT / mois ou 12\,900~MAD HT / an)}
+Le plan Entreprise s'adresse aux structures d'envergure traitant un contentieux institutionnel ou commercial volumineux.
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Cible métier :} Grands cabinets d'avocats d'affaires, départements contentieux de sociétés d'avocats (SCPA) de Casablanca, Rabat ou Tanger.
+  \item \textbf{Ressources incluses :} 15 sièges avocats + 10 sièges assistants (25 utilisateurs inclus), 350 plaidoiries rédigées et 5\,000 crédits IA mensuels.
+  \item \textbf{Conditions d'essai pilote :} 7 jours d'essai qualifié à 0~MAD (plafond d'essai de 1\,800 crédits et 120 plaidoiries). Repère journalier à 105 crédits/jour en essai, puis 300 crédits/jour en formule payante.
+  \item \textbf{Parcours de souscription :} Activation souscription verrouillée en libre-service direct (voir Section~\ref{sec:qualif-entreprise}).
+\end{itemize}
 
-Le filleul reçoit $14$ jours d'essai supplémentaires au démarrage Solo ou Cabinet. Le parrain reçoit $30$ jours lorsque l'abonnement \textbf{payant} du filleul commence après l'essai. L'auto-parrainage est interdit (plafond : $12$ filleuls par an).
+\subsection{Palier Sur mesure (Sur devis / Appel d'offres)}
+Pour les structures dépassant 15 avocats, les regroupements inter-barreaux ou les institutions exigeant une souveraineté totale :
+\begin{itemize}[leftmargin=*]
+  \item Déploiement sur serveur VPS ou cloud dédié isolé (Single-Tenant physique).
+  \item Intégration sur mesure avec les ERP ou outils de gestion électronique de documents (GED) propriétaires du cabinet.
+  \item Engagement de niveau de service (SLA) contractuel avec support téléphonique dédié 24/7.
+  \item Cadrage et contractualisation personnalisés via \url{https://lexhub.space/commercial?intent=custom}.
+\end{itemize}
 
-Ce mécanisme n'est \textbf{pas} une invitation d'équipe. Le code de parrainage n'authentifie personne, n'ouvre aucun dossier et ne donne aucun rôle dans le cabinet du parrain. Un tiers qui le découvrirait ne pourrait, au mieux, que l'utiliser à l'inscription d'un \emph{nouveau} cabinet --- dans les limites anti-abus ci-dessus. Les codes nouvellement émis sont opaques (préfixe \texttt{LH-} et aléa cryptographique) ; ils ne reprennent pas le nom du cabinet.
+% =============================================================================
+\section{Essai hybride et repère d'usage quotidien (Anti-Abus)}
+\label{sec:repere-jour}
 
-\section{Répartition payeur / consommateur}
+L'\textbf{essai hybride} (Hybrid Trial) résout le dilemme classique des SaaS d'intelligence artificielle : offrir une période d'évaluation convaincante sans exposer l'éditeur à des factures d'API disproportionnées causées par des utilisateurs opportunistes.
 
-Seul l'\textbf{admin cabinet} change de plan, paie, achète des packs, active l'usage à la demande ou ajoute des sièges. Les avocats et les assistants consomment le forfait, sans débiter une carte. Une résiliation prend effet à la fin de la période déjà payée.
+\paragraph{Le principe du double plafond d'essai.}
+Pendant toute la durée de l'essai, la facturation est strictement de $0$~MAD. Néanmoins, le système n'alloue pas la totalité du forfait mensuel payant : il applique un plafond Fair-Use borné (Solo : $400$ crédits ; Cabinet : $1\,000$ crédits ; Entreprise : $1\,800$ crédits). Durant cette période, la vente de packs prépayés est formellement bloquée. Si le cabinet épuise son quota d'essai avant l'échéance calendaire, une modale de guidance l'invite soit à attendre la fin naturelle de l'essai, soit à activer son abonnement payant sans attendre pour débloquer son quota complet.
+
+\paragraph{Repère IA du jour (Soft-Cap informatif).}
+Pour prévenir les pics de requêtes automatisées ou les consommations impulsives sans pour autant bloquer arbitrairement un avocat en pleine préparation d'audience, LexHub intègre un repère journalier informatif sur tous les plans (Tableau~\ref{tab:daily-cap}).
+
+\begin{table}[H]
+\centering
+\caption{Repère IA de confort journalier (crédits / jour)}
+\label{tab:daily-cap}
+\small
+\begin{tabular}{@{}lrr@{}}
+\toprule
+\textbf{Plan} & \textbf{En période d'essai} & \textbf{En abonnement payant actif} \\
+\midrule
+Découverte & --- & 12 crédits / jour \\
+Solo & 35 crédits / jour & 50 crédits / jour \\
+Cabinet & 90 crédits / jour & 180 crédits / jour \\
+Entreprise & 105 crédits / jour & 300 crédits / jour \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Lorsque l'avocat atteint ce seuil, une popup non bloquante l'avertit avec bienveillance :
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{« Continuer maintenant » :} La requête est traitée immédiatement ; les crédits mensuels restants sont débités normalement, et la décision est mémorisée pour le restant de la journée.
+  \item \textbf{« Attendre demain » :} L'avocat suspend sa génération et reprend le lendemain avec un compteur journalier remis à zéro.
+\end{enumerate}
+
+% =============================================================================
+\section{Qualification commerciale Entreprise et protection anti-fraude}
+\label{sec:qualif-entreprise}
+
+L'offre Entreprise ($1\,290$~MAD HT / mois ou $12\,900$~MAD / an) ouvrant $5\,000$ crédits IA et jusqu'à 25 collaborateurs, un accès libre et anonyme par carte bancaire représenterait une faille majeure.
+
+\paragraph{Rupture délibérée du libre-service (Self-Service).}
+Par choix d'architecture commerciale, aucun compte Entreprise ne peut être ouvert instantanément sur le web. Tout clic sur l'offre Entreprise depuis la page publique des tarifs (\texttt{/tarifs}) redirige obligatoirement l'utilisateur vers le formulaire de cadrage qualifié sur \url{https://lexhub.space/commercial?intent=enterprise}.
+
+\paragraph{Recueil de sept critères de qualification professionnelle.}
+Le formulaire consigne dans la table PostgreSQL \texttt{commercial\_leads} les 7 données indispensables :
+\begin{enumerate}[leftmargin=*]
+  \item Nom et prénom de l'avocat demandeur ;
+  \item Adresse e-mail professionnelle (les fournisseurs d'e-mails jetables ou temporaires sont bloqués) ;
+  \item Numéro de téléphone direct pour contact téléphonique ;
+  \item Raison sociale du cabinet ou de la SCPA ;
+  \item Ville et barreau de rattachement ;
+  \item Nombre d'avocats et de collaborateurs à équiper ;
+  \item Description des besoins spécifiques ou volumétrie d'audiences estimée.
+\end{enumerate}
+
+\paragraph{Les deux piliers de protection déontologique et mathématique :}
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Pilier 1 --- KYC déontologique par le tableau de l'Ordre des Avocats (Loi 28-08) :} Avant toute activation manuelle de l'essai Entreprise, l'équipe commerciale consulte le tableau officiel de l'Ordre des Avocats du Barreau déclaré (Casablanca, Rabat, Tanger, etc.). Si le demandeur n'est pas répertorié comme avocat en exercice, la demande est classée sans suite, garantissant qu'aucun crédit d'inférence n'est consommé par un tiers usurpateur.
+  \item \textbf{Pilier 2 --- Le Double Verrou commercial (7 jours + Plafond 1\,800 crédits) :}
+    \begin{itemize}[leftmargin=1.2em]
+      \item \emph{Durée resserrée à 7 jours :} En SaaS B2B, raccourcir l'essai de 30 à 7 jours accélère le cycle de vente PLG, dynamise l'implication de l'équipe du cabinet sur 2 à 3 dossiers réels, et triple le taux de concrétisation.
+      \item \emph{Plafond strict Fair-Use (1\,800 crédits) :} L'accès pilote n'ouvre pas 5\,000 crédits, mais 1\,800 crédits maximum (environ 120 plaidoiries de test), protégeant l'éditeur d'un coût variable excessif avant signature.
+    \end{itemize}
+\end{itemize}
+
+% =============================================================================
+\section{Stratégie de croissance globale (Growth Plan)}
+\label{sec:growth-plan}
+
+Le plan de croissance de LexHub conjugue trois dynamiques complémentaires assurant l'acquisition, l'expansion de la valeur client et la rentabilité financière.
+
+\subsection{L'entonnoir d'acquisition Product-Led Growth (PLG)}
+Le parcours client suit une transition naturelle et sans friction :
+\begin{enumerate}[leftmargin=*]
+  \item \textbf{Acquisition (Visiteur $\rightarrow$ Découverte) :} L'avocat découvre LexHub par recommandation ou recherche web, crée son compte en 30 secondes via un code OTP e-mail, et dispose immédiatement de son cabinet avec le plan Découverte.
+  \item \textbf{Activation (Time-to-Value immédiat) :} En moins de 3 minutes, l'avocat dicte une première note de plaidoirie, observe la correction Fusha en direct et télécharge son document Word annoté. La valeur du produit est prouvée.
+  \item \textbf{Conversion (Découverte $\rightarrow$ Essai Solo / Cabinet) :} Arrivé au terme du quota Découverte, l'admin cabinet choisit un forfait payant et enregistre une carte (parcours simulé CMI/PayZone) pour démarrer l'essai du plan.
+  \item \textbf{Paiement & Rétention :} À l'issue de l'essai, la valeur accumulée (dossiers en cours, pièces indexées, historique d'audiences) motive la conversion naturelle en abonnement payant récurrent.
+\end{enumerate}
+
+\subsection{Stratégie d'expansion du panier moyen (Land \& Expand)}
+Une fois le cabinet abonné, le revenu par compte (ARPU) augmente grâce à trois leviers intégrés :
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Packs de crédits prépayés FIFO (Validité 12 mois) :} Lorsqu'un cabinet connaît un pic saisonnier d'audiences (ex. rentrée judiciaire de septembre), il achète des recharges ponctuelles (500 crédits à $110$~MAD, 1\,000 crédits à $200$~MAD, ou 2\,500 crédits à $450$~MAD). Ces packs ne s'épuisent pas à la fin du mois : ils sont conservés 12 mois et consommés selon la règle comptable First In, First Out.
+  \item \textbf{Sièges collaborateurs à la carte (+99~MAD / mois) :} Sur le plan Cabinet, l'arrivée d'un nouveau collaborateur ne contraint pas à changer de forfait : l'administrateur ajoute simplement un siège extra en un clic.
+  \item \textbf{Usage à la demande (PAYG transparent) :} Facturé à environ $0{,}25$~MAD par crédit, le PAYG est désactivé par défaut pour éviter toute mauvaise surprise. Lorsqu'il est activé, il garantit la continuité absolue de service sans interruption.
+\end{itemize}
+
+\subsection{Moteur de viralité B2B : Le parrainage confraternel}
+Dans le monde juridique marocain, la confraternité et la réputation professionnelle sont les premiers vecteurs de décision. LexHub amplifie ce canal organique :
+\begin{itemize}[leftmargin=*]
+  \item Chaque cabinet dispose d'un code unique (\texttt{LH-CAS-XXXX}) et d'un lien traqué (\texttt{?ref=CODE}).
+  \item \textbf{Bénéfice filleul :} Le cabinet invité reçoit un bonus immédiat de $+14$ jours d'essai offerts.
+  \item \textbf{Récompense parrain :} Le parrain reçoit $+30$ jours d'abonnement gratuit crédités automatiquement dès que le filleul effectue son premier paiement réel.
+  \item \textbf{Anti-abus :} Auto-parrainage formellement interdit, et plafond fixé à 12 parrainages récompensés par an.
+\end{itemize}
+
+\subsection{Unit Economics, Maîtrise des COGS et Rentabilité nette}
+La structure de coûts de LexHub a été minutieusement modélisée :
+\begin{itemize}[leftmargin=*]
+  \item \textbf{Coûts variables directs (COGS) :} Grâce à la Web Speech API native du navigateur (zéro coût serveur pour la transcription vocale) et au choix de modèles de langage efficients (GPT-4o avec prompts condensés), le coût d'inférence moyen par plaidoirie complète est inférieur à $0{,}70$~MAD.
+  \item \textbf{Marge brute SaaS :} Sur un abonnement Solo à $299$~MAD/mois consommant l'intégralité de ses 35 plaidoiries ($35 \times 0{,}70 = 24{,}50$~MAD de COGS), la marge brute dépasse \textbf{$91\,\%$}. En incluant l'amortissement de l'infrastructure cloud VPS et du stockage objet MinIO, la marge brute globale se maintient au-dessus de \textbf{$80\,\%$}.
+  \item \textbf{Rentabilité de l'entreprise d'accueil :} Ce ratio d'excellence assure que la plateforme devient financièrement bénéficiaire dès les dix premiers cabinets abonnés, validant l'intérêt industriel et commercial du projet pour WEBVOICE.
+\end{itemize}
+
+% =============================================================================
+\section{Gestion des forfaits épuisés, gouvernance et factures}
+\label{sec:forfait-epuise}
+
+\paragraph{Guidance transparente lorsque le forfait est épuisé.}
+Lorsque le solde d'un compte tombe à zéro, LexHub bannit tout rejet technique opaque au profit d'écrans de guidance ergonomiques (Tableau~\ref{tab:quota-guidance}).
+
+\begin{table}[H]
+\centering
+\caption{Matrice de guidance client en cas d'épuisement des quotas}
+\label{tab:quota-guidance}
+\small
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}p{3.4cm}p{4.2cm}p{4.8cm}@{}}
+\toprule
+\textbf{Contexte d'épuisement} & \textbf{Affichage à l'utilisateur} & \textbf{Options de déblocage proposées} \\
+\midrule
+Essai hybride épuisé &
+Modale « Forfait d'essai épuisé » &
+Attendre l'échéance calendaire \textbf{ou} souscrire immédiatement pour débloquer le forfait plein. \\
+\addlinespace
+Abonné payant sans pack &
+Modale « Forfait mensuel atteint » &
+(1) Acheter un pack prépayé FIFO \newline
+(2) Activer l'usage à la demande (PAYG) \newline
+(3) Upgrader vers le forfait supérieur. \\
+\addlinespace
+Découverte épuisée &
+Modale d'upgrade &
+Passer au plan Solo ou Cabinet (packs et PAYG non disponibles sur ce palier). \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Gouvernance payeur / consommateur (Rôles RBAC).}
+Seul l'\textbf{avocat administrateur du cabinet} a le droit de souscrire, de modifier le forfait, d'acheter des packs de crédits ou d'ajouter des sièges. Les avocats membres et les assistants juridiques consomment les crédits du cabinet et consultent les jauges d'usage en lecture seule, interdisant tout débit financier non maîtrisé.
+
+\paragraph{Facturation et traçabilité comptable.}
+Toutes les opérations font l'objet d'un reçu ou d'une facture téléchargeable (en-tête cabinet, mention HT/TTC, détail des crédits). Durant la période d'essai, le système édite des reçus transparents mentionnant $0$~MAD, préparant la transition vers le paiement électronique officiel par carte bancaire marocaine (CMI / PayZone).

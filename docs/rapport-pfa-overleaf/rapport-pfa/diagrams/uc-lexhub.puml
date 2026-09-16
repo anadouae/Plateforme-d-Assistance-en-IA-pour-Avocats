@@ -1,27 +1,37 @@
 @startuml uc-lexhub
-!theme plain
-left to right direction
+skinparam shadowing false
 skinparam packageStyle rectangle
-skinparam actorStyle awesome
+left to right direction
 
 actor "Avocat" as Avocat
-actor "Assistant" as Assistant
 actor "Admin cabinet" as AdminCab
-actor "Admin plateforme" as AdminPlat
+actor "Assistant" as Asst
+actor "Admin plateforme" as Plat
 
-rectangle "Système LexHub" {
-  usecase "Dicter / transcrire" as UC1
-  usecase "Composer document" as UC2
-  usecase "Valider plaidoirie" as UC3
-  usecase "Assigner / épingler" as UC4
-  usecase "Exporter Word/PDF" as UC5
-  usecase "Voir pièces validées" as UC6
-  usecase "Gérer dossiers" as UC7
-  usecase "Documents / OCR" as UC8
-  usecase "Planning" as UC9
-  usecase "Gérer équipe" as UC10
-  usecase "Activité" as UC11
-  usecase "Suspendre cabinet" as UC12
+AdminCab --|> Avocat : hérite
+
+rectangle "LexHub" {
+  package "Atelier plaidoirie" {
+    usecase "Gérer dossier\net pièces" as UC1
+    usecase "Dicter / importer\naudio" as UC2
+    usecase "Corriger la forme" as UC3
+    usecase "Rédiger la\nplaidoirie" as UC4
+    usecase "Valider le\nbrouillon" as UC5
+    usecase "Assigner un\nassistant" as UC6
+    usecase "Exporter Word\n(.docx) et PDF" as UC7
+  }
+  package "Espace cabinet" {
+    usecase "Consulter\nplaidoiries validées" as UC8
+    usecase "Inviter l'équipe" as UC9
+    usecase "Gérer\nl'abonnement" as UC10
+    usecase "Gérer le planning" as UC11
+  }
+  package "Supervision" {
+    usecase "Vue usage\n& plans" as UC12a
+    usecase "Suspendre /\npurger cabinet" as UC12
+    usecase "Journal\nd'audit" as UC12b
+    usecase "Coach\nexploitation" as UC12c
+  }
 }
 
 Avocat --> UC1
@@ -29,13 +39,21 @@ Avocat --> UC2
 Avocat --> UC3
 Avocat --> UC4
 Avocat --> UC5
+Avocat --> UC6
 Avocat --> UC7
-Avocat --> UC8
-Avocat --> UC9
-Assistant --> UC6
-Assistant --> UC5
-Assistant --> UC8
+Avocat --> UC11
+
+UC2 ..> UC3 : <<include>>
+UC6 ..> UC5 : <<include>>
+
+Asst --> UC8
+Asst --> UC7
+
+AdminCab --> UC9
 AdminCab --> UC10
-AdminCab --> UC11
-AdminPlat --> UC12
+
+Plat --> UC12a
+Plat --> UC12
+Plat --> UC12b
+Plat --> UC12c
 @enduml

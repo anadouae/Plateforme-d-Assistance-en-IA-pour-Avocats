@@ -24,6 +24,8 @@ def test_looks_like_nonsense_keyboard_mash():
     assert looks_like_nonsense("asdf") is True
     assert looks_like_nonsense(";;;") is True
     assert looks_like_nonsense("ك ك ك ك") is True
+    # Fautes / mots cassés → PAS nonsense (ChatGPT doit approximer)
+    assert looks_like_nonsense("السلا ن م السيد الؤيس") is False
     assert looks_like_nonsense("السيد الرئيس المحكمة الابتدائية") is False
     assert looks_like_nonsense("Monsieur le président, nous demandons") is False
 from app.services.stt_quality import _confidence_from_segments, pick_best_transcript

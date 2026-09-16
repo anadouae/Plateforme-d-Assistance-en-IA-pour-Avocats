@@ -39,9 +39,39 @@ export function roleHelp(uiFr: boolean): { demandeur: string; defendeur: string 
 }
 
 export function qualityHelp(uiFr: boolean): string {
+  // Conservé pour compat ; l’UI atelier n’affiche plus ce jargon.
   return uiFr
-    ? "« Qualité » = nature juridique de la partie (individu, société ou administration) — ce n’est PAS demandeur/défendeur."
-    : "« الصفة » = طبيعة الطرف قانونياً (فرد، شركة أو إدارة) — وليست المدعي/المدعى عليه.";
+    ? "Nature : individu, société ou administration."
+    : "الطبيعة: فرد، شركة أو إدارة.";
+}
+
+/** Domaine de plaidoirie dérivé de la matière du dossier (source de vérité). */
+export function caseTypeToPleaTemplate(caseType?: string | null): string | null {
+  const t = (caseType || "").toLowerCase();
+  if (!t.trim()) return null;
+  if (t.includes("famille") || t.includes("أسرة") || t.includes("اسرة")) return "famille";
+  if (
+    t.includes("pénal") ||
+    t.includes("penal") ||
+    t.includes("زجر") ||
+    t.includes("جنائ") ||
+    t.includes("circulation") ||
+    t.includes("سير")
+  ) {
+    return "penal-defense";
+  }
+  if (t.includes("commercial") || t.includes("تجار") || t.includes("banque") || t.includes("بنكي")) {
+    return "commercial";
+  }
+  if (t.includes("admin") || t.includes("إدار") || t.includes("ادار") || t.includes("fiscal") || t.includes("جبائ")) {
+    return "administratif";
+  }
+  if (t.includes("travail") || t.includes("social") || t.includes("شغل") || t.includes("اجتماع")) {
+    return "social-travail";
+  }
+  if (t.includes("foncier") || t.includes("عقار")) return "foncier";
+  if (t.includes("civil") || t.includes("مدن")) return "civil-general";
+  return null;
 }
 
 export const JURISDICTION_DEGREES = [
@@ -209,14 +239,18 @@ export function missingLegalFields(c: CaseLegalFields & { case_type?: string; cl
 }
 
 export function actTypeToTemplate(act: string, caseType?: string): string {
+  // Voies de recours : l’acte prime sur le domaine
+  if (act === "appel") return "appel";
+  if (act === "cassation") return "cassation";
+  // Sinon : le domaine du dossier fixe le modèle (commercial → commercial, etc.)
+  const fromCase = caseTypeToPleaTemplate(caseType);
+  if (fromCase) {
+    if (act === "replique" && fromCase === "civil-general") return "civil-defense";
+    return fromCase;
+  }
+  if (act === "replique") return "civil-defense";
   const hit = ACT_TYPES.find((a) => a.value === act);
-  if (hit) return hit.templateHint;
-  const t = (caseType || "").toLowerCase();
-  if (t.includes("famille") || t.includes("أسرة")) return "famille";
-  if (t.includes("pénal") || t.includes("penal") || t.includes("زجر")) return "penal-defense";
-  if (t.includes("commercial") || t.includes("تجار")) return "commercial";
-  if (t.includes("admin") || t.includes("إدار")) return "administratif";
-  return "civil-general";
+  return hit?.templateHint || "civil-general";
 }
 
 export function roleToBriefPosture(role?: string | null): string {

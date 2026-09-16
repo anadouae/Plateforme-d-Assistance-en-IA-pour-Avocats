@@ -64,6 +64,24 @@ def _mfa_required_for(user: User) -> bool:
     return user.role == UserRole.ADMIN_WEBVOICE
 
 
+_CABINET_PLACEHOLDER = "À compléter"
+
+
+def _cabinet_profile_complete(cabinet: Cabinet | None) -> bool:
+    """True si le cabinet a renseigné ses infos métier (hors inscription minimale)."""
+    if not cabinet:
+        return True
+    marker = _CABINET_PLACEHOLDER.casefold()
+    for raw in (cabinet.city, cabinet.address, cabinet.barreau):
+        value = (raw or "").strip().casefold()
+        if not value or value == marker:
+            return False
+    name = (cabinet.name or "").strip()
+    if len(name) < 2 or name.casefold().startswith("cabinet temporaire"):
+        return False
+    return True
+
+
 def _user_response(user: User, cabinet: Cabinet | None) -> UserResponse:
     return UserResponse(
         id=user.id,
@@ -76,7 +94,10 @@ def _user_response(user: User, cabinet: Cabinet | None) -> UserResponse:
         cabinet_name=cabinet.name if cabinet else "",
         cabinet_name_ar=getattr(cabinet, "name_ar", None) if cabinet else None,
         cabinet_city=cabinet.city if cabinet else None,
+        cabinet_barreau=cabinet.barreau if cabinet else None,
+        cabinet_address=cabinet.address if cabinet else None,
         cabinet_has_logo=bool(getattr(cabinet, "logo_path", None)) if cabinet else False,
+        cabinet_profile_complete=_cabinet_profile_complete(cabinet),
         totp_enabled=bool(user.totp_enabled),
         mfa_required=_mfa_required_for(user),
         has_seen_onboarding_tour=bool(getattr(user, "has_seen_onboarding_tour", False)),
@@ -278,11 +299,18 @@ async def register(data: RegisterRequest, request: Request, db: Session = Depend
             detail="Une erreur est survenue. Veuillez réessayer.",
         )
 
+    email_local = (data.email or "").split("@")[0].replace(".", " ").replace("_", " ").strip()
+    manager_name = (data.manager_name or "").strip() or (email_local.title() if email_local else "Administrateur")
+    cabinet_name = (data.cabinet_name or "").strip() or f"Cabinet temporaire — {email_local or 'LexHub'}"
+    city = (data.city or "").strip() or _CABINET_PLACEHOLDER
+    address = (data.address or "").strip() or _CABINET_PLACEHOLDER
+    barreau = (data.barreau or "").strip() or _CABINET_PLACEHOLDER
+
     cabinet = Cabinet(
-        name=data.cabinet_name,
-        city=data.city,
-        address=data.address,
-        barreau=data.barreau,
+        name=cabinet_name,
+        city=city,
+        address=address,
+        barreau=barreau,
         ice=data.ice,
         status=CabinetStatus.ACTIVE,
     )
@@ -290,12 +318,12 @@ async def register(data: RegisterRequest, request: Request, db: Session = Depend
     db.flush()
     from app.services.join_code import assign_unique_join_code
 
-    assign_unique_join_code(db, cabinet, data.cabinet_name)
+    assign_unique_join_code(db, cabinet, cabinet_name)
 
     user = User(
         email=data.email.lower(),
         hashed_password=hash_password(data.password),
-        full_name=data.manager_name,
+        full_name=manager_name,
         phone=data.phone,
         role=UserRole.ADMIN_CABINET,
         is_active=True,
@@ -338,7 +366,7 @@ async def register(data: RegisterRequest, request: Request, db: Session = Depend
     return MessageResponse(
         message=(
             "Inscription réussie. Votre cabinet est sur le plan Découverte (gratuit). "
-            "Connectez-vous, puis upgradez depuis Tarifs si besoin."
+            "Complétez les informations du cabinet dans Paramètres après connexion."
         )
     )
 

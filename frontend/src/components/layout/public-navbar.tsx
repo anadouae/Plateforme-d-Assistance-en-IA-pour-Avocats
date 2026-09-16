@@ -73,10 +73,11 @@ export function PublicNavbar({ variant = "light" }: { variant?: "light" | "dark"
         "sanad-public-nav top-0 z-[200] transition-all duration-300 fixed inset-x-0",
         isDark ? "sanad-public-nav--dark" : "sanad-public-nav--light",
       )}
-    >      <div className="sanad-public-nav__glow" aria-hidden />
-      <div className="relative z-10 mx-auto flex h-16 max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
-        <Link href={loggedIn ? "/dashboard" : "/"} className="flex shrink-0 items-center gap-2">
-          <LexHubLogo size="md" dark={isDark} />
+    >
+      <div className="sanad-public-nav__glow" aria-hidden />
+      <div className="relative z-10 mx-auto flex h-14 max-w-7xl items-center justify-between gap-2 px-3 sm:h-16 sm:gap-3 sm:px-6 lg:px-8">
+        <Link href={loggedIn ? "/dashboard" : "/"} className="flex min-w-0 shrink items-center gap-2">
+          <LexHubLogo size="sm" dark={isDark} withWordmark className="max-[380px]:[&_.sanad-wordmark]:hidden" />
         </Link>
 
         <nav className="hidden items-center gap-0.5 lg:flex" aria-label="Navigation">
@@ -161,22 +162,28 @@ export function PublicNavbar({ variant = "light" }: { variant?: "light" | "dark"
           ))}
         </nav>
 
-        <div className="flex items-center gap-1.5 sm:gap-2">
-          <LanguageSwitch variant={variant} />
+        <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+          <div className="hidden sm:block scale-90 sm:scale-100 origin-end">
+            <LanguageSwitch variant={variant} />
+          </div>
           {loggedIn ? (
-            <AnimatedButton href="/dashboard" variant="gold" size="default">
-              {ar ? "مساحتي" : "Mon espace"}
-            </AnimatedButton>
+            <div className="hidden sm:block">
+              <AnimatedButton href="/dashboard" variant="gold" size="default">
+                {ar ? "مساحتي" : "Mon espace"}
+              </AnimatedButton>
+            </div>
           ) : (
             <>
-              <div className="hidden sm:block">
+              <div className="hidden md:block">
                 <AnimatedButton href="/login" variant="ghost" size="default">
                   {t.nav.login}
                 </AnimatedButton>
               </div>
-              <AnimatedButton href="/login?tab=register" variant="gold" size="default">
-                {t.nav.register}
-              </AnimatedButton>
+              <div className="hidden sm:block">
+                <AnimatedButton href="/login?tab=register" variant="gold" size="default">
+                  {t.nav.register}
+                </AnimatedButton>
+              </div>
             </>
           )}
           <button
@@ -189,6 +196,7 @@ export function PublicNavbar({ variant = "light" }: { variant?: "light" | "dark"
             )}
             onClick={() => setMobileOpen((v) => !v)}
             aria-label="Menu"
+            aria-expanded={mobileOpen}
           >
             {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
@@ -198,17 +206,20 @@ export function PublicNavbar({ variant = "light" }: { variant?: "light" | "dark"
       {mobileOpen && (
         <div
           className={cn(
-            "relative z-10 border-t px-4 py-3 lg:hidden",
+            "relative z-10 max-h-[min(70dvh,calc(100dvh-3.5rem))] overflow-y-auto overscroll-contain border-t px-4 py-3 lg:hidden",
             isDark
-              ? "border-white/10 bg-[rgba(7,16,51,0.96)]"
+              ? "border-white/10 bg-[rgba(7,16,51,0.98)]"
               : "border-[var(--line)] bg-[var(--card)]",
           )}
         >
+          <div className="mb-2 flex items-center justify-between gap-2 sm:hidden">
+            <LanguageSwitch variant={variant} />
+          </div>
           <div className="flex flex-col gap-1">
             {groups.flatMap((g) =>
               g.items.map((link) => (
                 <Link
-                  key={link.href}
+                  key={`${g.label}-${link.href}-${link.label}`}
                   href={link.href}
                   onClick={() => setMobileOpen(false)}
                   className={cn(

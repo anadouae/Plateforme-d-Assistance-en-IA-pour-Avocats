@@ -15,27 +15,41 @@ Interface & Next.js, TypeScript, Tailwind ; FR / AR \\
 API & FastAPI, SQLAlchemy, Alembic \\
 Données & PostgreSQL~16, MinIO (objets), Redis~7 \\
 Tâches & Celery (OCR, e-mails, rappels) \\
-Dictée & Micro ou fichier audio $\rightarrow$ API vocale cloud (Whisper) \\
-IA texte & Modèle de langage cloud (composition, révision, synthèse), consignes anti-invention \\
+Dictée & Web Speech API (Chrome / Edge) ; MediaRecorder $\rightarrow$ Whisper OpenAI (Firefox + Terminé) ; import audio \\
+IA texte & Modèle de langage cloud (composition, révision pédagogue, synthèse), consignes anti-invention ; noms masqués avant l'IA \\
 OCR & OCR cloud sur les pièces \\
-Export & Word et PDF (RTL arabe, logo centré, en-tête cabinet) \\
+Export & Word (.docx) officiel + PDF (RTL arabe, armoiries, en-tête cabinet) \\
 Infra & Docker Compose, Caddy (TLS), VPS, images GHCR \\
-Exploitation BDD & Adminer en local VPS (tunnel SSH) ; pas d'exposition publique \\
+Exploitation BDD & Adminer conteneurisé via tunnel SSH local ; pas d'exposition web publique \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Un moteur de transcription \emph{local} peut exister dans le code comme secours ; \textbf{ce n'est pas le chemin de production} décrit ici.
+La dictée combine deux voies : (1)~\textit{Web Speech API} dans Chrome / Edge pour un aperçu instantané ; (2)~\textit{MediaRecorder} puis transcription \textbf{Whisper} (OpenAI) lorsque le navigateur ne fournit pas Web Speech (Firefox inclus), avec boutons \textbf{Terminé} / \textbf{Annuler} et détection automatique FR / AR. L'import de fichier audio emprunte la même voie Whisper.
 
 \section{Rôles et espace cabinet}
 
-L'\textbf{admin cabinet} a le même atelier que l'avocat, plus l'équipe, le plan, le logo et le parrainage. L'\textbf{avocat} dicte, rédige, valide et exporte, sans payer. L'\textbf{assistant} ouvre le menu \textbf{Plaidoiries validées} : aperçu, impression, Word et PDF des plaidoiries au statut \textit{validated} ou \textit{finalized} ; il dépose des pièces.
+L'\textbf{admin cabinet} a le même atelier que l'avocat, plus l'équipe, le plan, le logo et le parrainage. L'\textbf{avocat} dicte, rédige, valide et exporte, sans payer. L'\textbf{assistant} ouvre le menu \textbf{Plaidoiries validées} : aperçu, consultation et téléchargement Word (.docx) / PDF des plaidoiries au statut \textit{validated} ou \textit{finalized} ; il dépose des pièces.
 
 L'assistant n'utilise pas l'atelier de dictée, ni les fonctions d'IA de rédaction, de synthèse documentaire, ou de fiche orale d'audience (la \textbf{clé de barre} : document de préparation à plaider, généré depuis le dossier --- ce n'est ni un mot de passe, ni un code d'accès).
 
 L'\textbf{admin plateforme} (WebVoice) supervise les cabinets depuis \texttt{/admin}, sans lire le contenu des affaires.
 
-Le menu : Plaidoirie, Dossiers, Documents, Planning, Activité, Équipe (admin cabinet). Paramètres : cabinet, plan et usage, sécurité, zone sensible.
+Le menu cabinet (dock fixe en bas sur mobile) : Plaidoirie, Dossiers, Documents, Planning, Activité, Équipe (admin cabinet). Paramètres : cabinet, plan et usage, sécurité, zone sensible. L'admin plateforme LexHub a un dock dédié (Aperçu, Cabinets, Plans, Leads, Logs, Coach) et un en-tête marque \textbf{LexHub} --- sans lien Paramètres cabinet.
+
+\section{Expérience multi-support (desktop et mobile)}
+\label{sec:mobile}
+
+LexHub est un SaaS \textbf{web} unique (\url{https://lexhub.space}) : il n'existe pas d'application native App Store / Play Store séparée. L'atout est la \textbf{continuité d'usage} : le même compte, les mêmes rôles et le même contrôle d'accès sur \textbf{ordinateur} (rédaction approfondie) et sur \textbf{smartphone} (continuité hors cabinet).
+
+\paragraph{Quel type de mobile ?}
+Il ne s'agit pas d'une liste de marques, mais d'une adaptation aux \textbf{écrans tactiles courants} (largeurs typiques $360$--$430$\,px : iPhone, Galaxy, etc.), validée en navigateur mobile et en émulation (outils développeur). Au-delà d'environ $880$\,px de largeur, l'interface retrouve le mode bureau (dock latéral).
+
+\paragraph{Impact UX.}
+Sur téléphone : navigation en \textbf{dock fixé en bas} (gestes au pouce), mise en page mono-colonne, en-tête allégé. Les rôles avocat, assistant et admin plateforme conservent leurs spécificités (pas de dictée pour l'assistant ; pas de lecture des affaires pour l'admin plateforme).
+
+\paragraph{Valeur métier.}
+L'avocat peut reprendre un brouillon ou consulter un dossier en déplacement ; l'assistant récupère une plaidoirie validée ; l'exploitation LexHub reste pilotable depuis un mobile. Desktop et mobile ne sont pas deux produits : c'est \textbf{une seule expérience cabinet}, adaptée à la forme de l'écran.
 
 \section{Inscription et entrée en équipe}
 
@@ -50,10 +64,10 @@ Libellés de production (rail « Étape $X$ / $5$ ») --- figures~\ref{fig:plaid
 
 \begin{enumerate}[leftmargin=1.4em]
   \item \textbf{Dossier \& pièces.} Dossier obligatoire. Fiche d'identité juridique. À la création, chaque champ affiche une \textbf{aide contextuelle} (pourquoi le renseigner, exemple). Ajout de pièces. Ces données nourrissent la rédaction ; elles n'inventent pas le fond.
-  \item \textbf{Dictée.} Micro (arabe) ou import d'un fichier audio. Commandes commencer / pause / terminer.
-  \item \textbf{Transcription.} Texte brut éditable. Bouton \textbf{Corriger} : forme standard, sans résumer. Un texte sans phrase (touches au hasard) est \textbf{refusé} : l'IA n'invente pas une affaire. Surlignage orange des substitutions STT et alertes de contradiction. Avant la rédaction : feuille \textbf{Clarification rapide} (confirmer ou passer). Le bouton \textbf{Nouvelle plaidoirie} propose de reprendre un brouillon local ou d'ouvrir une page vide (plus de réouverture silencieuse).
-  \item \textbf{Rédaction IA.} Document éditable. Panneau \textbf{Assistant IA --- modifications} : consignes en langage naturel (fautes acceptées) ; remplissage des sections vides à partir des faits déjà présents. L'avocat enregistre, valide ou assigne.
-  \item \textbf{Export.} Word ou PDF (logo cabinet centré, corps arabe RTL aligné sur Word). Après export réussi : statut \textit{finalized}. Les alertes « infos manquantes » de la rédaction ne s'affichent plus à cette étape.
+  \item \textbf{Dictée.} Reconnaissance vocale du navigateur (Web Speech, Chrome / Edge) ou capture micro \textbf{Whisper} (MediaRecorder --- Firefox inclus) ou import audio. Commandes démarrer / arrêter. La langue parlée (FR / AR) peut être détectée automatiquement.
+  \item \textbf{Transcription.} Texte brut éditable. Bouton \textbf{Corriger} : forme standard, sans résumer ; les fautes de frappe / STT sont approximées intelligemment (pas de refus pour un texte encore compréhensible). Un texte sans phrase (touches au hasard) est \textbf{refusé} : l'IA n'invente pas une affaire. Surlignage orange des substitutions STT et alertes de contradiction. Avant la rédaction : feuille \textbf{Clarification rapide} (QCM 0--5) : LexHub anonymise dossier + dictée, le LLM prépare les questions, l'avocat confirme ou passe ; les réponses alimentent la composition. Le bouton \textbf{Nouvelle plaidoirie} propose de reprendre un brouillon local ou d'ouvrir une page vide (plus de réouverture silencieuse).
+  \item \textbf{Rédaction IA.} Document éditable (structure \texttt{أولاً} \ldots \texttt{خامساً}, \texttt{لهذه الأسباب} / الملتمسات). Panneau \textbf{Assistant IA --- modifications} : historique type chat ; consignes ou questions en langage naturel (fautes OK) ; l'IA \textbf{répond pédagogiquement} (ex.\ rôle du titre « pour ces motifs ») \textbf{et} met à jour le corps (remplissage des sections vides à partir des faits déjà présents). UX micro alignée sur les assistants grand public : bandeau d'écoute, boutons \textbf{Terminé} / \textbf{Annuler}, détection auto FR/AR sans changer l'UI ; \textbf{Annuler la requête} / \textbf{Modifier la requête} pendant ou après l'envoi. L'avocat enregistre, valide ou assigne.
+  \item \textbf{Export officiel Word (.docx) et PDF.} Génération du document Word officiel (standard modifiable des juridictions marocaines) et du PDF homologue : typographie Noto Naskh Arabic RTL, logo ou armoiries centrés, en-tête bilingue. Le .docx reste 100\,\% éditable avant audience. Après export réussi : statut \textit{finalized} (mise à jour UI). Les alertes « infos manquantes » de la rédaction ne s'affichent plus à cette étape.
 \end{enumerate}
 
 \section{Validation, assignation et assistant}
@@ -69,7 +83,7 @@ Libellés de production (rail « Étape $X$ / $5$ ») --- figures~\ref{fig:plaid
 \midrule
 Valider & Statut \textit{validated} : \textbf{tous} les assistants du cabinet la voient. \\
 Assigner & Valide le brouillon si besoin et la met en avant pour l'assistant choisi. \\
-Exporter Word/PDF & Statut \textit{finalized} : classée « Finalisée » (distinct du brouillon local). \\
+Exporter Word (.docx) / PDF & Statut \textit{finalized} : classée « Finalisée » (distinct du brouillon local). \\
 Épingler & Mise en tête de liste. \\
 Dévalider & Retour brouillon : plus visible des assistants. \\
 \bottomrule
@@ -91,6 +105,9 @@ Chaque requête authentifiée porte un JWT. Les routes sont filtrées par rôle 
 \paragraph{Anti-robot (Cloudflare Turnstile).}
 Turnstile est un widget Cloudflare qui distingue un humain d'un script, sans puzzle visuel du type CAPTCHA classique. Sur LexHub il n'est \textbf{pas} affiché à la première connexion : le formulaire e-mail / mot de passe suffit. Après \textbf{trois} échecs (seuil configuré), le frontend charge le widget ; l'API refuse le login tant que le jeton n'est pas validé auprès de Cloudflare. Le mécanisme est \textbf{actif en production} (clés réelles, pas les clés de test). Il ne s'applique pas à l'inscription (OTP e-mail) ni aux parcours métier (dictée, plaidoirie). En environnement \texttt{production}, le backend refuse de démarrer sans ces clés.
 
+\paragraph{Confidentialité avant IA.}
+Avant tout appel LLM (composition, clarification QCM, révision), les noms des parties sont remplacés par des jetons (\texttt{PARTIE\_A}, \ldots) puis restaurés dans le document présenté à l'avocat. L'audio Whisper et les pièces OCR transitent chiffrés (HTTPS) ; le stockage objet (MinIO) n'est pas exposé publiquement.
+
 \paragraph{Isolation.}
 Toutes les entités métier sont rattachées à un \texttt{cabinet\_id}. L'API refuse une ressource hors locataire. Le navigateur n'ouvre jamais PostgreSQL : il ne parle qu'à FastAPI en HTTPS.
 
@@ -104,4 +121,5 @@ Limitation de débit sur l'authentification et les endpoints sensibles, complét
 Outre l'abonnement, l'espace Paramètres porte la charte (logo, en-tête), la sécurité (2FA TOTP), les invitations d'équipe, le parrainage, le digest e-mail des notifications et l'export du planning au format \texttt{ICS} (Google Agenda / Outlook).
 
 \paragraph{Parrainage.}
+\label{sec:parrainage}
 Le code de parrainage n'est pas un secret d'accès. Sa révélation ne compromet pas les dossiers ; elle permet au plus l'attribution d'un bonus d'essai, plafonnée.

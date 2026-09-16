@@ -75,7 +75,7 @@ export function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center bg-[rgba(14,21,38,0.42)] p-5 backdrop-blur-[6px] animate-[fade-in_0.35s_cubic-bezier(0.2,0.9,0.25,1)]"
+      className="fixed inset-0 z-[200] flex items-end justify-center bg-[rgba(14,21,38,0.45)] p-0 sm:items-center sm:p-4 md:p-5"
       role="presentation"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
@@ -87,39 +87,41 @@ export function Modal({
         aria-modal="true"
         aria-labelledby={titleId}
         className={cn(
-          "max-h-[88vh] w-full max-w-[560px] overflow-y-auto rounded-sanad-lg border border-[var(--line)] bg-white/92 p-[30px] shadow-luxe backdrop-blur-[20px] animate-[modal-rise_0.45s_cubic-bezier(0.2,0.9,0.25,1)]",
+          "flex max-h-[92dvh] w-full max-w-[560px] flex-col overflow-hidden rounded-t-2xl border border-[var(--line)] bg-white shadow-luxe sm:max-h-[88vh] sm:rounded-2xl",
           className,
         )}
       >
-        <div className="mb-1.5 flex items-start justify-between gap-3">
-          <div>
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--line)] px-4 py-3 sm:px-6 sm:py-4">
+          <div className="min-w-0 flex-1">
             {icon && (
-              <div className="mb-3.5 flex h-11 w-11 items-center justify-center rounded-[14px] bg-sanad-gold text-white shadow-sanad-sm">
+              <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-sanad-gold text-white sm:mb-3 sm:h-11 sm:w-11">
                 {icon}
               </div>
             )}
             <h2
               id={titleId}
-              className="font-display text-[23px] font-medium text-sanad-ink"
+              className="font-display text-lg font-medium leading-snug text-sanad-ink sm:text-[23px]"
             >
               {title}
             </h2>
             {subtitle && (
-              <p className="mt-1 text-[13px] text-sanad-inkSoft">{subtitle}</p>
+              <p className="mt-1 text-xs text-sanad-inkSoft sm:text-[13px]">{subtitle}</p>
             )}
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] border border-[var(--line)] bg-white text-sanad-inkSoft transition hover:rotate-90 hover:border-sanad-gold hover:text-sanad-ink"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[var(--line)] bg-white text-sanad-inkSoft"
             aria-label="Fermer"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="mt-5">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6 sm:py-5">
+          {children}
+        </div>
         {footer && (
-          <div className="mt-5 flex justify-end gap-2.5 border-t border-[var(--line)] pt-[18px]">
+          <div className="flex shrink-0 flex-col-reverse gap-2 border-t border-[var(--line)] px-4 py-3 sm:flex-row sm:justify-end sm:gap-2.5 sm:px-6 sm:py-4">
             {footer}
           </div>
         )}

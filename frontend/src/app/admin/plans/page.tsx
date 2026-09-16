@@ -6,8 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api, ApiError, type BillingPlan } from "@/lib/api";
+import { useTranslations } from "@/store/locale";
 
 export default function AdminPlansPage() {
+  const t = useTranslations().adminPlatform;
   const [plans, setPlans] = useState<BillingPlan[]>([]);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -66,16 +68,8 @@ export default function AdminPlansPage() {
     <AdminShell>
       <div className="space-y-4 p-6">
         <div>
-          <h1 className="font-serif text-2xl font-bold text-sanad-navy">Plans tarifaires</h1>
-          <p className="text-sm text-slate-600">
-            Catalogue des abonnements LexHub (prix, quotas). Les <strong>factures</strong> ne sont pas ici :
-            ce sont les reçus de chaque cabinet (essai, pack crédits), consultables dans{" "}
-            <a href="/admin/cabinets" className="underline">
-              Cabinets
-            </a>{" "}
-            → fiche du locataire → « Abonnement & factures ». Un cabinet sur plan Découverte sans pack n’a
-            encore aucune facture.
-          </p>
+          <h1 className="font-serif text-2xl font-bold text-sanad-navy">{t.plansTitle}</h1>
+          <p className="text-sm text-slate-600">{t.plansSubtitle}</p>
         </div>
         {message ? <p className="text-sm text-green-700">{message}</p> : null}
         {error ? <p className="text-sm text-red-600">{error}</p> : null}

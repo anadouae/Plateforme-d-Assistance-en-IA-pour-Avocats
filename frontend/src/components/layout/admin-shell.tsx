@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
-import Image from "next/image";
 import {
   Building2,
   CreditCard,
@@ -19,18 +19,20 @@ import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { UserAccountMenu } from "@/components/layout/user-account-menu";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/auth";
+import { useLocaleStore, useTranslations } from "@/store/locale";
+import { useIsMobile } from "@/hooks/use-is-mobile";
 import { api, ApiError } from "@/lib/api";
 import {
   OpsCoachSection,
   normalizeOpsTips,
 } from "@/components/admin/ops-coach-panel";
 
-const adminNav = [
-  { href: "/admin", label: "Vue d’ensemble", icon: LayoutDashboard, hint: "Indicateurs clés" },
-  { href: "/admin/cabinets", label: "Cabinets", icon: Building2, hint: "Clients & accès" },
-  { href: "/admin/plans", label: "Plans tarifaires", icon: CreditCard, hint: "Prix & quotas" },
-  { href: "/admin/leads", label: "Demandes", icon: Phone, hint: "Entreprise & Sur mesure" },
-  { href: "/admin/logs", label: "Journal", icon: ScrollText, hint: "Audit sécurité" },
+const adminNavDefs = [
+  { href: "/admin", key: "overview" as const, icon: LayoutDashboard },
+  { href: "/admin/cabinets", key: "cabinets" as const, icon: Building2 },
+  { href: "/admin/plans", key: "plans" as const, icon: CreditCard },
+  { href: "/admin/leads", key: "leads" as const, icon: Phone },
+  { href: "/admin/logs", key: "logs" as const, icon: ScrollText },
 ];
 
 type PlatformAnalysis = {
@@ -211,10 +213,36 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { user, isAuthenticated } = useAuthStore();
+  const locale = useLocaleStore((s) => s.locale);
+  const allT = useTranslations();
+  const t = allT.adminPlatform;
+  const isMobile = useIsMobile();
+  const [dockMounted, setDockMounted] = useState(false);
   const [analysisBusy, setAnalysisBusy] = useState(false);
   const [analysisOpen, setAnalysisOpen] = useState(false);
   const [analysis, setAnalysis] = useState<PlatformAnalysis | null>(null);
   const [analysisErr, setAnalysisErr] = useState("");
+
+  useEffect(() => setDockMounted(true), []);
+
+  const adminNav = adminNavDefs.map((item) => {
+    if (!t) {
+      return { ...item, label: item.key, labelMobile: item.key, hint: "" };
+    }
+    if (item.key === "overview") {
+      return { ...item, label: t.navOverview, labelMobile: t.navOverviewShort, hint: t.navOverviewHint };
+    }
+    if (item.key === "cabinets") {
+      return { ...item, label: t.navCabinets, labelMobile: t.navCabinets, hint: t.navCabinetsHint };
+    }
+    if (item.key === "plans") {
+      return { ...item, label: t.navPlans, labelMobile: t.navPlansShort, hint: t.navPlansHint };
+    }
+    if (item.key === "leads") {
+      return { ...item, label: t.navLeads, labelMobile: t.navLeadsShort, hint: t.navLeadsHint };
+    }
+    return { ...item, label: t.navLogs, labelMobile: t.navLogsShort, hint: t.navLogsHint };
+  });
 
   useEffect(() => {
     if (!isAuthenticated()) {
@@ -230,6 +258,17 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <p className="text-slate-500">…</p>
+      </div>
+    );
+  }
+
+  if (!t) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 px-4 text-center">
+        <p className="text-sm text-slate-600">Traduction admin indisponible — rechargez la page.</p>
+        <button type="button" className="chip-btn primary" onClick={() => window.location.reload()}>
+          Recharger
+        </button>
       </div>
     );
   }
@@ -268,71 +307,92 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
   const cityBars = cityEntries.map(([label, value]) => ({ label, value }));
   const creditBars = creditPlanEntries.map(([label, value]) => ({ label, value }));
 
-  return (
-    <div className="admin-shell">
-      <aside className="admin-dock" aria-label="Navigation admin">
-        <Link href="/admin" className="admin-dock__brand" title="LexHub Admin">
-          <Image
-            src="/logo-lexhub-cube.png"
-            alt="LexHub"
-            width={28}
-            height={28}
-            className="h-7 w-7 object-contain"
-          />
-        </Link>
+  const dock = (
+    <aside className="admin-dock" aria-label="LexHub">
+      <Link href="/admin" className="admin-dock__brand" title="LexHub">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/logo-lexhub-cube.png?v=cube-3"
+          alt="LexHub"
+          width={28}
+          height={28}
+          className="h-7 w-7 object-contain"
+        />
+      </Link>
 
-        <nav className="admin-dock__nav">
-          {adminNav.map((item) => {
-            const Icon = item.icon;
-            const active = pathname === item.href;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn("admin-dock__item", active && "is-active")}
-              >
-                <Icon className="admin-dock__icon" strokeWidth={2} />
-                <span className="admin-dock__text">
-                  <span className="admin-dock__label">{item.label}</span>
-                  <span className="admin-dock__hint">{item.hint}</span>
-                </span>
-              </Link>
-            );
-          })}
-          <button
-            type="button"
-            className={cn("admin-dock__item admin-dock__item--coach", analysisOpen && "is-active")}
-            disabled={analysisBusy}
-            onClick={() => void runAnalysis()}
-          >
-            <Sparkles className="admin-dock__icon" strokeWidth={2} />
-            <span className="admin-dock__text">
-              <span className="admin-dock__label">
-                {analysisBusy ? "Chargement…" : "Coach exploitation"}
+      <nav className="admin-dock__nav">
+        {adminNav.map((item) => {
+          const Icon = item.icon;
+          const active =
+            item.href === "/admin"
+              ? pathname === "/admin"
+              : pathname === item.href || pathname.startsWith(`${item.href}/`);
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn("admin-dock__item", active && "is-active")}
+              aria-label={item.label}
+            >
+              <Icon className="admin-dock__icon" strokeWidth={2} />
+              <span className="admin-dock__text">
+                <span className="admin-dock__label admin-dock__label--desk">{item.label}</span>
+                <span className="admin-dock__label admin-dock__label--mob">{item.labelMobile}</span>
+                <span className="admin-dock__hint">{item.hint}</span>
               </span>
-              <span className="admin-dock__hint">Conseils & e-mails cabinets</span>
+            </Link>
+          );
+        })}
+        <button
+          type="button"
+          className={cn("admin-dock__item admin-dock__item--coach", analysisOpen && "is-active")}
+          disabled={analysisBusy}
+          onClick={() => void runAnalysis()}
+          aria-label={t.coach}
+        >
+          <Sparkles className="admin-dock__icon" strokeWidth={2} />
+          <span className="admin-dock__text">
+            <span className="admin-dock__label admin-dock__label--desk">
+              {analysisBusy ? t.coachLoading : t.coach}
             </span>
-          </button>
-        </nav>
-      </aside>
+            <span className="admin-dock__label admin-dock__label--mob">
+              {analysisBusy ? "…" : t.coachShort}
+            </span>
+            <span className="admin-dock__hint">{t.coachHint}</span>
+          </span>
+        </button>
+      </nav>
+    </aside>
+  );
+
+  return (
+    <div className="admin-shell" dir={locale === "ar" ? "rtl" : "ltr"}>
+      {isMobile && dockMounted && typeof document !== "undefined"
+        ? createPortal(dock, document.body)
+        : dock}
 
       <div className="admin-shell__main">
         <header className="admin-shell__header">
-          <div>
-            <p className="text-sm font-semibold text-sanad-navy">Administration plateforme</p>
-            <p className="max-w-[280px] truncate text-[11px] text-sanad-muted">
-              {user?.full_name || "Admin"} · métriques ops (pas les dossiers)
-            </p>
-          </div>
-          <div className="flex items-center gap-2.5">
+          <Link href="/admin" className="admin-shell__brand" aria-label="LexHub">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/logo-lexhub-cube.png?v=cube-3"
+              alt=""
+              width={40}
+              height={40}
+              className="admin-shell__brand-img"
+            />
+            <span className="admin-shell__brand-text">
+              <span className="admin-shell__brand-title">LexHub</span>
+            </span>
+          </Link>
+          <div className="admin-shell__actions">
             <ThemeToggle />
             <LanguageSwitch variant="light" />
-            <UserAccountMenu compact />
-            <div className="hidden items-center gap-1.5 text-[11px] text-sanad-muted xl:flex">
+            <UserAccountMenu compact hideSettings />
+            <div className="admin-shell__ops-badge hidden items-center gap-1.5 text-[11px] text-sanad-muted xl:flex">
               <Shield className="h-3.5 w-3.5 text-sanad-gold" />
-              <span title="Exploitation de la plateforme (ops = operations), pas un module avocat">
-                Exploitation LexHub
-              </span>
+              <span title={t.opsHint}>{t.opsBadge}</span>
             </div>
           </div>
         </header>

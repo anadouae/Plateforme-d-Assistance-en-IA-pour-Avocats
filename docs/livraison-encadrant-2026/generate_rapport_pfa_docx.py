@@ -28,6 +28,16 @@ LOGO_LEXHUB = OUT_REPO / "logo-lexhub.png"
 LOGO_ENSA = REPO / "docs" / "rapport-pfa" / "assets" / "logo-ensa.png"
 LOGO_WEBVOICE = REPO / "docs" / "rapport-pfa" / "assets" / "logo-webvoice.png"
 MAQUETTES = REPO / "docs" / "rapport-pfa" / "maquettes"
+ASSETS = REPO / "docs" / "rapport-pfa" / "assets"
+SHOTS = REPO / "docs" / "soutenance-pfa" / "screenshots"
+
+
+def resolve_screen(fname: str) -> Path | None:
+    for base in (ASSETS, SHOTS, MAQUETTES):
+        p = base / fname
+        if p.exists():
+            return p
+    return None
 
 NAVY = RGBColor(0x0B, 0x1A, 0x4D)
 GOLD = RGBColor(0xC4, 0x97, 0x3F)
@@ -305,10 +315,11 @@ def build():
     add_para(
         doc,
         "Partant du constat d'une forte perte de productivité lors de la transition orale-écrite des arguments de plaidoirie, LexHub "
-        "met en place un atelier en cinq étapes : rattachement du dossier et des pièces justificatives, dictée vocale temps réel "
-        "via la Web Speech API native du navigateur (respectant la confidentialité locale sans coût serveur), transcription avec détection "
-        "visuelle des corrections et détection déterministe des contradictions matérielles, rédaction assistée structurée selon les "
-        "usages des juridictions marocaines, et export final exclusif au format Microsoft Word (.docx) 100 % éditable, orné de l'en-tête officiel "
+        "met en place un atelier en cinq étapes : rattachement du dossier et des pièces justificatives, dictée vocale "
+        "(Web Speech API et/ou Whisper OpenAI, détection automatique français/arabe), transcription avec correction de forme "
+        "tolérante aux fautes et détection des contradictions, clarification QCM optionnelle puis rédaction assistée structurée "
+        "selon les usages des juridictions marocaines, révision interactive (chat qui répond et met à jour le document), "
+        "et export final exclusif au format Microsoft Word (.docx) 100 % éditable, orné de l'en-tête officiel "
         "du cabinet et des armoiries du Royaume du Maroc.",
     )
     add_para(
@@ -456,16 +467,17 @@ def build():
         [
             ["EF-1", "Authentification", "Inscription sécurisée avec vérification par e-mail (code OTP à 6 chiffres), création immédiate de l'espace cabinet."],
             ["EF-2", "Dossiers judiciaires", "Création et gestion des dossiers (numéro d'ordre, tribunal, ville, juridiction, parties adverses, historique)."],
-            ["EF-3", "Dictée vocale", "Capture micro temps réel dans le navigateur (Web Speech API) avec affichage continu et reprise à tout instant."],
-            ["EF-4", "Transcription Fusha", "Nettoyage typographique, correction de forme en arabe juridique avec mise en évidence visuelle orange des termes corrigés."],
+            ["EF-3", "Dictée vocale", "Capture micro (Web Speech Chrome/Edge ou Whisper MediaRecorder, y compris Firefox) ; détection auto FR/AR ; import audio."],
+            ["EF-4", "Transcription Fusha", "Correction de forme en arabe juridique, fautes STT approximées ; surlignage orange ; refus du texte sans sens."],
             ["EF-5", "Contrôle contradictions", "Vérification algorithmique déterministe des dates, numéros de pièces, montants en MAD et identités."],
-            ["EF-6", "Rédaction assistée", "Génération de la plaidoirie en sections normalisées (En-tête, Faits constants, Moyens de droit, Prétentions chiffrées)."],
-            ["EF-7", "Assistant interactif", "Module de révision guidée permettant à l'avocat d'affiner le texte ou de compléter une section par dialogue."],
-            ["EF-8", "Export Word (.docx)", "Génération du document officiel téléchargeable au format .docx, prêt pour impression ou dépôt au greffe."],
-            ["EF-9", "Collaboration étanche", "Masquage rigoureux des brouillons (draft) aux assistants ; accès réservé aux états validés (validated)."],
-            ["EF-10", "Planning & Audiences", "Gestion de l'agenda des audiences, synchronisation avec le dossier et rappels à J-2 (48h)."],
-            ["EF-11", "Fil d'activité", "Journalisation transparente des actions sensibles au sein du cabinet pour l'audit interne."],
-            ["EF-12", "Modèle économique", "Gestion des forfaits (Découverte, Solo, Cabinet, Entreprise), des crédits et de la période d'essai encadrée."],
+            ["EF-6", "Clarification QCM", "0 à 5 questions après lecture anonymisée du dossier et de la dictée ; l'avocat confirme ou passe avant rédaction."],
+            ["EF-7", "Rédaction assistée", "Génération de la plaidoirie en sections normalisées (أولاً…خامساً, لهذه الأسباب / الملتمسات) sans invention de faits."],
+            ["EF-8", "Assistant révision", "Chat : répond pédagogiquement et met à jour le document ; Annuler / Modifier ; micro avec bouton Terminé."],
+            ["EF-9", "Export Word (.docx)", "Génération du document officiel téléchargeable au format .docx, prêt pour impression ou dépôt au greffe."],
+            ["EF-10", "Collaboration étanche", "Masquage rigoureux des brouillons (draft) aux assistants ; accès réservé aux états validés (validated)."],
+            ["EF-11", "Planning & Audiences", "Gestion de l'agenda des audiences, synchronisation avec le dossier et rappels à J-2 (48h)."],
+            ["EF-12", "Fil d'activité", "Journalisation transparente des actions sensibles au sein du cabinet pour l'audit interne."],
+            ["EF-13", "Modèle économique", "Gestion des forfaits (Découverte, Solo, Cabinet, Entreprise), des crédits et de la période d'essai encadrée."],
         ],
         col_widths=[2.5, 4.0, 9.5],
     )
@@ -544,9 +556,9 @@ def build():
         "L'atelier de plaidoirie constitue le cœur d'innovation de LexHub. Il guide l'avocat à travers cinq phases méthodologiques progressives :",
     )
     numbered(doc, "Étape 1 — Dossier et pièces : Sélection du dossier judiciaire cible, consultation des pièces annexées (contrats, PV d'huissier, factures) et définition du type de procédure.")
-    numbered(doc, "Étape 2 — Dictée vocale : Enregistrement de la parole de l'avocat en arabe via la Web Speech API native du navigateur, avec indicateur de flux et transcription instantanée.")
-    numbered(doc, "Étape 3 — Transcription et correction de forme : Nettoyage automatique en arabe standard juridique (Fusha) ; mise en évidence des corrections par surlignage orange ; détection des contradictions matérielles.")
-    numbered(doc, "Étape 4 — Rédaction assistée : Structuration du texte selon les normes procédurales marocaines (En-tête de cour, Faits constants, Réfutation des prétentions adverses, Dispositif légal) ; affinement par dialogue interactif avec l'IA.")
+    numbered(doc, "Étape 2 — Dictée vocale : Capture micro via Web Speech (Chrome/Edge) ou Whisper (MediaRecorder, Firefox inclus), ou import audio ; détection automatique français/arabe sans basculer toute l'interface.")
+    numbered(doc, "Étape 3 — Transcription et correction de forme : Nettoyage en arabe standard juridique (Fusha), fautes de frappe/STT approximées ; surlignage orange ; contradictions matérielles ; feuille de clarification QCM (0–5) générée après anonymisation du dossier.")
+    numbered(doc, "Étape 4 — Rédaction assistée et révision : Structuration (أولاً…خامساً, لهذه الأسباب) ; panneau Assistant IA (chat) qui répond et met à jour le document ; micro avec bandeau d'écoute et bouton Terminé ; Annuler / Modifier la requête.")
     numbered(doc, "Étape 5 — Export officiel Word (.docx) : Téléchargement du document 100 % éditable, comprenant les armoiries officielles du Royaume du Maroc, l'en-tête du cabinet et la typographie Noto Naskh Arabic. Le document est alors classé comme finalisé.")
 
     # -------------------------------------------------------------
@@ -738,22 +750,24 @@ def build():
     )
 
     screens = [
-        ("01-accueil.png", "Écran d'accueil public et proposition de valeur LexHub (https://lexhub.space)"),
-        ("02-connexion.png", "Formulaire de connexion sécurisée avec authentification par session et JWT"),
-        ("10-tableau-de-bord.png", "Tableau de bord principal du cabinet : métriques d'activité et accès rapide"),
-        ("11-dossiers.png", "Gestionnaire des dossiers judiciaires avec filtres et recherche instantanée"),
-        ("14b-plaidoirie-workspace.png", "Atelier de plaidoirie : navigation guidée à travers les cinq étapes métier"),
-        ("14c-transcription-fusha.png", "Module de transcription : texte arabe nettoyé avec surlignage orange des corrections"),
-        ("19-export-document.png", "Aperçu du document officiel et bouton d'export Microsoft Word (.docx) 100 % éditable"),
-        ("15-planning.png", "Module de planning : agenda visuel des audiences et rappels automatiques"),
-        ("23-activite-cabinet.png", "Fil d'activité collaboratif du cabinet pour la traçabilité des opérations"),
-        ("16-equipe.png", "Gestion de l'équipe du cabinet : attribution des rôles et invitation d'assistants"),
-        ("22a-admin-dashboard.png", "Tableau de bord de supervision de la plateforme (administration WebVoice)"),
+        ("01-accueil.png", "Accueil LexHub (page publique)"),
+        ("02-connexion.png", "Connexion sécurisée"),
+        ("10-tableau-de-bord.png", "Tableau de bord — dossiers, documents, essai et crédits"),
+        ("11-dossiers.png", "Liste des dossiers du cabinet"),
+        ("24-dossier-detail.png", "Fiche dossier — identité des parties et plaidoirie liée"),
+        ("13-documents.png", "Espace Documents — dépôt et statut d'extraction"),
+        ("13b-document-detail.png", "Détail document — extrait, synthèse IA et questions"),
+        ("14b-plaidoirie-workspace.png", "Atelier plaidoirie — étape 1 (dossier & pièces)"),
+        ("14c-transcription-fusha.png", "Transcription / correction (arabe fusḥā)"),
+        ("19-export-document.png", "Export Word de la plaidoirie"),
+        ("16-equipe.png", "Équipe — invitations et rôles"),
+        ("23-activite-cabinet.png", "Journal d'activité du cabinet"),
+        ("22a-admin-dashboard.png", "Admin plateforme — pilotage LexHub"),
     ]
 
     for fname, caption in screens:
-        img_path = MAQUETTES / fname
-        if img_path.exists():
+        img_path = resolve_screen(fname)
+        if img_path is not None:
             add_figure(doc, img_path, caption, width_cm=14.5)
 
     # -------------------------------------------------------------

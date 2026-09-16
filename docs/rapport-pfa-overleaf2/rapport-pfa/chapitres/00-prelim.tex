@@ -21,24 +21,24 @@ Enfin, je remercie ma famille et mes proches pour leur soutien durant ces deux m
 \chapter*{Résumé}
 \addcontentsline{toc}{chapter}{Résumé}
 
-\textbf{Mots-clés :} LegalTech, SaaS, plaidoirie, reconnaissance vocale, multi-tenant, Maroc.
+\textbf{Mots-clés :} LegalTech, SaaS, système d'information, plaidoirie, urbanisation MADI, multi-tenant, Maroc.
 
-Ce rapport présente \textbf{LexHub} (\url{https://lexhub.space}), SaaS pour cabinets d'avocats marocains, conçu et déployé chez WEBVOICE (stage PFA, ENSA Tétouan).
+Ce rapport présente \textbf{LexHub} (\url{https://lexhub.space}), SaaS / \textbf{système d'information de cabinet} pour avocats marocains, conçu et déployé chez WEBVOICE (stage PFA, ENSA Tétouan).
 
-Le cœur métier est l'atelier de plaidoirie \textbf{en cinq étapes} déployé sur \url{https://lexhub.space} : dossier et pièces, dictée en arabe, transcription et correction de forme, rédaction assistée (sans invention de faits), export Word / PDF. L'assistant juridique ne voit que les \textbf{plaidoiries validées} du cabinet. L'espace cabinet isole dossiers, documents, planning et équipe par locataire.
+Le cœur métier n'est pas le chat IA : c'est le couple \textbf{dossier + plaidoirie} (atelier en cinq étapes : dossier et pièces, dictée vocale native en arabe ou français, transcription et correction de forme, clarification QCM puis rédaction assistée sans invention de faits, révision interactive, export Word). L'assistant ne voit que les \textbf{plaidoiries validées}. L'espace cabinet isole dossiers, documents, planning et équipe par locataire. L'urbanisation \textbf{MADI} du SI est formalisée au chapitre~\ref{ch:conception}.
 
-Le modèle économique --- essai hybride, abonnements Solo / Cabinet / Entreprise, packs prépayés, sièges à la carte --- est détaillé au chapitre~\ref{ch:economie}.
+Le modèle économique --- essai hybride, repère IA du jour, abonnements Solo / Cabinet / Entreprise, packs, sièges --- est détaillé au chapitre~\ref{ch:economie}.
 
 \chapter*{Abstract}
 \addcontentsline{toc}{chapter}{Abstract}
 
-\textbf{Keywords:} LegalTech, SaaS, legal pleading, speech-to-text, multi-tenant, Morocco.
+\textbf{Keywords:} LegalTech, SaaS, information system, legal pleading, MADI urbanism, multi-tenant, Morocco.
 
-This report presents \textbf{LexHub} (\url{https://lexhub.space}), a SaaS for Moroccan law firms, designed and deployed at WEBVOICE (PFA internship, ENSA Tétouan).
+This report presents \textbf{LexHub} (\url{https://lexhub.space}), a \textbf{law-firm information system} (SaaS) for Moroccan lawyers, designed and deployed at WEBVOICE (PFA internship, ENSA Tétouan).
 
-The core product is the \textbf{five-step} pleading workshop live at \url{https://lexhub.space}: case file and exhibits, Arabic dictation, transcription and form correction, AI-assisted drafting without inventing facts, then Word/PDF export. A legal intern only sees \textbf{validated pleadings}. Firm data are isolated per tenant.
+The core is not an AI chat: it is the \textbf{case file + pleading} process (five-step workshop: case and exhibits, speech recognition in Arabic or French, transcription and form correction, optional QCM clarification then AI-assisted drafting without inventing facts, interactive revise chat, then Word export). Interns only see \textbf{validated pleadings}. Firm data are isolated per tenant. \textbf{MADI} urbanism of the SI is documented in chapter~\ref{ch:conception}.
 
-The business model (hybrid trial, plans, prepaid packs, add-on seats) is covered in chapter~\ref{ch:economie}.
+The business model (hybrid trial, daily AI soft-cap, plans, prepaid packs, add-on seats) is covered in chapter~\ref{ch:economie}.
 
 \chapter*{Liste des abréviations}
 \addcontentsline{toc}{chapter}{Liste des abréviations}
@@ -55,11 +55,13 @@ CI/CD & Intégration et déploiement continus \\
 FIFO & \textit{First In, First Out} --- premier entré, premier sorti (lots de packs) \\
 IA / LLM & Intelligence artificielle / \textit{Large Language Model} \\
 JWT & \textit{JSON Web Token} --- jeton d'authentification \\
+MADI & Métier, Applications, Données, Infrastructure --- cartographie d'urbanisation SI \\
 OCR & \textit{Optical Character Recognition} --- reconnaissance de texte dans une pièce \\
 OTP & \textit{One-Time Password} --- code à usage unique (e-mail) \\
 PAYG & \textit{Pay As You Go} --- usage à la demande, hors forfait \\
 RBAC & \textit{Role-Based Access Control} --- droits selon le rôle \\
 SaaS & \textit{Software as a Service} --- logiciel hébergé, facturé par abonnement \\
+SI & Système d'information \\
 STT & \textit{Speech-To-Text} --- reconnaissance vocale \\
 TLS & \textit{Transport Layer Security} --- chiffrement HTTPS \\
 UML & \textit{Unified Modeling Language} --- modélisation (cas d'utilisation, séquences, etc.) \\

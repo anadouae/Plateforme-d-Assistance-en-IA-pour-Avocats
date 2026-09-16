@@ -3,8 +3,8 @@
 import { useCallback, useRef, useState } from "react";
 import { api } from "@/lib/api";
 
-/** Whisper : arabe ou français. */
-export type WhisperLang = "ar" | "fr";
+/** Whisper : arabe, français, ou détection auto (sans changer l’UI). */
+export type WhisperLang = "ar" | "fr" | "auto";
 
 const FINAL_TRANSCRIBE_TIMEOUT_MS = 1_800_000;
 const FILE_TRANSCRIBE_TIMEOUT_MS = 1_800_000;

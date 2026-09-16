@@ -199,6 +199,38 @@
   text-align: center;
 }
 
+.auth-stepper--2 {
+  grid-template-columns: repeat(2, 1fr);
+  max-width: 280px;
+  margin-inline: auto;
+}
+
+@media (max-width: 640px) {
+  .auth-glass-card {
+    padding: 1rem !important;
+  }
+
+  .auth-stepper {
+    gap: 0.2rem;
+  }
+
+  .auth-step-label {
+    font-size: 9px;
+    line-height: 1.2;
+  }
+
+  .auth-step-dot {
+    width: 24px;
+    height: 24px;
+    font-size: 11px;
+  }
+
+  .auth-glass-page .auth-particles,
+  .auth-glass-page canvas {
+    opacity: 0.35;
+  }
+}
+
 @media (max-width: 940px) {
   .auth-glass-nav {
     flex-direction: column;

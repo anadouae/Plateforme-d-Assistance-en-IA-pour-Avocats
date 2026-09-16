@@ -1,58 +1,81 @@
 @startuml class-lexhub
 !theme plain
 skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam class {
+  BackgroundColor #F5F8FF
+  BorderColor #1B3F9C
+  FontName Helvetica
+}
+left to right direction
 
-class Cabinet {
-  +id
-  +name
-  +status
-  +logo
-  +referral_code
+package "Tenant" {
+  class Cabinet {
+    id : UUID
+    nom
+    status
+    referral_code
+  }
+  class User {
+    id : UUID
+    cabinet_id
+    email
+    role
+  }
 }
 
-class User {
-  +email
-  +role
-  +cabinet_id
-  +is_active
+package "Dossier" {
+  class Case {
+    id : UUID
+    cabinet_id
+    reference
+    matiere
+    tribunal
+  }
+  class Document {
+    id : UUID
+    case_id
+    storage_path
+    extracted_text
+    ocr_score
+  }
 }
 
-class Case {
-  +title
-  +domain
-  +cabinet_id
-  +responsible_id
+package "Plaidoirie" {
+  class PlaidoirieDraft {
+    id : UUID
+    case_id
+    user_id
+    status
+    assigned_to_user_id
+  }
+  class PlaidoirieRevision {
+    id : UUID
+    draft_id
+    body_snapshot
+  }
 }
 
-class PlaidoirieDraft {
-  +title
-  +text
-  +status
-  +assigned_to_user_id
-  +pinned
-  +cabinet_id
-  +case_id
+package "Facturation" {
+  class SubscriptionPlan {
+    id : UUID
+    slug
+    price_mad
+  }
+  class CabinetSubscription {
+    id : UUID
+    cabinet_id
+    plan_id
+    status
+  }
 }
 
-class Document {
-  +file
-  +ocr_text
-  +cabinet_id
-  +case_id
-}
-
-class CabinetInvite {
-  +email
-  +token
-  +role
-  +expires_at
-}
-
-Cabinet "1" <-- "*" User
-Cabinet "1" <-- "*" Case
-Cabinet "1" <-- "*" PlaidoirieDraft
-Cabinet "1" <-- "*" Document
-Cabinet "1" <-- "*" CabinetInvite
-Case "0..1" <-- "*" PlaidoirieDraft
-User "0..1" <-- "assigned" PlaidoirieDraft
+Cabinet "1" <-- "N" User
+Cabinet "1" <-- "N" Case
+Case "1" <-- "N" Document
+Case "1" <-- "N" PlaidoirieDraft
+User "1" <-- "N" PlaidoirieDraft
+PlaidoirieDraft "1" <-- "N" PlaidoirieRevision
+Cabinet "1" <-- "1" CabinetSubscription
+SubscriptionPlan "1" <-- "N" CabinetSubscription
 @enduml

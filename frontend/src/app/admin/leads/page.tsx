@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { AdminShell } from "@/components/layout/admin-shell";
 import { Button } from "@/components/ui/button";
 import { api, ApiError, type CommercialLead } from "@/lib/api";
+import { useTranslations } from "@/store/locale";
 
 const STATUS: { id: CommercialLead["status"]; label: string }[] = [
   { id: "new", label: "Nouveau" },
@@ -13,6 +14,7 @@ const STATUS: { id: CommercialLead["status"]; label: string }[] = [
 ];
 
 export default function AdminLeadsPage() {
+  const t = useTranslations().adminPlatform;
   const [rows, setRows] = useState<CommercialLead[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
@@ -45,11 +47,8 @@ export default function AdminLeadsPage() {
     <AdminShell>
       <div className="space-y-4 p-6">
         <div>
-          <h1 className="font-serif text-2xl font-bold text-sanad-navy">Demandes commerciales</h1>
-          <p className="max-w-2xl text-sm text-slate-600">
-            Essais Entreprise et devis Sur mesure. Pas d’activation automatique : vous contactez le cabinet,
-            puis vous assignez le plan depuis Cabinets.
-          </p>
+          <h1 className="font-serif text-2xl font-bold text-sanad-navy">{t.leadsTitle}</h1>
+          <p className="max-w-2xl text-sm text-slate-600">{t.leadsSubtitle}</p>
         </div>
         {error ? <p className="text-sm text-red-600">{error}</p> : null}
         <div className="overflow-x-auto rounded-xl border border-sanad-border bg-white">

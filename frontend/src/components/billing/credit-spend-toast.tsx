@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Coins, Minus, AlertTriangle } from "lucide-react";
 import { useAuthStore } from "@/store/auth";
 import { useBillingCredits } from "@/store/billing-credits";
@@ -17,6 +18,8 @@ export function CreditSpendHost() {
   const dismiss = useBillingCredits((s) => s.dismiss);
   const ent = useBillingCredits((s) => s.entitlements);
   const confirm = useConfirm();
+  const router = useRouter();
+  const [shake, setShake] = useState(false);
 
   useEffect(() => {
     if (!token || !user || user.role === "admin_webvoice") return;
@@ -67,22 +70,40 @@ export function CreditSpendHost() {
   const dailyLow =
     dailyRem != null && dailyLim > 0 && (dailyRem === 0 || dailyRem / dailyLim <= 0.2);
 
+  function openCredits(e: React.MouseEvent) {
+    e.preventDefault();
+    setShake(true);
+    window.setTimeout(() => {
+      setShake(false);
+      router.push("/settings#plan");
+    }, 320);
+  }
+
+  const title =
+    rem != null && dailyRem != null
+      ? `${rem} crédits ce mois · ${dailyRem} aujourd’hui — ouvrir Plan & usage`
+      : rem != null
+        ? `${rem} crédits IA restants — ouvrir Plan & usage`
+        : dailyRem != null
+          ? `${dailyRem} crédits aujourd’hui — ouvrir Plan & usage`
+          : "Crédits IA";
+
   return (
     <>
       {rem != null || dailyRem != null ? (
-        <div
+        <Link
+          href="/settings#plan"
+          onClick={openCredits}
           className={cn(
             "credit-pill",
             (low || dailyLow) && "credit-pill--low",
             rem === 0 && "credit-pill--empty",
+            shake && "credit-pill--shake",
           )}
-          title={
-            dailyRem != null
-              ? `Crédits du mois restants · usage du jour (${dailyUsed}/${dailyLim}). Au plafond : choix continuer / attendre.`
-              : "Crédits IA restants ce mois"
-          }
+          title={title}
+          aria-label={title}
         >
-          <Coins className="h-3.5 w-3.5" />
+          <Coins className="h-3.5 w-3.5" aria-hidden />
           {rem != null ? (
             <>
               <span className="credit-pill__n">{rem}</span>
@@ -96,7 +117,7 @@ export function CreditSpendHost() {
               <span className="credit-pill__lbl">auj.</span>
             </>
           ) : null}
-        </div>
+        </Link>
       ) : null}
 
       <div className="credit-toast-stack" aria-live="polite">
@@ -143,7 +164,7 @@ export function CreditSpendHost() {
                     Il vous reste {t.remaining} crédit{(t.remaining || 0) > 1 ? "s" : ""} ce mois.
                     Pensez à activer l’usage à la demande ou à changer de plan.
                   </p>
-                  <Link href="/settings#parrainage" className="credit-toast__link" onClick={() => dismiss(t.id)}>
+                  <Link href="/settings#plan" className="credit-toast__link" onClick={() => dismiss(t.id)}>
                     Voir Plan & usage
                   </Link>
                 </>
@@ -166,7 +187,7 @@ export function CreditSpendHost() {
                     ou d’attendre demain.
                     {t.remaining != null ? ` Mois : ${t.remaining} restants.` : ""}
                   </p>
-                  <Link href="/settings" className="credit-toast__link" onClick={() => dismiss(t.id)}>
+                  <Link href="/settings#plan" className="credit-toast__link" onClick={() => dismiss(t.id)}>
                     Voir Plan & usage
                   </Link>
                 </>
@@ -178,7 +199,7 @@ export function CreditSpendHost() {
                     continuer (crédits du mois débités). Ce n’est pas un impayé.
                     {t.remaining != null ? ` Solde du mois : ${t.remaining}.` : ""}
                   </p>
-                  <Link href="/settings" className="credit-toast__link" onClick={() => dismiss(t.id)}>
+                  <Link href="/settings#plan" className="credit-toast__link" onClick={() => dismiss(t.id)}>
                     Voir Plan & usage
                   </Link>
                 </>

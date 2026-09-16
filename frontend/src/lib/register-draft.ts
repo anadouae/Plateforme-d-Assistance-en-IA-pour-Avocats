@@ -1,16 +1,9 @@
-/** Brouillon inscription — sessionStorage (survit à la lecture des CGU). */
+/** Brouillon inscription minimale — sessionStorage (survit à la lecture des CGU). */
 
 export const REGISTER_DRAFT_KEY = "lexhub-register-draft";
 
 export type RegisterFormDraft = {
-  cabinet_name: string;
-  city: string;
-  address: string;
-  barreau: string;
-  ice: string;
-  manager_name: string;
   email: string;
-  phone: string;
   password: string;
   confirm_password: string;
   accept_terms: boolean;
@@ -26,14 +19,7 @@ export type RegisterDraft = {
 };
 
 export const emptyRegisterForm = (): RegisterFormDraft => ({
-  cabinet_name: "",
-  city: "",
-  address: "",
-  barreau: "",
-  ice: "",
-  manager_name: "",
   email: "",
-  phone: "",
   password: "",
   confirm_password: "",
   accept_terms: false,
@@ -48,7 +34,7 @@ export function loadRegisterDraft(): RegisterDraft | null {
     const parsed = JSON.parse(raw) as RegisterDraft;
     if (!parsed?.form) return null;
     return {
-      step: Math.min(4, Math.max(1, Number(parsed.step) || 1)),
+      step: Math.min(2, Math.max(1, Number(parsed.step) || 1)),
       form: { ...emptyRegisterForm(), ...parsed.form },
       emailVerified: Boolean(parsed.emailVerified),
       otpSent: Boolean(parsed.otpSent),

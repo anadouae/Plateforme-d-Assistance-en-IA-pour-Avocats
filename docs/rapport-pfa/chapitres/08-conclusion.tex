@@ -1,14 +1,8 @@
 \chapter{Conclusion générale}
 \label{ch:conclusion}
 
-Le marché visé par LexHub est celui de la \textbf{LegalTech marocaine} appliquée au cabinet : des structures qui rédigent encore trop souvent la plaidoirie hors système (notes, messagerie, traitement de texte générique, chatbot grand public), alors que le secret professionnel, les rôles internes et le format d'acte exigent un outil \emph{de cabinet}. Les logiciels de gestion d'affaires couvrent le dossier et l'audience ; ils ne transforment pas la voix de l'avocat en document relisible. Les outils de dictée bureautique n'isolent pas un locataire SaaS. LexHub se place sur cet écart.
+Le PFA a consisté à concevoir, réaliser et \textbf{mettre en production} LexHub (\url{https://lexhub.space}) chez WebVoice, sous tutelle de l'ENSA Tétouan : un SI de cabinet dont le cœur est le couple dossier + plaidoirie, et non un chatbot autonome.
 
-Le PFA a consisté à concevoir, réaliser et \textbf{mettre en production} cette réponse, chez WebVoice, sous tutelle de l'ENSA Tétouan. Le livrable n'est pas un démonstrateur hors ligne. Il est accessible à l'adresse \url{https://lexhub.space}.
+L'atelier en cinq étapes, la clarification QCM, l'assistant de révision (réponse + édition), la règle « assistant = plaidoiries validées », l'isolation multi-tenant et le modèle d'abonnement sont en service. L'architecture (navigateur $\rightarrow$ Caddy $\rightarrow$ FastAPI $\rightarrow$ PostgreSQL / Redis / MinIO, plus services cloud STT, OCR et LLM) et l'urbanisation MADI (chapitre~\ref{ch:conception}) cadrent un SaaS exploitable.
 
-Sur le plan fonctionnel, l'atelier en cinq étapes relie dossier et pièces, dictée vocale native, correction de forme, rédaction assistée sans invention de fond, et export officiel Word (.docx). La collaboration interne repose sur une règle simple et vérifiable : l'assistant ne voit que les plaidoiries \textbf{validées}. L'admin cabinet pilote l'équipe par invitation e-mail, l'abonnement et l'identité visuelle. L'admin plateforme supervise sans lire les affaires.
-
-Sur le plan technique, l'architecture (navigateur $\rightarrow$ Caddy $\rightarrow$ API FastAPI $\rightarrow$ PostgreSQL / Redis / stockage objet, plus API cloud STT, OCR et LLM) est celle d'un SaaS exploitable : isolation par locataire, HTTPS, journal, déploiements par images GHCR. Les exigences d'analyse --- espace cabinet, atelier, rôles, modèle économique --- sont celles du produit réellement servi, pas d'une version abandonnée.
-
-Sur le plan économique, l'offre (Découverte, Solo, Cabinet, Entreprise, essai hybride, packs, sièges, parrainage) est spécifiée et exposée dans l'interface. Le paiement carte opérateur reste à activer ; cela n'enlève rien au fait que le produit est déjà facturable dans sa logique.
-
-LexHub n'a pas vocation à se substituer à l'avocat. Il accélère le passage de la parole à l'acte, dans un cadre où le cabinet reste maître de ses dossiers et responsable de ce qu'il plaide. Les perspectives du chapitre~\ref{ch:tests} --- encaissement réel, qualité STT, continuité dossier--audience, interopérabilités futures --- prolongent ce positionnement. Elles n'en constituent pas le substitut : le système est d'ores et déjà en service.
+Le paiement carte opérateur reste à activer ; les perspectives (section~\ref{sec:perspectives}) prolongent ce positionnement sans s'y substituer. LexHub accélère le passage de la parole à l'acte : le cabinet reste maître de ses dossiers et responsable de ce qu'il plaide.

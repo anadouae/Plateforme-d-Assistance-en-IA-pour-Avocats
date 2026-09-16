@@ -46,31 +46,26 @@ DOC_TYPES_FR = {
     "minutes": "Procès-verbal",
 }
 
-POLISH_SYSTEM_AR = """أنت مراجع تفريغ صوتي لمحامٍ مغربي — ذكي ودقيق.
+POLISH_SYSTEM_AR = """أنت مراجع تفريغ صوتي لمحامٍ مغربي — ذكي كـ ChatGPT.
 
-الهدف: نص عربي فصيح قانوني مفهوم، صحيح نحوًا وترقيمًا، دون عبث STT.
-لا تختلق وقائع قانونية جديدة. لكن أصلح المعنى السطحي حين يكون المصدر مكسورًا أو مكررًا بلا فائدة.
+الهدف: نص عربي فصيح مفهوم. إذا كان المصدر فيه أخطاء إملائية / حروف ناقصة / كلمات مكسورة،
+اقترب من أقرب كلمة عربية صحيحة (تحية، صيغة محكمة، لفظ قانوني شائع). لا ترفض التصحيح بسهولة.
 
 === مطلوب بقوة ===
-1) حذف التكرار العبثي والحلقات (نفس الكلمات/الجملة تعاد بلا معنى جديد) — وقوع واحد يكفي.
-2) إصلاح الجمل بلا معنى أو المكسورة عندما يتّضح المقصود من السياق القريب (STT أخطأ).
-3) نحو وهمزات وترقيم عربي (، . ؛ ؟) وتقسيم جمل واضحة مقروءة.
-4) تصحيح لفظ STT واضح ببديل واحد → ضع الكلمة بين ‹ › إن بقي شك.
-5) الأسماء والأرقام والتواريخ والمبالغ تُنسخ كما هي إن وُجدت.
+1) تقريب الأخطاء الإملائية إلى أقرب كلمة صحيحة (مثال: السلا→السلام، الؤيس→‹الرئيس›، م→من إن اتضح).
+2) ضع بين ‹ › فقط الكلمات التي خمّنتها بقوة شك (بديل STT).
+3) حذف التكرار العبثي والحلقات.
+4) نحو وهمزات وترقيم عربي (، . ؛ ؟).
+5) الأسماء والأرقام والتواريخ والمبالغ تُنسخ كما هي إن وُجدت بوضوح.
 
 === ممنوع ===
-- اختلاق أسماء / أرقام / تواريخ / مبالغ / مواد قانون / حجج / مطالب لم ترد في المصدر.
-- تلخيص يحذف فكرتين قانونيتين مختلفتين.
-- إضافة استراتيجية أو فصل قانوني من عندك.
+- اختلاق قضية كاملة / أسماء / مبالغ / مواد قانون لم تظهر في المصدر.
+- تلخيص يحذف فكرتين مختلفتين.
 - مقدمة أو تعليق خارج النص.
 
-=== إن كان المصدر كله هراء / نقرات لوحة مفاتيح / بلا جملة ===
-إن لم يوجد أي معنى مقروء (حروف عشوائية، علامات فقط، لا واقعة ولا طلب) أخرج بالضبط:
-__NONSENSE__
-ولا تختلق قضية.
-
-=== إن كان المصدر هراء مكرر لكن فيه بقايا معنى ===
-أخرج أقصر نص فصيح نظيف من تلك البقايا — دون اختلاق قضية.
+=== __NONSENSE__ فقط في هذه الحالة النادرة ===
+المصدر كله نقرات لوحة / علامات فقط / حروف لاتينية عشوائية بلا أي كلمة عربية قابلة للتخمين.
+لا تُخرج __NONSENSE__ لمجرد أن الجملة قصيرة أو فيها أخطاء إملائية — صحّحها.
 
 === الخرج ===
 النص الفصيح فقط، أو __NONSENSE__."""
@@ -78,26 +73,22 @@ __NONSENSE__
 
 POLISH_SYSTEM_AR_AUDIO = POLISH_SYSTEM_AR
 
-POLISH_SYSTEM_FR = """Tu es un réviseur intelligent de dictée juridique marocaine (français).
+POLISH_SYSTEM_FR = """Tu es un réviseur intelligent de dictée juridique marocaine (français) — aussi souple que ChatGPT.
 
-But : texte clair, grammaticalement correct, bien ponctué — sans inventer de faits.
+But : texte clair. Si fautes / lettres manquantes / mots cassés → approche le mot français correct le plus proche.
+N’abandonne pas facilement.
 
-Autorisé (fortement) :
-1) Supprimer redondances / boucles STT inutiles qui rendent la phrase absurde.
-2) Réparer phrases cassées ou sans sens si l’intention locale est claire.
-3) Grammaire, ponctuation, découpage en phrases lisibles.
-4) STT évident → un seul mot plausible entre ‹ ›.
+Autorisé :
+1) Orthographe, grammaire, ponctuation, approximation de typos.
+2) Mots STT incertains → un seul mot plausible entre ‹ ›.
+3) Supprimer redondances / boucles STT.
 
 Interdit :
-1) Inventer noms, montants, dates, articles de loi, arguments ou demandes absents.
-2) Résumer en fusionnant deux idées juridiques distinctes.
-3) Markdown / commentaires hors texte.
+1) Inventer une affaire, noms, montants, articles absents.
+2) Markdown / commentaires hors texte.
 
-Si la source n’a AUCUN sens (touches au hasard, ponctuation seule, pas une phrase) : répondre EXACTEMENT
-__NONSENSE__
-sans inventer une affaire.
-
-Si la source est du bruit STT mais avec un reste de sens : version courte la plus propre, sans inventer.
+__NONSENSE__ uniquement si la source est du pur clavier au hasard (asdf, ;;; ) sans aucun mot récupérable.
+Pas pour une phrase courte ou mal orthographiée — corrige-la.
 
 Sortie : texte corrigé uniquement, ou __NONSENSE__."""
 
@@ -210,8 +201,94 @@ def _collapse_repeats(text: str) -> str:
 _NONSENSE_MARK = "__NONSENSE__"
 
 
+_AR_GLUE = frozenset(
+    {
+        "في",
+        "من",
+        "على",
+        "إلى",
+        "الى",
+        "أن",
+        "ان",
+        "إن",
+        "هذا",
+        "هذه",
+        "ذلك",
+        "تلك",
+        "هو",
+        "هي",
+        "هم",
+        "كان",
+        "كانت",
+        "لم",
+        "لن",
+        "قد",
+        "أو",
+        "او",
+        "و",
+        "ما",
+        "لا",
+        "بعد",
+        "قبل",
+        "بين",
+        "عن",
+        "مع",
+        "كل",
+        "أي",
+        "اي",
+        "التي",
+        "الذي",
+        "ثم",
+        "لأن",
+        "لان",
+        "حيث",
+        "إذا",
+        "اذا",
+        "حتى",
+        "موكل",
+        "موكلي",
+        "محكمة",
+        "قضية",
+        "طلب",
+        "يطالب",
+        "السيد",
+        "السيدة",
+        "ضد",
+        "لفائدة",
+    }
+)
+
+
+def _norm_ar_token(w: str) -> str:
+    w = re.sub(r"[\u064B-\u065F\u0670\u0640]", "", w or "")
+    w = w.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").replace("ٱ", "ا")
+    w = w.replace("ة", "ه").replace("ى", "ي")
+    return re.sub(r"^[^\u0600-\u06FF]+|[^\u0600-\u06FF]+$", "", w)
+
+
+def _arabic_looks_like_nonsense(text: str) -> bool:
+    """Charabia arabe irrécupérable (pas des fautes à corriger via LLM)."""
+    if not re.search(r"[\u0600-\u06FF]", text or ""):
+        return False
+    words = [_norm_ar_token(w) for w in re.split(r"\s+", text.strip())]
+    words = [w for w in words if len(w) >= 2]
+    # Lettres isolées seulement (« ك ك ك »)
+    if not words:
+        singles = [w for w in re.split(r"\s+", (text or "").strip()) if re.search(r"[\u0600-\u06FF]", w)]
+        return len(singles) >= 3 and all(len(_norm_ar_token(w) or w) <= 1 for w in singles)
+    ar_letters = len(re.findall(r"[\u0600-\u06FF]", text))
+    if ar_letters < 4:
+        return False
+    compact = re.sub(r"\s+", "", text)
+    # Même lettre répétée (ككككك)
+    if re.search(r"(.)\1{4,}", compact):
+        return True
+    # Ne PAS traiter les fautes / mots cassés comme nonsense — ChatGPT doit approximer
+    return False
+
+
 def looks_like_nonsense(text: str) -> bool:
-    """Touches au hasard / ponctuation / pas une dictée utilisable."""
+    """Pur clavier au hasard — pas une phrase fautive à corriger."""
     t = (text or "").strip()
     if not t:
         return False
@@ -219,15 +296,12 @@ def looks_like_nonsense(text: str) -> bool:
     letters = re.sub(r"[^\w\u0600-\u06FF]", "", t)
     words = [w for w in re.split(r"\s+", t) if len(re.sub(r"[^\w\u0600-\u06FF]", "", w)) >= 2]
     has_ar = bool(re.search(r"[\u0600-\u06FF]", t))
+    lower = t.lower()
     if re.fullmatch(r"[\W_]+", compact or ""):
         return True
-    if len(words) < 2 and len(compact) >= 3:
+    if re.search(r"(?:asdf|qwer|azerty|qwerty|zxcv|hjkl|1234|aaaa|bbbb|xxxx|zzzz|ffff|dddd)", lower) and len(words) < 6:
         return True
-    if len(compact) >= 4:
-        ratio = len(letters) / len(compact)
-        if ratio < 0.45 and len(words) < 3:
-            return True
-    if len(letters) >= 4 and len(set(letters.lower())) <= 2 and len(words) < 3:
+    if re.search(r"(.)\1{4,}", compact) and len(words) < 5:
         return True
     if (not has_ar) and len(words) <= 1 and 0 < len(letters) < 8:
         return True
@@ -235,6 +309,12 @@ def looks_like_nonsense(text: str) -> bool:
         vowels = len(re.findall(r"[aeiouyàâäéèêëïîôùûüœæAEIOUY]", t))
         if vowels == 0 and len(words) < 4:
             return True
+    if (not has_ar) and 2 <= len(words) <= 8:
+        tiny = sum(1 for w in words if len(re.sub(r"[^\w]", "", w)) <= 2)
+        if tiny / max(len(words), 1) >= 0.7 and len(letters) < 28:
+            return True
+    if has_ar and _arabic_looks_like_nonsense(t):
+        return True
     return False
 
 
@@ -291,7 +371,9 @@ def polish_dictation(
     if not text:
         return "", "none"
 
-    if looks_like_nonsense(text) or looks_like_nonsense(raw or ""):
+    # Pur clavier (asdf / ;;;) → refuse. Fautes arabes / mots cassés → toujours vers le LLM.
+    hard_mash = looks_like_nonsense(text) and not re.search(r"[\u0600-\u06FF]{2,}", text or "")
+    if hard_mash and looks_like_nonsense(raw or ""):
         return text, "nonsense"
 
     use_llm = bool(getattr(settings, "DICTATION_POLISH_USE_LLM", True))
@@ -299,35 +381,40 @@ def polish_dictation(
         # Forme fusḥā locale (sans LLM) — conserve ‹…› des substitutions STT
         return text, "fidelity"
 
-    if len(text) < 8:
+    if len(text) < 4:
         return text, "passthrough"
 
     garbage = _stt_garbage_heavy(text) or _stt_garbage_heavy(raw or "")
+    # Phrase courte / fautive : pousser l’approximation (température un peu plus haute)
+    typo_short = len(text) < 320 or len(text.split()) <= 45
 
     if lang == "fr":
         system = POLISH_SYSTEM_FR
         prompt = (
-            "Corrige intelligemment : sens lisible, grammaire, ponctuation, "
-            "suppression des redondances STT absurdes. "
-            "N’invente aucun fait juridique. "
-            + ("Source très bruitée / répétitive — nettoie agressivement.\n\n" if garbage else "\n")
+            "Corrige et approche les mots corrects (typos, lettres manquantes). "
+            "N’invente aucun fait juridique absent. "
+            + ("Source très bruitée — nettoie et approximate.\n\n" if garbage else "\n")
             + f"Texte source :\n\n{text}"
         )
     else:
         system = POLISH_SYSTEM_AR_AUDIO if source == "audio" else POLISH_SYSTEM_AR
         prompt = (
-            "صحّح بذكاء: معنى مقروء، نحو، ترقيم، حذف تكرار STT العبثي. "
-            "لا تختلق وقائع قانونية. "
-            + ("المصدر مليء بالضوضاء/التكرار — نظّف بقوة.\n\n" if garbage else "\n")
+            "صحّح وقرّب الكلمات الصحيحة (أخطاء إملائية، حروف ناقصة). "
+            "لا تختلق وقائع قانونية غائبة. "
+            + ("المصدر مليء بالضوضاء — نظّف وقرّب.\n\n" if garbage else "\n")
             + f"النص المصدر:\n\n{text}"
         )
 
-    out, provider = _llm(prompt, system, temperature=0.4 if garbage else 0.3)
+    out, provider = _llm(prompt, system, temperature=0.45 if (garbage or typo_short) else 0.3)
     if not out:
         logger.warning("Dictation polish LLM unavailable — returning fidelity clean")
         return text, "fidelity"
     cleaned = strip_markdown_noise(_strip_fences(out))
     if _NONSENSE_MARK in (cleaned or "").upper().replace(" ", ""):
+        # Si le modèle refuse à tort une phrase arabe fautive, on garde le local (pas d’effacement)
+        if re.search(r"[\u0600-\u06FF]{3,}", text):
+            logger.info("LLM returned NONSENSE on Arabic typos — keeping local text for user edit")
+            return text, "fidelity"
         return text, "nonsense"
     # Normaliser les marqueurs de substitution STT vers ‹…›
     cleaned = cleaned.replace("«", "‹").replace("»", "›")
@@ -338,12 +425,12 @@ def polish_dictation(
         cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
         if "،" not in cleaned and "." not in cleaned and "؟" not in cleaned:
             cleaned = light_arabic_punctuation(cleaned)
-    # Garde-fous : inventer ≠ raccourcir du bruit STT
+    # Garde-fous : inventer ≠ raccourcir du bruit STT / approximation courte
     tokens = text.split()
     uniq_ratio = (len(set(tokens)) / max(1, len(tokens))) if tokens else 1.0
-    if garbage or uniq_ratio < 0.42:
-        min_keep = 0.18
-        max_expand = 1.9
+    if garbage or uniq_ratio < 0.42 or typo_short:
+        min_keep = 0.12
+        max_expand = 2.4
     else:
         min_keep = 0.78
         max_expand = 1.55
@@ -351,11 +438,11 @@ def polish_dictation(
         logger.warning("Polish LLM expanded text — falling back to fidelity")
         cleaned = text
         provider = "fidelity"
-    elif len(cleaned) < max(12, int(len(text) * min_keep)):
-        # Bruit STT : un raccourci fort est OK si le résultat reste non vide
-        if garbage and len(cleaned) >= 12:
+    elif len(cleaned) < max(8, int(len(text) * min_keep)):
+        # Bruit STT / approximation : un raccourci fort est OK si le résultat reste non vide
+        if (garbage or typo_short) and len(cleaned) >= 6:
             logger.info(
-                "Polish LLM shortened STT garbage (%s→%s) — kept",
+                "Polish LLM shortened/approximated (%s→%s) — kept",
                 len(text),
                 len(cleaned),
             )
@@ -381,16 +468,31 @@ def polish_dictation(
             strip_reinjection_notes,
         )
 
-        if provider != "fidelity" and not garbage:
-            # Vérifier le CORPS seul (sans notes) — sinon la réinjection masque le résumé
+        if provider != "fidelity" and not garbage and not typo_short:
+            # Textes longs « propres » : empêcher un résumé qui efface le fond.
+            # Mais ne pas jeter ChatGPT pour de simples corrections orthographiques
+            # (cov un peu bas alors que missing=0).
             body = strip_reinjection_notes(cleaned)
             body = restore_source_names(text, body)
             missing = list_missing_source_facts(text, body)
-            # Boucles STT : les « idées » répétées ne sont pas du fond juridique
             hard_missing = [m for m in missing if m[0] != "idea"]
             cov = content_word_coverage(text, body)
             cov_floor = 0.42 if uniq_ratio < 0.40 else 0.78
-            if hard_missing or cov < cov_floor:
+            soft_floor = 0.35  # orthographe / fusḥā / STT cassé — garder ChatGPT
+            drop = False
+            if hard_missing:
+                drop = True
+            elif cov < soft_floor:
+                drop = True
+            elif cov < cov_floor:
+                # cov moyen : garder ChatGPT (correction de forme), log seulement
+                logger.info(
+                    "Polish LLM cov soft-keep (missing=0 cov=%.2f floor=%.2f) — keep %s",
+                    cov,
+                    cov_floor,
+                    provider,
+                )
+            if drop:
                 logger.warning(
                     "Polish LLM dropped fond (missing=%s cov=%.2f uniq=%.2f) — fidelity",
                     len(hard_missing),
@@ -399,9 +501,15 @@ def polish_dictation(
                 )
                 cleaned = text
                 provider = "fidelity"
-        elif provider != "fidelity" and garbage:
-            # Bruit : garder ChatGPT, ne pas réinjecter du « fond » fantôme
+        elif provider != "fidelity" and (garbage or typo_short):
+            # Approximation ChatGPT : garder le résultat, juste restaurer les noms clairs
             cleaned = restore_source_names(text, cleaned)
+            logger.info(
+                "Polish LLM kept (typo/garbage path) provider=%s len %s→%s",
+                provider,
+                len(text),
+                len(cleaned),
+            )
         if lang == "ar":
             # Réappliquer les substitutions STT→fusḥā (‹…›) après le LLM,
             # qui omet souvent les marqueurs.
@@ -409,7 +517,7 @@ def polish_dictation(
         cleaned, _guessed = annotate_stt_guesses(text, cleaned)
         # Garder ‹…› (surlignage orange) pour substitutions STT locales / LLM
         cleaned = restore_source_names(text, cleaned)
-        if provider != "fidelity" and not garbage:
+        if provider != "fidelity" and not garbage and not typo_short:
             cleaned = preserve_source_facts(text, cleaned)
     except Exception as exc:
         logger.warning("Post-polish fact/annotate failed: %s", exc)

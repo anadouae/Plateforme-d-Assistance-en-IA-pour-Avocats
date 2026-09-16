@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Soutenance PFA LexHub — présentation professionnelle (prod https://lexhub.space).
+Soutenance PFA LexHub — PPT 16:9 aligné sur Beamer / rapport (SI cabinet + MADI).
 
   python docs/livraison-encadrant-2026/generate_soutenance_pfa.py
 """
@@ -12,13 +12,19 @@ from pathlib import Path
 from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE
-from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
-from pptx.util import Inches, Pt, Emu
+from pptx.enum.text import PP_ALIGN
+from pptx.util import Inches, Pt
 
 OUT_DIR = Path(__file__).resolve().parent
 ROOT = OUT_DIR.parents[1]
+DESKTOP_OVERLEAF = Path.home() / "Desktop" / "Soutenance_PFA_LexHub_ENSA_Overleaf"
+SHOTS = DESKTOP_OVERLEAF / "screenshots"
+if not SHOTS.exists():
+    SHOTS = ROOT / "docs" / "soutenance-pfa" / "screenshots"
 MAQ = ROOT / "docs" / "maquettes"
-LOGO = OUT_DIR / "logo-lexhub.png"
+LOGO = DESKTOP_OVERLEAF / "logo-lexhub.png"
+if not LOGO.exists():
+    LOGO = ROOT / "docs" / "soutenance-pfa" / "logo-lexhub.png"
 
 NAVY = RGBColor(0x0A, 0x12, 0x28)
 GOLD = RGBColor(0xC9, 0xA8, 0x4A)
@@ -29,12 +35,13 @@ MUTED = RGBColor(0x5A, 0x66, 0x7A)
 LINE = RGBColor(0xD8, 0xD2, 0xC8)
 SOFT = RGBColor(0xEE, 0xF2, 0xF8)
 OK = RGBColor(0x1F, 0x6F, 0x54)
+WARN = RGBColor(0xE0, 0x7B, 0x54)
 
 OUTPUTS = [
+    DESKTOP_OVERLEAF / "Soutenance_PFA_LexHub.pptx",
     OUT_DIR / "04_Soutenance_PFA_LexHub.pptx",
     OUT_DIR / "04_Soutenance_PFA_LexHub_NOUVEAU.pptx",
     ROOT / "docs" / "LexHub_Presentation_Soutenance.pptx",
-    Path.home() / "Desktop" / "S9" / "PFA" / "final" / "04_Soutenance_PFA_LexHub.pptx",
     Path.home() / "Desktop" / "S9" / "PFA" / "04_Soutenance_PFA_LexHub.pptx",
 ]
 
@@ -70,7 +77,8 @@ def accent(slide):
 
 def header(slide, title, subtitle=None):
     accent(slide)
-    bar = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.1), Inches(0), Inches(13.233), Inches(0.95 if not subtitle else 1.1))
+    h = 0.95 if not subtitle else 1.1
+    bar = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.1), Inches(0), Inches(13.233), Inches(h))
     bar.fill.solid()
     bar.fill.fore_color.rgb = NAVY
     bar.line.fill.background()
@@ -84,7 +92,7 @@ def header(slide, title, subtitle=None):
 
 def footer(slide, n, total):
     box = slide.shapes.add_textbox(Inches(0.4), Inches(7.15), Inches(10.8), Inches(0.25))
-    R(box.text_frame.paragraphs[0].add_run(), "LexHub · lexhub.space · ENSA Tétouan · WEBVOICE · PFA 2026", size=10, color=MUTED)
+    R(box.text_frame.paragraphs[0].add_run(), "LexHub · SI cabinet · lexhub.space · ENSA Tétouan · WEBVOICE · PFA 2026", size=10, color=MUTED)
     num = slide.shapes.add_textbox(Inches(11.5), Inches(7.15), Inches(1.4), Inches(0.25))
     p = num.text_frame.paragraphs[0]
     p.alignment = PP_ALIGN.RIGHT
@@ -135,25 +143,30 @@ def bullets(slide, items, top, left=0.45, width=12.4, size=14, gap=7):
         R(p.add_run(), "▸  " + item, size=size, color=DARK)
 
 
-def pic(slide, path: Path, left, top, w, h):
-    card(slide, left - 0.04, top - 0.04, w + 0.08, h + 0.08)
+def find_shot(*names: str) -> Path:
+    for n in names:
+        for base in (SHOTS, MAQ, ROOT / "docs" / "soutenance-pfa" / "screenshots"):
+            p = base / n
+            if p.exists():
+                return p
+    return SHOTS / names[0]
+
+
+def pic(slide, path: Path, left, top, w, h, caption: str | None = None):
+    """Embed a screenshot; optional French caption under the image."""
+    frame_h = h + (0.32 if caption else 0.0)
+    card(slide, left - 0.04, top - 0.04, w + 0.08, frame_h + 0.08)
     if path.exists():
         slide.shapes.add_picture(str(path), Inches(left), Inches(top), width=Inches(w), height=Inches(h))
     else:
         ph = slide.shapes.add_textbox(Inches(left), Inches(top + h / 2 - 0.15), Inches(w), Inches(0.3))
         ph.text_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
         R(ph.text_frame.paragraphs[0].add_run(), path.name, size=11, color=MUTED)
-
-
-def icon_chip(slide, left, top, label, sub=""):
-    card(slide, left, top, 2.35, 1.35, fill=SOFT)
-    t = slide.shapes.add_textbox(Inches(left + 0.12), Inches(top + 0.28), Inches(2.1), Inches(0.45))
-    R(t.text_frame.paragraphs[0].add_run(), label, size=13, bold=True, color=NAVY)
-    if sub:
-        s = slide.shapes.add_textbox(Inches(left + 0.12), Inches(top + 0.75), Inches(2.1), Inches(0.45))
-        tf = s.text_frame
-        tf.word_wrap = True
-        R(tf.paragraphs[0].add_run(), sub, size=11, color=MUTED)
+    if caption:
+        cap = slide.shapes.add_textbox(Inches(left), Inches(top + h + 0.02), Inches(w), Inches(0.28))
+        p = cap.text_frame.paragraphs[0]
+        p.alignment = PP_ALIGN.CENTER
+        R(p.add_run(), caption, size=11, bold=True, color=NAVY)
 
 
 def build():
@@ -166,11 +179,11 @@ def build():
         slides.append(s)
         return s
 
-    # —— 1 Couverture ——
+    # 1 Couverture
     s = add(navy_slide(prs))
     if LOGO.exists():
-        s.shapes.add_picture(str(LOGO), Inches(5.55), Inches(0.55), width=Inches(2.2))
-    box = s.shapes.add_textbox(Inches(0.7), Inches(2.5), Inches(11.9), Inches(3.8))
+        s.shapes.add_picture(str(LOGO), Inches(5.55), Inches(0.45), width=Inches(2.2))
+    box = s.shapes.add_textbox(Inches(0.7), Inches(2.35), Inches(11.9), Inches(4.2))
     tf = box.text_frame
     tf.word_wrap = True
     p = tf.paragraphs[0]
@@ -185,15 +198,15 @@ def build():
     p3.space_before = Pt(8)
     R(
         p3.add_run(),
-        "SaaS d’assistance IA pour cabinets d’avocats au Maroc\n"
-        "De la dictée et des pièces à la plaidoirie officielle — en production",
+        "Système d’information de cabinet & assistance IA\n"
+        "Droit marocain — dossier + plaidoirie — en production",
         size=15,
         color=RGBColor(0xC4, 0xCC, 0xD8),
     )
     for line, sz in (
         ("https://lexhub.space", 14),
         ("ENSA Tétouan  ·  WEBVOICE (Tanger)", 13),
-        ("Douae El Assal  ·  Encadrant : M. Hatim Benhaddou  ·  Tuteur : M. Mohammed Al Achhab", 12),
+        ("EL ASSAL Douae  ·  Encadrant : M. Hatim BENHADDOU  ·  Tuteur : Prof. Mohammed AL ACHHAB", 12),
     ):
         px = tf.add_paragraph()
         px.alignment = PP_ALIGN.CENTER
@@ -204,21 +217,21 @@ def build():
     g.fill.fore_color.rgb = GOLD
     g.line.fill.background()
 
-    # —— 2 Plan ——
+    # 2 Plan
     s = add(cream(prs))
-    top = header(s, "Plan", "Une idée = une slide — produit réel déployé")
+    top = header(s, "Plan de la soutenance", "Du besoin métier au SI déployé")
     plan = [
-        ("01", "Contexte & problématique"),
-        ("02", "Objectifs livrés"),
-        ("03", "Positionnement LexHub"),
-        ("04", "Cœur : aide IA à l’avocat"),
-        ("05", "Dossier : données & utilité"),
-        ("06", "Documents & synthèse"),
-        ("07", "Équipe & accès"),
-        ("08", "Architecture"),
-        ("09", "Tarifs, essai, crédits"),
-        ("10", "Packs, sièges, parrainage"),
-        ("11", "Sécurité & déploiement"),
+        ("01", "Cadrage & problématique"),
+        ("02", "Positionnement marché"),
+        ("03", "Objectifs PFA"),
+        ("04", "Acteurs & RBAC"),
+        ("05", "Atelier 5 étapes"),
+        ("06", "Dictée & correction"),
+        ("07", "Urbanisation MADI"),
+        ("08", "Architecture & UML"),
+        ("09", "Modèle économique"),
+        ("10", "Production & CI/CD"),
+        ("11", "Démonstration"),
         ("12", "Bilan & perspectives"),
     ]
     for i, (num, title) in enumerate(plan):
@@ -230,328 +243,374 @@ def build():
         tb = s.shapes.add_textbox(Inches(left + 0.95), Inches(y + 0.38), Inches(2.9), Inches(0.5))
         R(tb.text_frame.paragraphs[0].add_run(), title, size=13, bold=True, color=NAVY)
 
-    # —— 3 Contexte ——
+    # 3 Contexte
     s = add(cream(prs))
-    top = header(s, "1. Contexte & problématique", "Barreau marocain · stage WEBVOICE · livrable live")
-    card_title_body(
-        s, 0.4, top, 6.2, 5.4, "Contexte",
-        [
-            "• Production écrite dense : plaidoiries, mémoires",
-            "• Circuit artisanal : notes → ressaisie → Word",
-            "• Bilinguisme arabe / français",
-            "• Secret professionnel → isolation cabinet",
-            "• ChatGPT générique : pas de dossiers, rôles,",
-            "  pièces OCR, export officiel, quotas",
-            "",
-            "WEBVOICE (Tanger) : voix + web → LegalTech",
-            "Livré : LexHub en production (lexhub.space)",
-        ],
-        bs=13,
-    )
-    card_title_body(
-        s, 6.8, top, 6.1, 5.4, "Problématique",
-        [
-            "Comment déployer une SaaS multi-cabinets qui :",
-            "",
-            "1. transforme dictée + pièces en plaidoirie",
-            "   structurée (Word/PDF officiel) ;",
-            "2. complète les manques via questions ;",
-            "3. collabore avec l’assistant sans exposer",
-            "   les brouillons ;",
-            "4. monétise (quotas, crédits, parrainage) ;",
-            "5. sans inventer le fond juridique ?",
-        ],
-        bs=13,
-    )
-
-    # —— 4 Objectifs ——
-    s = add(cream(prs))
-    top = header(s, "2. Objectifs — tous en production")
-    bullets(
-        s,
-        [
-            "Pipeline voix + pièces → questions → rédaction → chat révision → export logo",
-            "Espace cabinet : dossiers, documents, planning, activité, clé de barre",
-            "Analyse documentaire (synthèse / Q&A) et analyse de dossier (overview)",
-            "Équipe : invitations e-mail + code d’adhésion, sièges selon plan",
-            "Freemium + essai plafonné + packs (actif payant) + sièges à la carte + PAYG",
-            "Parrainage cabinet→cabinet (+14 j / +30 j) · isolation multi-tenant",
-            "Prod TLS, OTP, WebSocket, CI/CD sur https://lexhub.space",
-        ],
-        top=top + 0.1,
-        size=14,
-        gap=8,
-    )
-
-    # —— 5 Positionnement ——
-    s = add(cream(prs))
-    top = header(s, "3. Positionnement", "Outil de cabinet — pas un chatbot libre")
-    card_title_body(s, 0.4, top, 4.05, 5.4, "LexHub fait", [
-        "• Dictée Web Speech API native",
-        "• Transcription Fusha + surlignage",
-        "• Contrôle déterministe contradictions",
-        "• Révision par chat assisté",
-        "• Export Word (.docx) unique + logo",
-        "• Rôles RBAC, validation, équipe",
-        "• Quotas, packs FIFO & parrainage",
-    ], bs=12)
-    card_title_body(s, 4.65, top, 4.05, 5.4, "LexHub ne fait pas", [
-        "• Remplacer le conseil juridique",
-        "• Inventer faits / articles / montants",
-        "• ERP facturation du cabinet",
-        "• Remplacer Mahakim",
-        "• Lire les dossiers côté",
-        "  admin plateforme",
-    ], bs=12)
-    card_title_body(s, 8.9, top, 4.0, 5.4, "Principe", [
-        "L’avocat reste seul",
-        "responsable du contenu.",
+    top = header(s, "1. Contexte métier", "La plaidoirie : acte oral préparé à l’écrit")
+    card_title_body(s, 0.4, top, 6.2, 5.4, "Réalité terrain", [
+        "• Circuit artisanal : notes → dictée → ressaisie Word",
+        "• Bilinguisme arabe judiciaire / français d’affaires",
+        "• Secret professionnel (loi 28-08, art. 30)",
+        "• Besoin : un SI de cabinet, pas un chatbot",
         "",
-        "L’IA structure, propose,",
-        "interroge — ne plaide pas",
-        "à sa place.",
+        "Stage WEBVOICE (Tanger) · ENSA Tétouan",
+        "1er juil. – 31 août 2026",
+        "Livré : https://lexhub.space",
+    ], bs=13)
+    card_title_body(s, 6.8, top, 6.1, 5.4, "Problématique", [
+        "Comment concevoir et mettre en production",
+        "un SaaS multi-cabinets où :",
+        "",
+        "1. l’avocat mène un atelier en 5 étapes ;",
+        "2. l’assistant ne voit que le validé ;",
+        "3. l’abonnement est opérationnel ;",
+        "4. l’IA n’invente aucun fait juridique ?",
     ], bs=13)
 
-    # —— 6 Cœur IA ——
+    # 4 Marché
     s = add(cream(prs))
-    top = header(s, "4. Comment l’IA aide réellement l’avocat", "Parcours déployé — atelier plaidoirie")
-    steps = [
-        ("1", "Sources", "Dossier + pièces OCR\n+ dictée avocat"),
-        ("2", "Analyse", "Manques détectés\narguments / faits"),
-        ("3", "Questions", "QCM de clarification\n(max 5)"),
-        ("4", "Rédaction", "Structure pro\nanti-invention"),
-        ("5", "Chat", "Révision guidée\ncrédits visibles"),
-        ("6", "Export", "Aperçu + Word/PDF\nlogo cabinet"),
-    ]
-    for i, (n, t, d) in enumerate(steps):
-        left = 0.35 + i * 2.15
-        card(s, left, top, 2.05, 2.55)
-        nb = s.shapes.add_textbox(Inches(left + 0.12), Inches(top + 0.15), Inches(1.8), Inches(0.35))
-        R(nb.text_frame.paragraphs[0].add_run(), n, size=20, bold=True, color=GOLD, font="Georgia")
-        tt = s.shapes.add_textbox(Inches(left + 0.12), Inches(top + 0.55), Inches(1.8), Inches(0.35))
-        R(tt.text_frame.paragraphs[0].add_run(), t, size=13, bold=True, color=NAVY)
-        bb = s.shapes.add_textbox(Inches(left + 0.12), Inches(top + 1.05), Inches(1.8), Inches(1.3))
-        tf = bb.text_frame
-        tf.word_wrap = True
-        for j, line in enumerate(d.split("\n")):
-            p = tf.paragraphs[0] if j == 0 else tf.add_paragraph()
-            R(p.add_run(), line, size=11, color=DARK)
-    card_title_body(
-        s, 0.4, top + 2.8, 12.5, 2.15, "Règle métier",
-        [
-            "La dictée est la source primaire des faits. Les pièces jointes ancrent les preuves (OCR). "
-            "Si une info manque, LexHub ne l’invente pas : il pose des questions, puis compose. "
-            "L’avocat édite au chat, voit l’aperçu officiel, télécharge Word ou PDF avec le branding cabinet.",
-        ],
-        bs=13,
-    )
-
-    # —— 7 Maquette ——
-    s = add(cream(prs))
-    top = header(s, "4bis. Aperçu produit", "Atelier & tableau de bord")
-    pic(s, MAQ / "14b-plaidoirie-workspace.png", 0.35, top, 6.2, 5.4)
-    pic(s, MAQ / "14c-transcription-fusha.png", 6.8, top, 6.1, 5.4)
-
-    # —— 8 Dossier ——
-    s = add(cream(prs))
-    top = header(s, "5. Création de dossier — données & utilité", "Identité juridique pour la plaidoirie")
+    top = header(s, "2. Positionnement marché", "AS-IS → écart → TO-BE")
+    for i, (lab, sub, fill) in enumerate([
+        ("AS-IS", "Outils en silos", SOFT),
+        ("ÉCART", "Process non uni", RGBColor(0xFD, 0xEE, 0xD9)),
+        ("TO-BE", "SI LexHub", RGBColor(0xD8, 0xF3, 0xDC)),
+    ]):
+        left = 0.6 + i * 4.15
+        card(s, left, top, 3.9, 1.35, fill=fill)
+        t = s.shapes.add_textbox(Inches(left + 0.2), Inches(top + 0.25), Inches(3.5), Inches(0.4))
+        R(t.text_frame.paragraphs[0].add_run(), lab, size=18, bold=True, color=NAVY, font="Georgia")
+        u = s.shapes.add_textbox(Inches(left + 0.2), Inches(top + 0.75), Inches(3.5), Inches(0.4))
+        R(u.text_frame.paragraphs[0].add_run(), sub, size=13, color=MUTED)
     rows = [
-        ("Client / parties", "Noms, rôles, qualités (physique / morale)"),
-        ("Tribunal & ville", "Siège + type de juridiction marocaine"),
-        ("N° RG / greffe", "Références citées dans l’acte"),
-        ("Degré / chambre", "1ère instance, appel, référé…"),
-        ("Audience", "1ère audience → planning lié"),
-        ("Adversaire", "Partie adverse + domicile"),
+        ("Gestion cabinet", "Dossiers / calendrier", "Pas d’atelier voix → acte"),
+        ("Dictée desktop", "Transcription", "Pas SaaS multi-tenant"),
+        ("Chatbots IA", "Rédaction fluide", "Invention de faits, pas d’équipe"),
+        ("LexHub", "Dossier + plaidoirie + rôles", "Déployé sur lexhub.space"),
     ]
-    for i, (k, v) in enumerate(rows):
-        y = top + i * 0.8
-        card(s, 0.4, y, 12.5, 0.7)
-        a = s.shapes.add_textbox(Inches(0.6), Inches(y + 0.18), Inches(3.2), Inches(0.4))
-        R(a.text_frame.paragraphs[0].add_run(), k, size=13, bold=True, color=NAVY)
-        b = s.shapes.add_textbox(Inches(4.0), Inches(y + 0.18), Inches(8.6), Inches(0.4))
-        R(b.text_frame.paragraphs[0].add_run(), v, size=13, color=DARK)
-
-    # —— 9 Documents ——
-    s = add(cream(prs))
-    top = header(s, "6. Documents & intelligence dossier", "Hors atelier plaidoirie — gain de temps quotidien")
-    card_title_body(s, 0.4, top, 6.15, 5.4, "Pièces & module Documents", [
-        "• Upload pièces (OCR asynchrone)",
-        "• Synthèse sourcée d’un document",
-        "  (pas d’affirmation sans ancrage)",
-        "• Q&A sur une pièce (crédits ask)",
-        "• Peut rattacher à un dossier ou",
-        "  zone « Non classé »",
-        "",
-        "Utilité : lire vite un contrat,",
-        "une requête, un PV sans tout",
-        "relire manuellement.",
-    ], bs=12)
-    card_title_body(s, 6.75, top, 6.15, 5.4, "Vue d’ensemble du dossier", [
-        "• Analyse de dossier (overview)",
-        "  : synthèse transversale des pièces",
-        "• Clé de barre : fiche orale IA",
-        "  pour préparer l’audience",
-        "  (≠ mot de passe)",
-        "",
-        "Utilité : l’avocat arrive à l’audience",
-        "avec les points clés, sans inventer",
-        "ce qui n’est pas dans le dossier.",
-    ], bs=12)
-
-    # —— 10 Équipe ——
-    s = add(cream(prs))
-    top = header(s, "7. Gestion d’équipe & accès", "Admin cabinet = avocat + responsable")
-    card_title_body(s, 0.4, top, 6.15, 5.4, "Invitations", [
-        "1. E-mail d’invitation (rôle choisi",
-        "   avocat / assistant) — lien + code",
-        "2. Code d’adhésion cabinet (durée",
-        "   limitée, approvals contrôlés)",
-        "3. Quotas de sièges selon le plan",
-        "   (Solo 1+1 · Cabinet 5+3 · …)",
-        "",
-        "Page Équipe + Paramètres cabinet.",
-    ], bs=12)
-    card_title_body(s, 6.75, top, 6.15, 5.4, "Visibilité plaidoirie", [
-        "• Brouillon : avocat / admin seulement",
-        "• Valider → visible aux assistants",
-        "• Assigner → notification ciblée",
-        "• Épingler (pin) sur pièce validée",
-        "",
-        "Assistant : pas d’IA lourde ;",
-        "peut quitter via Zone sensible.",
-        "Admin plateforme : purge cabinets,",
-        "sans lire les affaires.",
-    ], bs=12)
-
-    # —— 11 Architecture ——
-    s = add(cream(prs))
-    top = header(s, "8. Architecture technique", "Stack de production")
-    card_title_body(s, 0.4, top, 6.15, 5.4, "Couches", [
-        "Frontend — Next.js 14, TypeScript, FR/AR",
-        "API — FastAPI (Python 3.11), JWT, Alembic",
-        "Jobs — Celery + Redis (tâches lourdes)",
-        "Données — PostgreSQL 15, MinIO (objets)",
-        "Voix — Web Speech API W3C native",
-        "IA — Prompts déterministes anti-hallucination",
-        "Export — Word (.docx) avec armoiries royales",
-        "Audit BDD — Adminer via tunnel SSH chiffré",
-    ], bs=12)
-    card_title_body(s, 6.75, top, 6.15, 5.4, "Garanties", [
-        "• Isolation cabinet_id",
-        "• RBAC par rôle",
-        "• OTP e-mail",
-        "• WebSocket temps réel",
-        "• Audit actions sensibles",
-        "• HTTPS / TLS",
-        "",
-        "URL : https://lexhub.space",
-    ], bs=12)
-
-    # —— 12 Billing ——
-    s = add(cream(prs))
-    top = header(s, "9. Tarifs, essai hybride & crédits IA", "API live /api/billing/plans")
-    headers = ["Plan", "MAD/mois", "Sièges", "Plaidoiries", "Crédits", "Essai"]
-    data = [
-        ("Découverte", "0", "1", "3", "50", "—"),
-        ("Solo", "299", "1+1", "35", "600", "14 j"),
-        ("Cabinet ★", "699", "5+3", "120", "2 000", "30 j"),
-        ("Entreprise", "1 290", "15+10", "350", "5 000", "30 j"),
-    ]
-    for j, h in enumerate(headers):
-        x = 0.35 + j * 2.15
-        card(s, x, top, 2.05, 0.48, fill=NAVY)
-        tb = s.shapes.add_textbox(Inches(x + 0.08), Inches(top + 0.1), Inches(1.9), Inches(0.3))
-        R(tb.text_frame.paragraphs[0].add_run(), h, size=11, bold=True, color=WHITE)
-    for i, row in enumerate(data):
+    hy = top + 1.65
+    for j, h in enumerate(["Famille", "Force", "Limite"]):
+        x = 0.4 + j * 4.2
+        card(s, x, hy, 4.05, 0.45, fill=NAVY)
+        tb = s.shapes.add_textbox(Inches(x + 0.12), Inches(hy + 0.08), Inches(3.8), Inches(0.3))
+        R(tb.text_frame.paragraphs[0].add_run(), h, size=12, bold=True, color=WHITE)
+    for i, row in enumerate(rows):
         for j, cell in enumerate(row):
-            x = 0.35 + j * 2.15
-            y = top + 0.58 + i * 0.62
-            card(s, x, y, 2.05, 0.55)
-            tb = s.shapes.add_textbox(Inches(x + 0.08), Inches(y + 0.12), Inches(1.9), Inches(0.35))
-            R(tb.text_frame.paragraphs[0].add_run(), cell, size=12, bold=(j == 0), color=NAVY if j == 0 else DARK)
-    tip = s.shapes.add_textbox(Inches(0.4), Inches(top + 3.25), Inches(12.5), Inches(2.3))
+            x = 0.4 + j * 4.2
+            y = hy + 0.55 + i * 0.72
+            fill = RGBColor(0xFF, 0xF9, 0xC4) if i == 3 else WHITE
+            card(s, x, y, 4.05, 0.65, fill=fill)
+            tb = s.shapes.add_textbox(Inches(x + 0.12), Inches(y + 0.15), Inches(3.8), Inches(0.4))
+            R(tb.text_frame.paragraphs[0].add_run(), cell, size=12, bold=(j == 0 or i == 3), color=NAVY if j == 0 else DARK)
+
+    # 5 Objectifs
+    s = add(cream(prs))
+    top = header(s, "3. Objectifs du PFA", "Un SI de cabinet — l’IA est un service")
+    card_title_body(s, 0.4, top, 7.4, 5.4, "Objectifs livrés", [
+        "1. Atelier 5 étapes (dossier → export Word / PDF)",
+        "2. Espace cabinet : dossiers, pièces, équipe, planning",
+        "3. Rôles : avocat, assistant, admin cabinet, admin plateforme",
+        "4. Validation = seuil de visibilité assistant",
+        "5. Modèle d’abonnement + production réelle",
+    ], bs=14)
+    card_title_body(s, 8.0, top, 4.9, 5.4, "Règle d’or", [
+        "Postgres = vérité métier",
+        "",
+        "LLM = proposition,",
+        "jamais maître des faits",
+        "",
+        "L’avocat reste",
+        "responsable du contenu",
+    ], bs=14)
+
+    # 6 RBAC
+    s = add(cream(prs))
+    top = header(s, "4. Acteurs & RBAC", "Quatre rôles — moindre privilège")
+    roles = [
+        ("Avocat", "Dicte, corrige, rédige, valide, exporte"),
+        ("Assistant", "Uniquement plaidoiries validées / finalisées"),
+        ("Admin cabinet", "Équipe, abonnement, identité visuelle"),
+        ("Admin plateforme", "Cabinets / leads — sans lecture des affaires"),
+    ]
+    for i, (role, desc) in enumerate(roles):
+        y = top + i * 1.2
+        card(s, 0.4, y, 7.6, 1.05)
+        a = s.shapes.add_textbox(Inches(0.6), Inches(y + 0.18), Inches(2.8), Inches(0.35))
+        R(a.text_frame.paragraphs[0].add_run(), role, size=14, bold=True, color=NAVY)
+        b = s.shapes.add_textbox(Inches(3.5), Inches(y + 0.18), Inches(4.3), Inches(0.7))
+        tf = b.text_frame
+        tf.word_wrap = True
+        R(tf.paragraphs[0].add_run(), desc, size=13, color=DARK)
+    card_title_body(s, 8.2, top, 4.7, 5.0, "Cycle de vie", [
+        "Brouillon → invisible",
+        "à l’assistant",
+        "",
+        "Validée → visible équipe",
+        "(validation séparée)",
+        "",
+        "Export → finalisée",
+        "(Word .docx / PDF)",
+    ], bs=12)
+
+    # 7 Pipeline 5 étapes
+    s = add(cream(prs))
+    top = header(s, "5. Cœur produit — cinq étapes", "Dossier → pièces → rédaction → livrable")
+    steps = [
+        ("1", "Dossier &\npièces"),
+        ("2", "Dictée"),
+        ("3", "Correction\nde forme"),
+        ("4", "Rédaction\nassistée"),
+        ("5", "Export\nWord / PDF"),
+    ]
+    for i, (n, lab) in enumerate(steps):
+        left = 0.45 + i * 2.55
+        card(s, left, top, 2.4, 2.2, fill=SOFT if i < 4 else RGBColor(0xD8, 0xF3, 0xDC))
+        nb = s.shapes.add_textbox(Inches(left + 0.15), Inches(top + 0.25), Inches(2.1), Inches(0.4))
+        R(nb.text_frame.paragraphs[0].add_run(), n, size=22, bold=True, color=GOLD, font="Georgia")
+        tb = s.shapes.add_textbox(Inches(left + 0.15), Inches(top + 0.85), Inches(2.1), Inches(1.1))
+        tf = tb.text_frame
+        tf.word_wrap = True
+        for j, line in enumerate(lab.split("\n")):
+            p = tf.paragraphs[0] if j == 0 else tf.add_paragraph()
+            R(p.add_run(), line, size=13, bold=True, color=NAVY)
+    card_title_body(s, 0.4, top + 2.5, 12.5, 2.7, "Points clés", [
+        "• Étape 1 : identité des parties + pièces OCR ; domaine de plaidoirie lié au dossier",
+        "• Étapes 2–3 : micro Web Speech ou Whisper (Firefox inclus) ; Corriger (fautes OK) ; QCM de clarification",
+        "• Étapes 4–5 : rédaction ancrée + chat révision ; export Word .docx et PDF (armoiries, charte) ; finalisée après export",
+    ], bs=13)
+
+    # 8 Dictée
+    s = add(cream(prs))
+    top = header(s, "6. Dictée, clarification & révision", "Fidélité des faits · UX claire")
+    card_title_body(s, 0.4, top, 6.15, 5.4, "Capture & correction", [
+        "• Micro navigateur (Web Speech) ou Whisper (Firefox)",
+        "• Fichier : WAV, MP3, OGG, M4A, WebM",
+        "• Détection auto FR / AR (sans changer l’UI)",
+        "• Bandeau d’écoute + boutons Terminé / Annuler",
+        "",
+        "Correction de forme (fusḥā)",
+        "• Surlignage des substitutions",
+        "• Fautes de frappe / STT approximées",
+        "• Pas de faux « succès » sur du charabia",
+    ], bs=12)
+    card_title_body(s, 6.75, top, 6.15, 5.4, "Clarification & assistant", [
+        "• QCM 0–5 : dossier anonymisé → LLM → avoc.",
+        "• Chat révision : répond + met à jour le doc",
+        "• Annuler / Modifier la requête",
+        "• Remplit خامساً / لهذه الأسباب si vides",
+        "",
+        "Ce que l’IA ne fait pas",
+        "• Inventer faits, articles, montants",
+        "• Remplacer le jugement de l’avocat",
+    ], bs=12)
+
+    # 9 MADI
+    s = add(cream(prs))
+    top = header(s, "7. Urbanisation MADI", "LexHub = SI de cabinet, pas « une appli IA »")
+    layers = [
+        ("M — Métier", "Dossier → Pièces → Plaidoirie → Équipe → Abonnement"),
+        ("A — Applications", "Cases · Documents · Rédaction · Billing · Admin · IA service"),
+        ("D — Données", "Postgres (vérité) · MinIO (fichiers) · Redis (files)"),
+        ("I — Infrastructure", "Docker / VPS · Caddy TLS · OpenAI (externe)"),
+    ]
+    for i, (title, body) in enumerate(layers):
+        y = top + i * 1.25
+        card(s, 0.5, y, 12.3, 1.1, fill=SOFT)
+        t = s.shapes.add_textbox(Inches(0.75), Inches(y + 0.18), Inches(3.5), Inches(0.35))
+        R(t.text_frame.paragraphs[0].add_run(), title, size=14, bold=True, color=NAVY, font="Georgia")
+        b = s.shapes.add_textbox(Inches(4.4), Inches(y + 0.18), Inches(8.1), Inches(0.7))
+        tf = b.text_frame
+        tf.word_wrap = True
+        R(tf.paragraphs[0].add_run(), body, size=13, color=DARK)
+
+    # 10 Architecture
+    s = add(cream(prs))
+    top = header(s, "8. Architecture déployée", "SaaS multi-tenant — lexhub.space")
+    arch = [
+        ("Navigateur", "Next.js"),
+        ("Caddy", "HTTPS / TLS"),
+        ("FastAPI", "Métier + RBAC"),
+        ("PostgreSQL", "Vérité métier"),
+        ("Redis", "Files / temps réel"),
+        ("MinIO", "Fichiers chiffrés"),
+    ]
+    for i, (a, b) in enumerate(arch):
+        col, row = i % 3, i // 3
+        left = 0.45 + col * 4.25
+        y = top + row * 2.0
+        card(s, left, y, 4.05, 1.7)
+        t = s.shapes.add_textbox(Inches(left + 0.2), Inches(y + 0.35), Inches(3.6), Inches(0.4))
+        R(t.text_frame.paragraphs[0].add_run(), a, size=16, bold=True, color=NAVY, font="Georgia")
+        u = s.shapes.add_textbox(Inches(left + 0.2), Inches(y + 0.9), Inches(3.6), Inches(0.45))
+        R(u.text_frame.paragraphs[0].add_run(), b, size=13, color=MUTED)
+    tip = s.shapes.add_textbox(Inches(0.5), Inches(top + 4.2), Inches(12.3), Inches(1.0))
     tf = tip.text_frame
     tf.word_wrap = True
-    for i, line in enumerate([
-        "Essai hybride : 0 MAD + plafonds réduits (Solo 400/25 · Cabinet 1 000/60 · Entreprise 1 800/120) — pas le forfait plein",
-        "Coûts crédits : polish 1 · ask 2 · clarify 3 · synthèse 4 · révision 5 · analyse / clé 8 · rédaction 10",
-        "Ordre de conso : forfait du mois → packs FIFO (12 mois) → PAYG si ON (~0,25 MAD) → sinon blocage clair",
-        "Paiement : admin cabinet · CMI/PayZone env. prêt · activation opérateur en cours",
-    ]):
-        p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
-        p.space_after = Pt(5)
-        R(p.add_run(), "▸  " + line, size=12, color=DARK)
+    R(tf.paragraphs[0].add_run(),
+      "Isolation cabinet_id · RBAC (assistant ≠ brouillons) · Whisper ou Web Speech · ports BDD 127.0.0.1 · admin plateforme sans lecture des affaires",
+      size=12, color=DARK)
 
-    # —— 13 Parrainage + rentabilisation ——
+    # 10bis Diagrammes clés (6 séquences principales)
     s = add(cream(prs))
-    top = header(s, "10. Packs, sièges & parrainage", "Trois objets de facturation + croissance organique")
-    card_title_body(s, 0.4, top, 6.15, 5.4, "Packs & sièges (déployé)", [
-        "• Packs : 500 / 110 · 1 000 / 200 · 2 500 / 450 MAD",
-        "• Uniquement si abonnement ACTIF payant",
-        "  (jamais pendant l’essai / Découverte)",
-        "• Acheter → fenêtre carte → crédit après paiement",
-        "• Expiration 12 mois par lot (FIFO)",
-        "• Cabinet : +1 avocat = 99 MAD/mois (0–5 extra)",
-        "• PAYG OFF par défaut · jamais silencieux",
-    ], bs=12)
-    card_title_body(s, 6.75, top, 6.15, 5.4, "Parrainage & logique éco.", [
-        "• Code LH-… + lien ?ref=CODE",
-        "• Filleul +14 j · parrain +30 j au paiement",
-        "• Anti-abus : pas d’auto-ref · max 12/an",
-        "• Découverte = acquisition (3/50)",
-        "• Solo / Cabinet = cœur de revenus",
-        "• Pack = recharge si forfait fini",
-        "• Résiliation en fin de période payée",
-    ], bs=12)
+    top = header(s, "8bis. Diagrammes clés", "Six séquences UML — sources PlantUML dans diagrams/")
+    seqs = [
+        ("Inscription OTP", "request → e-mail → verify → register (Cabinet ACTIVE + essai) → login"),
+        ("Login + Turnstile", "captcha-config → login ; Turnstile après 3 échecs → JWT"),
+        ("Dictée → rédaction", "STT → polish → clarify → compose → revise"),
+        ("Validation / export", "validate / assign → WS ; export Word/PDF → finalized (UI)"),
+        ("Documents OCR", "POST /upload → MinIO → extract → extracted_text"),
+        ("Facturation", "plans / packs → history (amount > 0 MAD) → PDF facture"),
+    ]
+    for i, (title, body) in enumerate(seqs):
+        col, row = i % 2, i // 2
+        left = 0.4 + col * 6.45
+        y = top + row * 1.55
+        card(s, left, y, 6.25, 1.4, fill=SOFT)
+        t = s.shapes.add_textbox(Inches(left + 0.2), Inches(y + 0.2), Inches(5.85), Inches(0.35))
+        R(t.text_frame.paragraphs[0].add_run(), title, size=14, bold=True, color=NAVY, font="Georgia")
+        b = s.shapes.add_textbox(Inches(left + 0.2), Inches(y + 0.65), Inches(5.85), Inches(0.55))
+        tf = b.text_frame
+        tf.word_wrap = True
+        R(tf.paragraphs[0].add_run(), body, size=12, color=DARK)
 
-    # —— 14 Sécurité ——
+    # 11 Économie
     s = add(cream(prs))
-    top = header(s, "11. Sécurité, tests, déploiement")
-    card_title_body(s, 0.4, top, 6.15, 5.4, "Sécurité", [
-        "• JWT / sessions · rate limiting",
-        "• Multi-tenant (Rabat ≠ Atlas)",
-        "• OTP inscription / sensible",
-        "• Audit · Zone sensible comptes",
-        "• Admin WV : suspendre / purger",
-        "  sans ouvrir les dossiers",
+    top = header(s, "9. Modèle économique", "Essai hybride · plans · packs · sièges")
+    headers = ["Formule", "Mensuel", "Essai", "Cible"]
+    data = [
+        ("Découverte", "0 MAD", "Permanent", "Découverte produit"),
+        ("Solo", "299 MAD", "14 j", "Avocat indépendant"),
+        ("Cabinet", "699 MAD", "30 j", "Petite structure"),
+        ("Entreprise", "1 290 MAD", "7 j qualifié", "Cabinets structurés"),
+    ]
+    for j, h in enumerate(headers):
+        x = 0.4 + j * 3.2
+        card(s, x, top, 3.05, 0.48, fill=NAVY)
+        tb = s.shapes.add_textbox(Inches(x + 0.1), Inches(top + 0.1), Inches(2.85), Inches(0.3))
+        R(tb.text_frame.paragraphs[0].add_run(), h, size=12, bold=True, color=WHITE)
+    for i, row in enumerate(data):
+        for j, cell in enumerate(row):
+            x = 0.4 + j * 3.2
+            y = top + 0.58 + i * 0.7
+            card(s, x, y, 3.05, 0.62)
+            tb = s.shapes.add_textbox(Inches(x + 0.1), Inches(y + 0.15), Inches(2.85), Inches(0.35))
+            R(tb.text_frame.paragraphs[0].add_run(), cell, size=12, bold=(j == 0), color=NAVY if j == 0 else DARK)
+    card_title_body(s, 0.4, top + 3.55, 6.15, 2.0, "Garde-fous", [
+        "Essai = durée + plafond crédits",
+        "Repère IA du jour (continuer / demain)",
+        "Factures listées si amount > 0 MAD",
     ], bs=12)
-    card_title_body(s, 6.75, top, 6.15, 5.4, "Livré", [
-        "• Prod : lexhub.space (Caddy TLS)",
-        "• CI → images GHCR",
-        "• Scénarios rôles + pipeline 5 étapes",
-        "• Kits test commercial & famille",
-        "• Rapport PFA + guide encadrant",
-        "• ≠ démo hors-ligne : SaaS réel",
+    card_title_body(s, 6.75, top + 3.55, 6.15, 2.0, "Croissance", [
+        "Packs prépayés (abonnés actifs)",
+        "Sièges Cabinet · Parrainage confraternel",
+        "PDF facture téléchargeable",
     ], bs=12)
 
-    # —— 15 Perspectives ——
+    # 12 Prod
     s = add(cream(prs))
-    top = header(s, "12. Perspectives", "Évolution produit — outillage déjà en place")
-    bullets(
-        s,
-        [
-            "Précision / latence STT arabe juridique (lexique cabinet)",
-            "Modèles par domaine + historique de versions",
-            "Indicateurs métier · planning ↔ audience ↔ plaidoirie",
-            "Activer paiement opérateur CMI / PayZone (abo + packs)",
-            "Qualifier les essais Entreprise · palier Sur mesure",
-            "Rétention audio & politiques de purge renforcées",
-        ],
-        top=top + 0.15,
-        size=15,
-        gap=12,
-    )
+    top = header(s, "10. Production & CI/CD", "https://lexhub.space")
+    card_title_body(s, 0.4, top, 6.15, 5.4, "Infrastructure", [
+        "• VPS · Docker Compose · Caddy TLS",
+        "• Images frontend / backend / celery",
+        "• GitHub Actions → GHCR",
+        "• Sauvegardes PostgreSQL + fichiers",
+        "",
+        "Atout multi-support",
+        "• Même SaaS desktop + mobile (pas d’app native)",
+        "• Dock tactile · rôles conservés · ~360–430 px",
+    ], bs=12)
+    card_title_body(s, 6.75, top, 6.15, 5.4, "Sécurité", [
+        "• JWT + OTP e-mail + Turnstile (après échecs)",
+        "• Multi-tenant (cabinet_id) + RBAC",
+        "• Noms masqués avant tout appel LLM",
+        "• Admin plateforme : usage/plans, jamais les affaires",
+        "• Dock mobile fixé ; marque LexHub (pas « Administration »)",
+        "• Adminer via tunnel SSH seulement",
+    ], bs=12)
 
-    # —— 16 Closing ——
+    # 13 Demo — Accueil & connexion
+    s = add(cream(prs))
+    top = header(s, "11. Démonstration — Accueil & connexion")
+    pic(s, find_shot("01-accueil.png"), 0.35, top, 6.2, 5.05, "Accueil LexHub (page publique)")
+    pic(s, find_shot("02-connexion.png"), 6.8, top, 6.1, 5.05, "Connexion sécurisée")
+
+    # 14 Demo — Tableau de bord & dossiers
+    s = add(cream(prs))
+    top = header(s, "11bis. Démonstration — Tableau de bord & dossiers")
+    pic(s, find_shot("10-tableau-de-bord.png"), 0.35, top, 6.2, 5.05, "Tableau de bord — dossiers, documents, essai et crédits")
+    pic(s, find_shot("11-dossiers.png"), 6.8, top, 6.1, 5.05, "Liste des dossiers du cabinet")
+
+    # 15 Demo — Fiche dossier & documents
+    s = add(cream(prs))
+    top = header(s, "11ter. Démonstration — Dossier & documents")
+    pic(s, find_shot("24-dossier-detail.png"), 0.35, top, 6.2, 5.05, "Fiche dossier — identité des parties et plaidoirie liée")
+    pic(s, find_shot("13-documents.png"), 6.8, top, 6.1, 5.05, "Espace Documents — dépôt et statut d'extraction")
+
+    # 16 Demo — Détail document & atelier
+    s = add(cream(prs))
+    top = header(s, "11quater. Démonstration — Document & atelier plaidoirie")
+    pic(s, find_shot("13b-document-detail.png"), 0.35, top, 6.2, 5.05, "Détail document — extrait, synthèse IA et questions")
+    pic(s, find_shot("14b-plaidoirie-workspace.png"), 6.8, top, 6.1, 5.05, "Atelier plaidoirie — étape 1 (dossier & pièces)")
+
+    # 17 Demo — Transcription & export
+    s = add(cream(prs))
+    top = header(s, "11quinquies. Démonstration — Transcription & export")
+    pic(s, find_shot("14c-transcription-fusha.png"), 0.35, top, 6.2, 5.05, "Transcription / correction (arabe fusḥā)")
+    pic(s, find_shot("19-export-document.png"), 6.8, top, 6.1, 5.05, "Export Word (.docx) / PDF de la plaidoirie")
+
+    # 18 Demo — Équipe, activité & admin
+    s = add(cream(prs))
+    top = header(s, "11sexies. Démonstration — Équipe, activité & admin")
+    pic(s, find_shot("16-equipe.png"), 0.35, top, 4.1, 5.05, "Équipe — invitations et rôles")
+    pic(s, find_shot("23-activite-cabinet.png"), 4.6, top, 4.1, 5.05, "Journal d'activité du cabinet")
+    pic(s, find_shot("22a-admin-dashboard.png"), 8.85, top, 4.1, 5.05, "Admin plateforme — pilotage LexHub")
+
+    # 16 Bilan
+    s = add(cream(prs))
+    top = header(s, "12. Bilan", "Objectifs PFA — conformité")
+    rows = [
+        ("Atelier 5 étapes", "Dossier → Word / PDF"),
+        ("SI multi-tenant + RBAC", "Isolation + validation assistant"),
+        ("Urbanisation MADI", "Process / apps / données / infra"),
+        ("Modèle économique", "Essai, plans, packs ; factures > 0 MAD"),
+        ("Production", "lexhub.space"),
+    ]
+    for i, (a, b) in enumerate(rows):
+        y = top + i * 0.95
+        card(s, 0.4, y, 10.2, 0.85)
+        t = s.shapes.add_textbox(Inches(0.6), Inches(y + 0.22), Inches(4.5), Inches(0.4))
+        R(t.text_frame.paragraphs[0].add_run(), a, size=14, bold=True, color=NAVY)
+        u = s.shapes.add_textbox(Inches(5.3), Inches(y + 0.22), Inches(5.0), Inches(0.4))
+        R(u.text_frame.paragraphs[0].add_run(), b, size=13, color=DARK)
+        ok = s.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(11.0), Inches(y + 0.2), Inches(1.8), Inches(0.45))
+        ok.fill.solid()
+        ok.fill.fore_color.rgb = OK
+        ok.line.fill.background()
+        ot = s.shapes.add_textbox(Inches(11.15), Inches(y + 0.28), Inches(1.5), Inches(0.3))
+        ot.text_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
+        R(ot.text_frame.paragraphs[0].add_run(), "OK", size=12, bold=True, color=WHITE)
+
+    # 17 Perspectives
+    s = add(cream(prs))
+    top = header(s, "Perspectives", "Évolution produit (hors périmètre déjà livré)")
+    card_title_body(s, 0.4, top, 6.15, 5.4, "Court terme", [
+        "• Encaissement réel (CMI / PayZone)",
+        "• Qualité STT / relecture renforcée",
+    ], bs=14)
+    card_title_body(s, 6.75, top, 6.15, 5.4, "Moyen terme", [
+        "• Continuité dossier → audience",
+        "• Interopérabilités sans casser",
+        "  les maîtres de donnée MADI",
+    ], bs=14)
+
+    # 18 Closing
     s = add(navy_slide(prs))
     if LOGO.exists():
-        s.shapes.add_picture(str(LOGO), Inches(5.55), Inches(1.2), width=Inches(2.2))
-    box = s.shapes.add_textbox(Inches(0.7), Inches(3.3), Inches(11.9), Inches(3))
+        s.shapes.add_picture(str(LOGO), Inches(5.55), Inches(1.1), width=Inches(2.2))
+    box = s.shapes.add_textbox(Inches(0.7), Inches(3.2), Inches(11.9), Inches(3.2))
     tf = box.text_frame
     tf.word_wrap = True
     p = tf.paragraphs[0]
     p.alignment = PP_ALIGN.CENTER
-    R(p.add_run(), "Merci de votre attention", size=34, bold=True, color=WHITE, font="Georgia")
+    R(p.add_run(), "Merci pour votre attention", size=34, bold=True, color=WHITE, font="Georgia")
     p2 = tf.add_paragraph()
     p2.alignment = PP_ALIGN.CENTER
     p2.space_before = Pt(14)
@@ -559,7 +618,7 @@ def build():
     p3 = tf.add_paragraph()
     p3.alignment = PP_ALIGN.CENTER
     p3.space_before = Pt(16)
-    R(p3.add_run(), "Douae El Assal  ·  ENSA Tétouan  ·  WEBVOICE  ·  LexHub", size=13, color=RGBColor(0xA0, 0xAA, 0xBE))
+    R(p3.add_run(), "EL ASSAL Douae  ·  ENSA Tétouan  ·  WEBVOICE  ·  LexHub", size=13, color=RGBColor(0xA0, 0xAA, 0xBE))
 
     total = len(slides)
     for i, slide in enumerate(slides):

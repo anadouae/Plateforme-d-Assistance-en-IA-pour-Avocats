@@ -1,17 +1,33 @@
 @startuml seq-otp
+!theme plain
 skinparam shadowing false
-actor Avocat
-participant Navigateur
-participant "API LexHub" as API
-participant Email
-database Base
+title Inscription cabinet — OTP e-mail (alias de seq-register-otp)
 
-Avocat -> Navigateur : e-mail
-Navigateur -> API : demander OTP
-API -> Email : envoyer code
-Email --> Avocat : code
-Avocat -> Navigateur : OTP + infos cabinet
-Navigateur -> API : inscription
-API -> Base : cabinet ACTIVE + user
-API --> Navigateur : session / accès immédiat
+actor "Futur admin\ncabinet" as U
+participant "Navigateur" as FE
+participant "API FastAPI\n/api/auth" as API
+participant "E-mail\n(SMTP)" as Mail
+database "PostgreSQL" as DB
+
+U -> FE : saisit e-mail cabinet
+FE -> API : POST /request-register-otp
+API -> DB : stocke OTP (hash, TTL)
+API -> Mail : envoie code à 6 chiffres
+Mail --> U : e-mail OTP
+
+U -> FE : saisit le code
+FE -> API : POST /verify-register-otp
+API -> DB : vérifie OTP
+API --> FE : OK (OTP validé)
+
+U -> FE : infos cabinet + mot de passe
+FE -> API : POST /register
+API -> DB : consomme OTP
+API -> DB : Cabinet (ACTIVE)\n+ User (ADMIN_CABINET)\n+ start_free_for_cabinet (essai)
+API --> FE : MessageResponse\n(pas de JWT ici)
+
+note over U, FE
+  Ensuite : POST /login pour obtenir le JWT.
+  Pas d'approbation manuelle plateforme à l'inscription.
+end note
 @enduml

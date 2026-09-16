@@ -47,11 +47,16 @@ const GUIDES = [
     titleAr: "إنشاء مرافعة",
     stepsFr: [
       "Créer / ouvrir le dossier",
-      "Joindre les pièces",
-      "Dicter au micro",
-      "L’IA rédige (noms masqués) puis export",
+      "Joindre les pièces (facultatif)",
+      "Dicter : Chrome/Edge (Web Speech) ou Firefox (Whisper + Terminé)",
+      "Corriger → clarification QCM → rédaction → export Word",
     ],
-    stepsAr: ["إنشاء / فتح الملف", "إرفاق القطع", "الإملاء بالميكروفون", "الصياغة ثم التصدير"],
+    stepsAr: [
+      "إنشاء / فتح الملف",
+      "إرفاق القطع (اختياري)",
+      "الإملاء: Chrome/Edge أو Firefox (Whisper)",
+      "التصحيح ثم الصياغة ثم التصدير",
+    ],
     cat: "plea",
   },
   {
@@ -193,12 +198,12 @@ const FAQS: Faq[] = [
   {
     id: "dictation-mic",
     cat: "plea",
-    qFr: "Le micro navigateur ne démarre pas",
-    qAr: "الميكروفون لا يعمل",
+    qFr: "Comment fonctionne le micro (Chrome, Edge, Firefox) ?",
+    qAr: "كيف يعمل الميكروفون (Chrome وEdge وFirefox)؟",
     aFr:
-      "Utilisez Chrome ou Edge. Autorisez le micro (icône cadenas à gauche de l'URL). LexHub utilise uniquement le micro du navigateur. Parcours : Plaidoirie → Nouvelle → Dictée → Commencer.",
+      "Chrome / Edge : reconnaissance vocale native (Web Speech) avec aperçu en direct. Firefox : pas de Web Speech — LexHub enregistre l’audio (MediaRecorder) puis transcrit avec Whisper (OpenAI) ; appuyez sur Terminé pour envoyer, Annuler pour abandonner. La langue parlée (FR/AR) est détectée automatiquement sans changer toute l’interface. Autorisez le micro (cadenas dans la barre d’adresse).",
     aAr:
-      "استخدموا Chrome أو Edge. اسمحوا بالميكروفون. الإملاء يعتمد على ميكروفون المتصفح فقط. المسار: مرافعة → جديدة → إملاء → ابدأ.",
+      "Chrome/Edge: تعرّف صوتي مباشر. Firefox: تسجيل ثم Whisper — اضغطوا «تم» للإرسال أو «إلغاء». تُكتشف اللغة تلقائياً. اسمحوا بالميكروفون من شريط العنوان.",
     href: "/redaction/new",
     hrefLabelFr: "Ouvrir une plaidoirie",
     hrefLabelAr: "فتح مرافعة",
@@ -212,15 +217,28 @@ const FAQS: Faq[] = [
     qFr: "Quel est le parcours plaidoirie ?",
     qAr: "ما مسار المرافعة؟",
     aFr:
-      "Dossier d’abord (référence + pièces) → dictée de l’avocat → transcription corrigée → les noms des parties sont remplacés (PARTIE_A…) avant l’IA, puis restaurés → plaidoirie professionnelle Word/PDF. Sans dossier, la rédaction IA est bloquée.",
+      "1) Dossier & pièces → 2) Dictée (Web Speech ou Whisper) → 3) Transcription + Corriger + clarification QCM → 4) Rédaction IA (noms masqués avant l’IA) + assistant révision (répond et édite) → 5) Export Word officiel au nom du cabinet. Sans dossier, la rédaction est bloquée.",
     aAr:
-      "النوع → قطع الملف → إملاء → تفريغ → كتابة → تصدير Word/PDF. المسار كامل داخل ورشة LexHub.",
+      "الملف والقطع → الإملاء → التفريغ والتصحيح وأسئلة التوضيح → الصياغة والمراجعة → تصدير Word باسم المكتب.",
     href: "/redaction",
     hrefLabelFr: "Espace plaidoirie",
     hrefLabelAr: "فضاء المرافعة",
     publicHref: "/fonctionnalites",
     publicHrefLabelFr: "Découvrir les fonctionnalités",
     publicHrefLabelAr: "اكتشاف الميزات",
+  },
+  {
+    id: "revise-assistant",
+    cat: "plea",
+    qFr: "Comment fonctionne l’assistant de révision ?",
+    qAr: "كيف يعمل مساعد المراجعة؟",
+    aFr:
+      "Dans l’étape Rédaction, panneau Assistant IA : posez une question ou une consigne (fautes OK). L’IA répond de façon pédagogique et met à jour le texte. Micro : Terminé / Annuler, détection auto FR/AR. Pendant l’envoi : Annuler la requête ; après : Modifier la requête.",
+    aAr:
+      "في خطوة الصياغة: اسألوا أو وجّهوا المساعد. يجيب ويحدّث النص. الميكروفون: تم/إلغاء وكشف تلقائي للغة.",
+    href: "/redaction",
+    hrefLabelFr: "Atelier plaidoirie",
+    hrefLabelAr: "ورشة المرافعة",
   },
   {
     id: "cases",
@@ -244,9 +262,9 @@ const FAQS: Faq[] = [
     qFr: "Comment inviter un avocat ou un assistant ?",
     qAr: "كيف أدعو محامياً أو مساعداً؟",
     aFr:
-      "Admin cabinet : menu Équipe → invitation par e-mail (dans la limite du plan). L'invité reçoit un lien pour rejoindre votre cabinet isolé.",
+      "Admin cabinet : menu Équipe → invitation par e-mail (dans la limite du plan). L'invité reçoit un lien pour rejoindre votre cabinet isolé. Il n’y a plus de « code cabinet » à partager.",
     aAr:
-      "مدير المكتب: الفريق → دعوة بالبريد (ضمن حد الخطة).",
+      "مدير المكتب: الفريق → دعوة بالبريد (ضمن حد الخطة). لا يوجد رمز مكتب للمشاركة.",
     href: "/team",
     hrefLabelFr: "Ouvrir l'équipe",
     hrefLabelAr: "فتح الفريق",
@@ -260,9 +278,9 @@ const FAQS: Faq[] = [
     qFr: "Comment LexHub protège-t-il nos dossiers ?",
     qAr: "كيف يحمي LexHub ملفاتنا؟",
     aFr:
-      "Isolation par cabinet, HTTPS, mots de passe hachés, vérification e-mail, captcha anti-bots (Cloudflare Turnstile), 2FA optionnelle. Données chiffrées en transit.",
+      "Isolation stricte par cabinet, HTTPS, mots de passe hachés, OTP e-mail à l’inscription, Cloudflare Turnstile après plusieurs échecs de login, 2FA TOTP optionnelle, masquage des noms des parties avant tout appel IA, journaux d’audit côté plateforme. Les exports Word portent l’en-tête du cabinet, pas la marque LexHub.",
     aAr:
-      "عزل لكل مكتب، HTTPS، كلمات مرور مشفّرة، تحقق بريد، حماية ضد الروبوتات، 2FA اختيارية.",
+      "عزل صارم لكل مكتب، HTTPS، كلمات مرور مشفّرة، OTP عند التسجيل، Turnstile بعد إخفاقات الدخول، 2FA اختيارية، إخفاء أسماء الأطراف قبل الذكاء الاصطناعي، وسجلات تدقيق.",
     publicHref: "/securite",
     publicHrefLabelFr: "Page Sécurité",
     publicHrefLabelAr: "صفحة الأمان",
@@ -273,15 +291,25 @@ const FAQS: Faq[] = [
     qFr: "Comment activer la 2FA ?",
     qAr: "كيف أفعّل التحقق الثنائي؟",
     aFr:
-      "Paramètres → Sécurité / 2FA → scannez le QR avec Google Authenticator ou Microsoft Authenticator.",
+      "Paramètres → Sécurité / 2FA → scannez le QR avec Google Authenticator ou Microsoft Authenticator. (Espace cabinet uniquement — pas l’admin plateforme LexHub.)",
     aAr:
-      "الإعدادات → الأمان / 2FA → امسحوا رمز QR بتطبيق مصادقة.",
+      "الإعدادات → الأمان / 2FA → امسحوا رمز QR. (فضاء المكتب فقط.)",
     href: "/settings",
     hrefLabelFr: "Activer la 2FA",
     hrefLabelAr: "تفعيل 2FA",
     publicHref: "/login?tab=login",
     publicHrefLabelFr: "Se connecter d'abord",
     publicHrefLabelAr: "سجّل الدخول أولاً",
+  },
+  {
+    id: "roles-mobile",
+    cat: "docs",
+    qFr: "Quels sont les rôles et le menu mobile ?",
+    qAr: "ما الأدوار والقائمة على الهاتف؟",
+    aFr:
+      "Avocat / admin cabinet : dock bas fixé (Plaidoirie, Dossiers, Documents, Planning, Activité, Équipe si admin). Assistant : dock adapté (plaidoiries validées, pas d’atelier dictée). Admin plateforme LexHub : dock Aperçu / Cabinets / Plans / Leads / Logs / Coach — sans Paramètres cabinet.",
+    aAr:
+      "المحامي ومدير المكتب: شريط سفلي ثابت. المساعد: مرافعات مصادَق عليها فقط. إدارة المنصة: نظرة/مكاتب/خطط/طلبات/سجل دون إعدادات المكتب.",
   },
   {
     id: "contact",

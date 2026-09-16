@@ -1,16 +1,31 @@
 @startuml seq-assign
 !theme plain
-actor Avocat
-participant "API LexHub" as API
-database Base
-participant "Temps réel" as RT
-actor Assistant
+skinparam shadowing false
+title Validation / assignation (alias de seq-validate-assign)
 
-Avocat -> API : valider ou assigner
-API -> Base : statut = validated
-API -> Base : assigned_to (optionnel)
-API -> RT : événement WebSocket
-RT --> Assistant : rafraîchir liste
-API --> Assistant : notification / e-mail
-Assistant -> API : export / impression
+actor "Avocat /\nadmin cabinet" as Av
+participant "API\n/api/plaidoirie-templates" as API
+database PostgreSQL
+participant "Redis pub/sub\n+ WebSocket" as RT
+participant "E-mail" as Mail
+actor "Assistant\njuridique" as As
+
+alt Valider seule
+  Av -> API : POST /drafts/{id}/validate
+  API -> PostgreSQL : status = validated
+  API -> PostgreSQL : CabinetNotification (assistants)
+  API -> RT : publish_cabinet_event
+  API -> Mail : send_plea_validated_email (si configuré)
+else Assigner
+  Av -> API : POST /drafts/{id}/assign
+  API -> PostgreSQL : assigned_to_user_id\n(+ status=validated si besoin)
+  API -> RT : événement temps réel
+end
+
+RT --> As : rafraîchir liste
+As -> API : GET /drafts (filtrés validated|finalized)
+As -> API : POST /export-docx ou /export-pdf
+opt Après export (UI avocat)
+  Av -> API : PATCH /drafts/{id} (status=finalized)
+end
 @enduml

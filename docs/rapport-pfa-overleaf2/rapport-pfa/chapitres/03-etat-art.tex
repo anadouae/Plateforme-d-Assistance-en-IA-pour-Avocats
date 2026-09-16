@@ -1,37 +1,45 @@
 \chapter{Étude de l'existant et positionnement}
 \label{ch:etat-art}
 
-\section{Périmètre de l'étude}
+\section{Périmètre et méthode}
+\label{sec:etat-methode}
 
-Cette étude compare LexHub aux offres accessibles à un cabinet marocain, selon une grille retenue au premier suivi PFA : atelier voix~$\rightarrow$~plaidoirie, gestion de cabinet, SaaS multi-tenant, travail en équipe.
+Cette étude positionne LexHub face aux offres accessibles à un cabinet marocain. La grille est stable : atelier voix~$\rightarrow$~plaidoirie, gestion de cabinet, SaaS multi-tenant, travail en équipe, et \textbf{maîtrise des faits}.
 
-Sources consultées : \texttt{smartavocat.ma}, \texttt{avocato.ma}, \texttt{avocatpro.ma}, \texttt{legaliq.ma}, \texttt{kanoun.com}, \texttt{adala.ai}, \texttt{diskod.ma}.
+\paragraph{Méthode AS-IS / TO-BE.}
+\begin{itemize}[leftmargin=1.4em]
+  \item \textbf{AS-IS} --- ce que le cabinet peut acheter ou assembler aujourd'hui ;
+  \item \textbf{Écart} --- ce qui manque pour soutenir \textbf{dossier $\rightarrow$ pièces $\rightarrow$ rédaction $\rightarrow$ livrable} ;
+  \item \textbf{TO-BE} --- le SI de cabinet LexHub, où l'IA est un \textbf{service}, pas le produit.
+\end{itemize}
 
-\section{Analyse comparative (benchmarking)}
-\label{sec:benchmark}
+La même grille structure l'urbanisation interne du SI (section~\ref{sec:madi}). Sources : \texttt{smartavocat.ma}, \texttt{avocato.ma}, \texttt{avocatpro.ma}, \texttt{legaliq.ma}, \texttt{kanoun.com}, \texttt{adala.ai}, \texttt{diskod.ma}.
 
-Le tableau~\ref{tab:benchmark} indique, pour chaque offre, ce qu'elle couvre et ce qui manque par rapport au besoin LexHub : une plaidoirie vocale intégrée au cabinet.
+\section{AS-IS --- paysage concurrentiel}
+\label{sec:as-is-marche}
+
+Quatre familles coexistent, souvent \textbf{sans pont} : gestion de cabinet ; dictée bureautique ; assistant IA juridique ; assemblage manuel (Word + Drive + messagerie).
 
 \begin{table}[H]
 \centering
-\caption{Benchmarking marché --- applications existantes vs besoin LexHub}
+\caption{Benchmarking marché --- AS-IS vs besoin LexHub}
 \label{tab:benchmark}
 \footnotesize
 \renewcommand{\arraystretch}{1.35}
 \begin{tabular}{@{}p{2.4cm}p{4.6cm}p{5.6cm}@{}}
 \toprule
-\textbf{Offre} & \textbf{Services offerts} & \textbf{Ce qui manque face à LexHub} \\
+\textbf{Offre} & \textbf{Services offerts (AS-IS)} & \textbf{Écart face à LexHub} \\
 \midrule
 SmartAvocat \newline {\scriptsize smartavocat.ma} &
 Gestion cabinet, dossiers bilingues &
 Pas de flux plaidoirie vocale \\
 \midrule
 Avocato \newline {\scriptsize avocato.ma} &
-Gestion + audiences / Mahakim &
+Gestion + audiences / portail justice &
 Pas de parcours dictée $\rightarrow$ document métier \\
 \midrule
 AvocatPro \newline {\scriptsize avocatpro.ma} &
-Gestion + Mahakim, organisation &
+Gestion + calendrier judiciaire &
 Pas de cœur plaidoirie \\
 \midrule
 Legaliq \newline {\scriptsize legaliq.ma} &
@@ -57,15 +65,78 @@ Atelier 5 étapes ; dossiers ; équipe ; SaaS &
 \end{tabular}
 \end{table}
 
-\section{Positionnement de la solution LexHub}
+\begin{table}[H]
+\centering
+\caption{Lecture urbanisée du marché AS-IS}
+\label{tab:as-is-lecture}
+\small
+\begin{tabularx}{\textwidth}{@{}>{\bfseries}p{2.8cm}XX@{}}
+\toprule
+Couche & Constat marché & Conséquence pour le cabinet \\
+\midrule
+Métier & Processus découpé (gestion \emph{ou} dictée \emph{ou} chat) & Ressaisie, perte de contexte \\
+Applications & Outils en silos & Chaîne de valeur brisée \\
+Données & Word / Drive souvent maîtres de fait & Pas de cadastre unique du dossier \\
+Infrastructure & Poste local + cloud grand public & Secret professionnel difficile à garantir \\
+\bottomrule
+\end{tabularx}
+\end{table}
 
-LexHub, tel qu'il est en ligne, combine un SaaS de cabinet (isolation, rôles, dossiers), un atelier \textbf{Dossier \& pièces / Dictée / Transcription / Rédaction IA / Export}, et un document Word / PDF. L'IA assiste ; elle n'est pas un chatbot autonome.
+\section{Écart --- ce que le marché ne couvre pas}
+\label{sec:gap-benchmark}
+
+\begin{itemize}[leftmargin=1.4em]
+  \item pas de chaîne unique \textbf{dossier $\rightarrow$ pièces $\rightarrow$ dictée $\rightarrow$ acte} ;
+  \item pas de rôle assistant borné aux plaidoiries \textbf{validées} ;
+  \item pas de règle « LLM $\neq$ maître des faits » ;
+  \item pas de SaaS multi-cabinet couvrant gestion \emph{et} production juridique.
+\end{itemize}
+
+\section{TO-BE --- positionnement LexHub}
+\label{sec:to-be-position}
+
+\begin{table}[H]
+\centering
+\caption{Du marché AS-IS à la cible TO-BE LexHub}
+\label{tab:as-to-be}
+\small
+\renewcommand{\arraystretch}{1.3}
+\begin{tabularx}{\textwidth}{@{}>{\bfseries}p{2.6cm}XX@{}}
+\toprule
+Dimension & AS-IS marché & TO-BE LexHub \\
+\midrule
+Cœur métier & Gestion \emph{ou} dictée \emph{ou} chat & Dossier + plaidoirie (chaîne unique) \\
+Rôle de l'IA & Produit affiché / chatbot & Service (STT, OCR, révision) \\
+Données & Fichiers Word / Drive dispersés & Postgres (vérité) + MinIO (fichiers) \\
+Équipe & Peu de validation de brouillons & Assistant = plaidoiries validées \\
+Modèle & Licence poste / freemium IA & SaaS multi-tenant (plans, packs) \\
+Urbanisation & Silos applicatifs & Blocs MADI (section~\ref{sec:madi}) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  box/.style={draw=royal!60,fill=royal!5,rounded corners=3pt,align=center,font=\small,inner sep=5pt,minimum height=1.35cm},
+  mid/.style={draw=gold!80!black,fill=gold!12,rounded corners=3pt,align=center,font=\small\bfseries,inner sep=5pt},
+  arr/.style={-{Stealth},thick,royal!75}
+]
+  \node[box,minimum width=3.6cm] (asis) at (0,0) {AS-IS\\Outils en silos};
+  \node[mid,minimum width=3.2cm] (gap) at (5.0,0) {ÉCART\\Process non uni};
+  \node[box,minimum width=3.8cm] (tobe) at (10.0,0) {TO-BE\\SI LexHub};
+  \draw[arr] (asis) -- (gap);
+  \draw[arr] (gap) -- (tobe);
+\end{tikzpicture}
+\caption{Chaîne méthodologique du benchmarking : AS-IS $\rightarrow$ écart $\rightarrow$ TO-BE}
+\label{fig:as-to-be-chain}
+\end{figure}
 
 \section{Synthèse et choix retenus}
 
 \begin{enumerate}[leftmargin=1.4em]
-  \item Un outil de cabinet, pas un chatbot générique.
-  \item Un cœur produit en cinq étapes voix~$\rightarrow$~document, distinct d'un logiciel Mahakim.
-  \item La fidélité à la dictée : aucun fait, article ou montant inventé.
-  \item Un SaaS facturable (essai, plans, packs, sièges), détaillé au chapitre~\ref{ch:economie}.
+  \item Un \textbf{SI de cabinet}, pas un chatbot générique.
+  \item Un atelier voix~$\rightarrow$~document en cinq étapes, distinct d'un logiciel de greffe.
+  \item Fidélité à la dictée : aucun fait inventé.
+  \item SaaS facturable (chapitre~\ref{ch:economie}) et urbanisation MADI (section~\ref{sec:madi}).
 \end{enumerate}

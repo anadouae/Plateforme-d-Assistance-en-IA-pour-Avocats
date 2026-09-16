@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -7,6 +9,7 @@ import { useLocaleStore, useTranslations } from "@/store/locale";
 import { useAuthStore } from "@/store/auth";
 import { canManageTeam, isAssistant } from "@/lib/roles";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-is-mobile";
 
 const micIcon = (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -117,8 +120,8 @@ function DockNav() {
         return {
           ...item,
           icon: validatedPleaIcon,
-          labelFr: "Plaidoiries validées",
-          hintFr: "Textes validés",
+          labelFr: "Validées",
+          hintFr: "Plaidoiries validées",
           hintAr: "مرافعات معتمدة",
         };
       }
@@ -136,7 +139,7 @@ function DockNav() {
         const label =
           locale === "ar"
             ? item.key === "redaction" && assistant
-              ? "مرافعات معتمدة"
+              ? "معتمدة"
               : t.nav[item.key]
             : item.labelFr;
         const hint = locale === "ar" ? item.hintAr : item.hintFr;
@@ -144,8 +147,11 @@ function DockNav() {
           <Link
             key={item.href}
             href={item.href}
-            prefetch
-            className={cn("dock-item", active && "active")}
+            prefetch={false}
+            className={cn(
+              "dock-item",
+              active && "active",
+            )}
             data-label={label}
             data-tour-id={`nav-${item.key}`}
             aria-label={label}
@@ -164,10 +170,14 @@ function DockNav() {
   );
 }
 
-/** Dock desktop — labels visibles comme l’admin plateforme. */
+/** Dock cabinet — en portal mobile pour rester fixé au viewport (hors overflow/transform). */
 export function AppSidebar() {
-  return (
-    <nav className="dock">
+  const mobile = useIsMobile();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  const dock = (
+    <nav className="dock" aria-label="LexHub">
       <Link href="/dashboard" className="dock-brand" aria-label="LexHub" data-tour-id="brand">
         <Image
           src="/logo-lexhub-cube.png?v=cube-2"
@@ -182,6 +192,11 @@ export function AppSidebar() {
       <DockNav />
     </nav>
   );
+
+  if (mobile && mounted && typeof document !== "undefined") {
+    return createPortal(dock, document.body);
+  }
+  return dock;
 }
 
 export function AppMobileDock() {

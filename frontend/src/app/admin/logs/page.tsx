@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Search } from "lucide-react";
 import { AdminShell } from "@/components/layout/admin-shell";
 import { api, type AuditLogItem } from "@/lib/api";
+import { useTranslations } from "@/store/locale";
 
 type ActionFamily = "" | "auth" | "case" | "document" | "dictation" | "plaidoirie" | "admin" | "other";
 
@@ -167,6 +168,7 @@ function DetailsCell({ action, details }: { action: string; details: string | nu
 }
 
 export default function AdminLogsPage() {
+  const t = useTranslations().adminPlatform;
   const [logs, setLogs] = useState<AuditLogItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
@@ -247,15 +249,8 @@ export default function AdminLogsPage() {
     <AdminShell>
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-sanad-slate">Journal d&apos;audit</h1>
-          <p className="mt-1 max-w-2xl text-sm text-slate-500">
-            Trace technique des opérations plateforme (connexions, exports, admin) — comme
-            dans toute application SaaS professionnelle (traçabilité sécurité, pas surveillance
-            du contenu). La colonne <strong>IP</strong> est l’adresse réseau de la requête (bureau,
-            4G, VPN) : changer de ville ou de box change l’IP. Ce n’est pas une erreur de saisie.
-            Aucun texte de plaidoirie ni pièce jointe. Conservation 5 ans ; au-delà
-            de 90 jours les entrées anciennes passent en archive Excel téléchargeable ci-dessous.
-          </p>
+          <h1 className="text-2xl font-bold text-sanad-slate">{t.logsTitle}</h1>
+          <p className="mt-1 max-w-2xl text-sm text-slate-500">{t.logsSubtitle}</p>
         </div>
 
         <div className="flex flex-wrap gap-2">

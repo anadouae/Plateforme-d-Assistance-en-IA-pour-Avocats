@@ -975,7 +975,12 @@ export const api = {
   ) => {
     const form = new FormData();
     form.append("file", file);
-    const lang = language.toLowerCase().startsWith("fr") ? "fr" : "ar";
+    const raw = language.toLowerCase();
+    const lang = raw.startsWith("fr")
+      ? "fr"
+      : raw.startsWith("auto") || raw === "detect"
+        ? "auto"
+        : "ar";
     form.append("language", lang);
     return uploadRequest<{
       text: string;
@@ -1039,7 +1044,7 @@ export const api = {
     case_id?: string;
     language?: "ar" | "fr";
   }) =>
-    request<{ title: string; body: string; provider: string }>("/api/dictation/revise", {
+    request<{ title: string; body: string; provider: string; reply?: string }>("/api/dictation/revise", {
       method: "POST",
       body: JSON.stringify(data),
     }),
@@ -1517,6 +1522,40 @@ export const api = {
       issued_at?: string;
     }>(`/api/billing/invoices/${invoiceId}`),
 
+  downloadBillingInvoicePdf: async (invoiceId: string, filename?: string) => {
+    const token = getToken();
+    const res = await fetch(
+      `${getApiBase()}/api/billing/invoices/${encodeURIComponent(invoiceId)}/download`,
+      {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        credentials: "include",
+        signal: AbortSignal.timeout(60_000),
+      },
+    );
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ detail: apiMsg("serverError") }));
+      const raw = typeof body.detail === "string" ? body.detail : apiMsg("serverError");
+      throw new ApiError(humanizeApiDetail(raw), res.status);
+    }
+    const blob = await res.blob();
+    if (!blob.type.includes("pdf") && blob.size < 80) {
+      throw new ApiError("PDF facture invalide", res.status);
+    }
+    const cd = res.headers.get("Content-Disposition") || "";
+    const match = /filename\*?=(?:UTF-8''|")?([^\";]+)/i.exec(cd);
+    const rawName = decodeURIComponent((match?.[1] || filename || "LexHub-facture.pdf").replace(/"/g, ""));
+    const name = rawName.toLowerCase().endsWith(".pdf") ? rawName : `${rawName}.pdf`;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    return name;
+  },
+
   getAdminCancelInsights: () =>
     request<{
       total: number;
@@ -1908,16 +1947,16 @@ export const api = {
 };
 
 export interface RegisterPayload {
-  cabinet_name: string;
-  city: string;
-  address: string;
-  barreau: string;
-  ice?: string;
-  manager_name: string;
   email: string;
-  phone?: string | null;
   password: string;
   email_otp: string;
+  cabinet_name?: string;
+  city?: string;
+  address?: string;
+  barreau?: string;
+  ice?: string;
+  manager_name?: string;
+  phone?: string | null;
   referral_code?: string;
 }
 
@@ -1946,7 +1985,10 @@ export interface AuthUser {
   cabinet_name: string;
   cabinet_name_ar?: string | null;
   cabinet_city?: string | null;
+  cabinet_barreau?: string | null;
+  cabinet_address?: string | null;
   cabinet_has_logo?: boolean;
+  cabinet_profile_complete?: boolean;
   totp_enabled?: boolean;
   mfa_required?: boolean;
   has_seen_onboarding_tour?: boolean;

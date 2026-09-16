@@ -1,0 +1,37 @@
+@startuml seq-document-ocr
+!theme plain
+skinparam shadowing false
+title Dépôt de pièce — stockage MinIO + extraction OCR/texte
+
+actor "Avocat / admin /\nassistant" as U
+participant Navigateur
+participant "API /api/documents" as API
+participant MinIO
+participant "Worker\n(extraction)" as W
+participant "OCR / parseur" as OCR
+database PostgreSQL
+
+U -> Navigateur : glisse fichier (PDF, Word, image, audio…)
+Navigateur -> API : POST /upload (+ JWT, cabinet_id)
+API -> MinIO : stocke objet
+API -> PostgreSQL : Document (métadonnées,\nextracted_text=null au départ)
+API --> Navigateur : DocumentResponse (en file)
+
+API -> W : tâche d'extraction
+W -> MinIO : lit le fichier
+W -> OCR : OCR ou parse natif
+OCR --> W : texte + score
+W -> PostgreSQL : extracted_text, ocr_score,\nstatut prêt / alerte
+
+U -> Navigateur : ouvre la fiche document
+Navigateur -> API : GET /{doc_id}
+API --> Navigateur : détail + extrait
+
+opt Ré-extraction
+  Navigateur -> API : POST /{doc_id}/reextract
+end
+
+opt Synthèse / questions IA (avocat, admin)
+  Navigateur -> API : GET /{doc_id}/synthese\nou POST /{doc_id}/ask
+end
+@enduml

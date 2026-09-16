@@ -1797,26 +1797,31 @@ def confirm_credit_pack_payment(
     pack = next((p for p in CREDIT_PACKS if p["id"] == purchase.pack_id), None)
     label = pack["label"] if pack else purchase.pack_id
     exp_label = purchase.expires_at.strftime("%d/%m/%Y")
+    pack_number = f"PACK-{now.strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}"
+    pack_status = "paid_mock" if payment_mock else "paid"
     inv = BillingInvoice(
         id=str(uuid.uuid4()),
         cabinet_id=cabinet_id,
-        number=f"PACK-{now.strftime('%Y%m%d')}-{uuid.uuid4().hex[:6].upper()}",
+        number=pack_number,
         plan_slug=ent.plan.slug,
         plan_name=f"Pack crédits IA · {label}",
         amount_mad=int(purchase.amount_mad),
         currency="MAD",
         billing_cycle="one_shot",
-        status="paid_mock" if payment_mock else "paid",
+        status=pack_status,
         period_label=f"{purchase.credits} crédits · expire {exp_label}",
         issued_at=now,
-        pdf_html=(
-            f"<html><body style='font-family:sans-serif'>"
-            f"<h1>LexHub — Facture pack crédits</h1>"
-            f"<p>Cabinet : {html.escape(cabinet_name)}</p>"
-            f"<p>{purchase.credits} crédits IA · {purchase.amount_mad} MAD</p>"
-            f"<p>Carte ···· {html.escape(last4)}</p>"
-            f"<p>Expiration des crédits : {exp_label} (12 mois)</p>"
-            f"</body></html>"
+        pdf_html=render_cursor_invoice_html(
+            number=pack_number,
+            issued_at=now,
+            cabinet_name=cabinet_name,
+            plan_name=f"Pack crédits IA · {label}",
+            period_label=f"{purchase.credits} crédits · expire {exp_label}",
+            amount_mad=int(purchase.amount_mad),
+            billing_cycle="one_shot",
+            status=pack_status,
+            card_last4=last4,
+            description=f"Pack crédits IA · {label} ({purchase.credits} crédits)",
         ),
     )
     db.add(inv)
@@ -2122,6 +2127,416 @@ def list_events(db: Session, cabinet_id: str, *, limit: int = 50) -> list[Subscr
     )
 
 
+LEXHUB_INVOICE_LOGO_URL = "https://lexhub.space/logo-lexhub-cube.png?v=cube-3"
+
+
+def is_paid_invoice_row(*, amount_mad: int | float | None, status: str | None) -> bool:
+    """Factures listées : montant > 0 MAD (pas les reçus d'essai à 0)."""
+    if int(amount_mad or 0) <= 0:
+        return False
+    st = (status or "").lower()
+    if "trial" in st or "essai" in st:
+        return False
+    return True
+
+
+def _invoice_logo_path() -> "Path | None":
+    from pathlib import Path
+
+    here = Path(__file__).resolve()
+    candidates = [
+        here.parents[1] / "assets" / "logo-lexhub-cube.png",
+        here.parents[3] / "frontend" / "public" / "logo-lexhub-cube.png",
+        Path("/opt/sanad/frontend/public/logo-lexhub-cube.png"),
+        Path("/opt/sanad/backend/app/assets/logo-lexhub-cube.png"),
+    ]
+    for p in candidates:
+        if p.is_file():
+            return p
+    return None
+
+
+def _fmt_mad(amount: int | float | None) -> str:
+    n = int(amount or 0)
+    return f"{n:,}".replace(",", " ") + " MAD"
+
+
+def _cycle_label(cycle: str | None) -> str:
+    c = (cycle or "").lower()
+    if c == "yearly":
+        return "Annuel"
+    if c == "monthly":
+        return "Mensuel"
+    if c == "one_shot":
+        return "Paiement unique"
+    return cycle or "—"
+
+
+def _status_paid_label(status: str | None) -> str:
+    st = (status or "").lower()
+    if "paid" in st or st in {"payee", "payée", "issued", "issued_mock"}:
+        return "Payée"
+    return status or "—"
+
+
+def render_cursor_invoice_html(
+    *,
+    number: str,
+    issued_at: datetime | None,
+    cabinet_name: str,
+    address: str = "",
+    city: str = "",
+    plan_name: str,
+    period_label: str = "",
+    amount_mad: int | float,
+    billing_cycle: str = "",
+    status: str = "",
+    card_last4: str = "",
+    description: str | None = None,
+) -> str:
+    """Facture style SaaS (type Cursor) — aperçu navigateur."""
+    safe_num = html.escape(number or "")
+    safe_name = html.escape(cabinet_name or "—")
+    safe_addr = html.escape(address or "")
+    safe_city = html.escape(city or "")
+    safe_plan = html.escape(plan_name or "Abonnement LexHub")
+    safe_period = html.escape(period_label or "—")
+    amount = int(amount_mad or 0)
+    amount_s = _fmt_mad(amount)
+    date_s = issued_at.strftime("%d %b %Y") if issued_at else "—"
+    cycle_s = html.escape(_cycle_label(billing_cycle))
+    status_s = html.escape(_status_paid_label(status))
+    desc = html.escape(
+        description
+        or f"{plan_name or 'Abonnement LexHub'} — {_cycle_label(billing_cycle)}"
+    )
+    bill_lines = safe_name
+    if safe_addr:
+        bill_lines += f"<br/>{safe_addr}"
+    if safe_city:
+        bill_lines += f"<br/>{safe_city}"
+    card_row = ""
+    if card_last4:
+        card_row = (
+            f'<div class="row"><span class="k">Moyen de paiement</span>'
+            f'<span class="v">Carte ···· {html.escape(card_last4)}</span></div>'
+        )
+    return f"""<!DOCTYPE html>
+<html lang="fr"><head><meta charset="utf-8"/>
+<title>Facture {safe_num}</title>
+<style>
+  :root {{ --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --soft:#f8fafc; --brand:#0B1A4D; }}
+  * {{ box-sizing:border-box; }}
+  body {{
+    margin:0; padding:48px 24px; background:#f1f5f9;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink); -webkit-font-smoothing:antialiased;
+  }}
+  .sheet {{
+    max-width:680px; margin:0 auto; background:#fff; border:1px solid var(--line);
+    border-radius:12px; padding:40px 44px 36px; box-shadow:0 1px 2px rgba(15,23,42,.04);
+  }}
+  .top {{ display:flex; justify-content:space-between; align-items:flex-start; gap:24px; }}
+  .brand {{ display:flex; align-items:center; gap:12px; }}
+  .brand img {{
+    width:44px; height:44px; border-radius:10px; object-fit:contain;
+    background:linear-gradient(155deg,#1a2a55,#0A1228); padding:5px;
+  }}
+  .brand .name {{ font-size:20px; font-weight:700; letter-spacing:-.02em; color:var(--brand); }}
+  .brand .sub {{ font-size:12px; color:var(--muted); margin-top:2px; }}
+  .inv-meta {{ text-align:right; }}
+  .inv-meta .lbl {{ font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }}
+  .inv-meta .num {{ font-size:18px; font-weight:700; margin-top:4px; color:var(--ink); }}
+  .inv-meta .date {{ font-size:13px; color:var(--muted); margin-top:6px; }}
+  .amount-due {{
+    margin-top:28px; padding:18px 20px; background:var(--soft); border:1px solid var(--line);
+    border-radius:10px; display:flex; justify-content:space-between; align-items:center;
+  }}
+  .amount-due .lbl {{ font-size:13px; color:var(--muted); }}
+  .amount-due .val {{ font-size:28px; font-weight:700; letter-spacing:-.03em; color:var(--brand); }}
+  .cols {{ display:grid; grid-template-columns:1fr 1fr; gap:28px; margin-top:28px; }}
+  .cols h3 {{ margin:0 0 8px; font-size:11px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }}
+  .cols p {{ margin:0; font-size:14px; line-height:1.55; }}
+  table {{ width:100%; border-collapse:collapse; margin-top:32px; }}
+  thead th {{
+    text-align:left; font-size:11px; font-weight:600; letter-spacing:.06em;
+    text-transform:uppercase; color:var(--muted); padding:0 0 10px; border-bottom:1px solid var(--line);
+  }}
+  thead th:last-child, tbody td:last-child {{ text-align:right; }}
+  tbody td {{ padding:16px 0; border-bottom:1px solid var(--line); font-size:14px; vertical-align:top; }}
+  tbody td .muted {{ color:var(--muted); font-size:12px; margin-top:4px; }}
+  .totals {{ margin-top:8px; margin-left:auto; width:260px; }}
+  .totals .row {{ display:flex; justify-content:space-between; padding:8px 0; font-size:14px; }}
+  .totals .row.total {{ border-top:1px solid var(--line); margin-top:4px; padding-top:12px; font-weight:700; font-size:15px; }}
+  .pay {{ margin-top:28px; padding-top:20px; border-top:1px solid var(--line); }}
+  .pay .row {{ display:flex; justify-content:space-between; gap:16px; padding:6px 0; font-size:13px; }}
+  .pay .k {{ color:var(--muted); }}
+  .pay .v {{ font-weight:600; }}
+  .foot {{ margin-top:28px; font-size:11px; color:#94a3b8; line-height:1.5; }}
+  @media print {{
+    body {{ background:#fff; padding:0; }}
+    .sheet {{ box-shadow:none; border:none; max-width:none; border-radius:0; }}
+  }}
+</style></head><body>
+<div class="sheet">
+  <div class="top">
+    <div class="brand lexhub-brand">
+      <img src="{LEXHUB_INVOICE_LOGO_URL}" alt="LexHub" width="44" height="44"/>
+      <div>
+        <div class="name">LexHub</div>
+        <div class="sub">WEBVOICE · LegalTech Maroc</div>
+      </div>
+    </div>
+    <div class="inv-meta">
+      <div class="lbl">Facture</div>
+      <div class="num">{safe_num}</div>
+      <div class="date">{date_s}</div>
+    </div>
+  </div>
+  <div class="amount-due">
+    <div>
+      <div class="lbl">Montant</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">Statut · {status_s}</div>
+    </div>
+    <div class="val">{amount_s}</div>
+  </div>
+  <div class="cols">
+    <div>
+      <h3>Facturé à</h3>
+      <p>{bill_lines}</p>
+    </div>
+    <div>
+      <h3>Émetteur</h3>
+      <p>LexHub by WEBVOICE<br/>Tanger, Maroc<br/>lexhub.space</p>
+    </div>
+  </div>
+  <table>
+    <thead><tr><th>Description</th><th>Période</th><th>Montant</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>{desc}<div class="muted">Cycle · {cycle_s}</div></td>
+        <td>{safe_period}</td>
+        <td>{amount_s}</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="totals">
+    <div class="row"><span>Sous-total</span><span>{amount_s}</span></div>
+    <div class="row total"><span>Total</span><span>{amount_s}</span></div>
+  </div>
+  <div class="pay">
+    <div class="row"><span class="k">Statut</span><span class="v">{status_s}</span></div>
+    {card_row}
+  </div>
+  <p class="foot">Document généré automatiquement par LexHub. Paiement électronique (CMI / PayZone). Merci de votre confiance.</p>
+</div>
+</body></html>"""
+
+
+def brand_invoice_html(raw: str | None) -> str:
+    """Compat : anciennes factures → style Cursor + logo si absents."""
+    doc = (raw or "").strip()
+    if not doc:
+        return render_cursor_invoice_html(
+            number="—",
+            issued_at=None,
+            cabinet_name="—",
+            plan_name="LexHub",
+            amount_mad=0,
+            status="—",
+        )
+    if "amount-due" in doc and "logo-lexhub-cube" in doc:
+        return doc
+    # Si déjà un HTML LexHub basique, on le remplace pas — on injecte juste le header
+    if "logo-lexhub-cube" in doc or "lexhub-brand" in doc:
+        return doc
+    lower = doc.lower()
+    body_idx = lower.find("<body")
+    if body_idx >= 0:
+        gt = doc.find(">", body_idx)
+        if gt >= 0:
+            header = (
+                f'<div class="lexhub-brand" style="display:flex;align-items:center;gap:12px;'
+                f'margin:24px auto 0;max-width:680px;padding:0 44px">'
+                f'<img src="{LEXHUB_INVOICE_LOGO_URL}" alt="LexHub" width="44" height="44" '
+                f'style="width:44px;height:44px;border-radius:10px;object-fit:contain;'
+                f'background:linear-gradient(155deg,#1a2a55,#0A1228);padding:5px"/>'
+                f'<div style="font-size:20px;font-weight:700;color:#0B1A4D">LexHub</div></div>'
+            )
+            return doc[: gt + 1] + header + doc[gt + 1 :]
+    return render_cursor_invoice_html(
+        number="—",
+        issued_at=None,
+        cabinet_name="—",
+        plan_name="LexHub",
+        amount_mad=0,
+        status="—",
+        description="Document facture",
+    )
+
+
+def invoice_html_from_row(
+    inv: BillingInvoice,
+    *,
+    cabinet_name: str = "",
+    address: str = "",
+    city: str = "",
+    card_last4: str = "",
+) -> str:
+    """Toujours régénérer le HTML Cursor à partir des champs métier (aperçu cohérent)."""
+    return render_cursor_invoice_html(
+        number=inv.number or "",
+        issued_at=inv.issued_at,
+        cabinet_name=cabinet_name or "Cabinet",
+        address=address,
+        city=city,
+        plan_name=inv.plan_name or "LexHub",
+        period_label=inv.period_label or "",
+        amount_mad=int(inv.amount_mad or 0),
+        billing_cycle=inv.billing_cycle or "",
+        status=inv.status or "",
+        card_last4=card_last4,
+    )
+
+
+def build_invoice_pdf_bytes(
+    *,
+    number: str,
+    issued_at: datetime | None,
+    cabinet_name: str,
+    address: str = "",
+    city: str = "",
+    plan_name: str,
+    period_label: str = "",
+    amount_mad: int | float,
+    billing_cycle: str = "",
+    status: str = "",
+    card_last4: str = "",
+) -> bytes:
+    """Vrai PDF (PyMuPDF) — téléchargement navigateur, pas boîte Imprimer."""
+    import fitz
+
+    amount = int(amount_mad or 0)
+    amount_s = _fmt_mad(amount)
+    date_s = issued_at.strftime("%d/%m/%Y") if issued_at else "—"
+    doc = fitz.open()
+    page = doc.new_page(width=595, height=842)  # A4
+    ink = (15 / 255, 23 / 255, 42 / 255)
+    muted = (100 / 255, 116 / 255, 139 / 255)
+    brand = (11 / 255, 26 / 255, 77 / 255)
+    line = (226 / 255, 232 / 255, 240 / 255)
+    soft = (248 / 255, 250 / 255, 252 / 255)
+
+    margin = 48
+    y = margin
+
+    logo = _invoice_logo_path()
+    if logo:
+        try:
+            page.insert_image(
+                fitz.Rect(margin, y, margin + 42, y + 42),
+                filename=str(logo),
+                keep_proportion=True,
+            )
+        except Exception:
+            pass
+    page.insert_text((margin + 54, y + 18), "LexHub", fontsize=16, fontname="helv", color=brand)
+    page.insert_text(
+        (margin + 54, y + 34),
+        "WEBVOICE · LegalTech Maroc",
+        fontsize=8,
+        fontname="helv",
+        color=muted,
+    )
+    page.insert_text((420, y + 14), "FACTURE", fontsize=9, fontname="helv", color=muted)
+    page.insert_text((420, y + 30), number or "—", fontsize=12, fontname="helv", color=ink)
+    page.insert_text((420, y + 46), date_s, fontsize=9, fontname="helv", color=muted)
+
+    y += 70
+    # Amount box
+    box = fitz.Rect(margin, y, 595 - margin, y + 56)
+    page.draw_rect(box, color=line, fill=soft, width=0.6)
+    page.insert_text((margin + 14, y + 22), "Montant", fontsize=9, fontname="helv", color=muted)
+    page.insert_text(
+        (margin + 14, y + 40),
+        f"Statut · {_status_paid_label(status)}",
+        fontsize=8,
+        fontname="helv",
+        color=muted,
+    )
+    page.insert_text((595 - margin - 140, y + 34), amount_s, fontsize=18, fontname="helv", color=brand)
+
+    y += 78
+    page.insert_text((margin, y), "FACTURÉ À", fontsize=8, fontname="helv", color=muted)
+    page.insert_text((300, y), "ÉMETTEUR", fontsize=8, fontname="helv", color=muted)
+    y += 16
+    page.insert_text((margin, y), cabinet_name or "—", fontsize=11, fontname="helv", color=ink)
+    page.insert_text((300, y), "LexHub by WEBVOICE", fontsize=11, fontname="helv", color=ink)
+    y += 14
+    if address:
+        page.insert_text((margin, y), address, fontsize=9, fontname="helv", color=muted)
+    page.insert_text((300, y), "Tanger, Maroc", fontsize=9, fontname="helv", color=muted)
+    y += 14
+    if city:
+        page.insert_text((margin, y), city, fontsize=9, fontname="helv", color=muted)
+    page.insert_text((300, y), "lexhub.space", fontsize=9, fontname="helv", color=muted)
+
+    y += 28
+    page.draw_line(fitz.Point(margin, y), fitz.Point(595 - margin, y), color=line, width=0.7)
+    y += 14
+    page.insert_text((margin, y), "DESCRIPTION", fontsize=8, fontname="helv", color=muted)
+    page.insert_text((340, y), "PÉRIODE", fontsize=8, fontname="helv", color=muted)
+    page.insert_text((480, y), "MONTANT", fontsize=8, fontname="helv", color=muted)
+    y += 10
+    page.draw_line(fitz.Point(margin, y), fitz.Point(595 - margin, y), color=line, width=0.7)
+    y += 18
+    desc = f"{plan_name or 'Abonnement LexHub'} — {_cycle_label(billing_cycle)}"
+    page.insert_text((margin, y), desc[:58], fontsize=10, fontname="helv", color=ink)
+    page.insert_text((340, y), (period_label or "—")[:28], fontsize=9, fontname="helv", color=muted)
+    page.insert_text((480, y), amount_s, fontsize=10, fontname="helv", color=ink)
+
+    y += 36
+    page.draw_line(fitz.Point(340, y), fitz.Point(595 - margin, y), color=line, width=0.7)
+    y += 16
+    page.insert_text((340, y), "Sous-total", fontsize=10, fontname="helv", color=muted)
+    page.insert_text((480, y), amount_s, fontsize=10, fontname="helv", color=ink)
+    y += 18
+    page.insert_text((340, y), "Total", fontsize=11, fontname="helv", color=ink)
+    page.insert_text((480, y), amount_s, fontsize=11, fontname="helv", color=brand)
+
+    y += 40
+    page.draw_line(fitz.Point(margin, y), fitz.Point(595 - margin, y), color=line, width=0.7)
+    y += 18
+    page.insert_text(
+        (margin, y),
+        f"Statut : {_status_paid_label(status)}",
+        fontsize=9,
+        fontname="helv",
+        color=ink,
+    )
+    if card_last4:
+        y += 14
+        page.insert_text(
+            (margin, y),
+            f"Moyen de paiement : Carte ···· {card_last4}",
+            fontsize=9,
+            fontname="helv",
+            color=ink,
+        )
+    y += 28
+    page.insert_text(
+        (margin, y),
+        "Document généré automatiquement par LexHub. Paiement électronique (CMI / PayZone).",
+        fontsize=8,
+        fontname="helv",
+        color=muted,
+    )
+
+    data = doc.tobytes()
+    doc.close()
+    return data
+
+
 def generate_invoice(
     db: Session,
     cabinet_id: str,
@@ -2146,41 +2561,23 @@ def generate_invoice(
         f"{sub.current_period_end.date().isoformat() if sub.current_period_end else '—'}"
     )
     desc = (
-        f"Confirmation d’essai {html.escape(plan.name or '')} — 0 MAD aujourd’hui "
-        f"(l’abonnement sera facturé à la fin de l’essai si non résilié)"
+        f"Confirmation d’essai {plan.name or ''} — 0 MAD aujourd’hui"
         if is_trial
-        else f"Abonnement {html.escape(plan.name or '')} ({cycle})"
+        else f"Abonnement {plan.name or ''}"
     )
-    safe_name = html.escape(cabinet_name or "")
-    safe_addr = html.escape(address or "")
-    safe_city = html.escape(city or "")
-    safe_plan = html.escape(plan.name or "")
-    html = f"""<!DOCTYPE html>
-<html lang="fr"><head><meta charset="utf-8"/><title>Facture {number}</title>
-<style>
-body{{font-family:Georgia,serif;color:#0B1A4D;max-width:720px;margin:40px auto;padding:24px}}
-.brand{{font-size:28px;font-weight:700;letter-spacing:.04em}}
-.muted{{color:#64748b;font-size:13px}}
-.box{{border:1px solid #e2e8f0;border-radius:12px;padding:20px;margin-top:24px}}
-table{{width:100%;border-collapse:collapse;margin-top:16px}}
-th,td{{text-align:left;padding:10px 8px;border-bottom:1px solid #f1f5f9}}
-.total{{font-size:20px;font-weight:700}}
-.stamp{{margin-top:32px;font-size:12px;color:#94a3b8}}
-</style></head><body>
-<div class="brand">LexHub</div>
-<p class="muted">Plateforme LegalTech · WEBVOICE · Facture provisoire (paiement réel bientôt)</p>
-<div class="box">
-<p><strong>N° {number}</strong><br/>Émise le {now.strftime('%d/%m/%Y')}</p>
-<p><strong>Cabinet</strong><br/>{safe_name}<br/>{safe_addr}<br/>{safe_city}</p>
-<table>
-<tr><th>Description</th><th>Période</th><th>Montant</th></tr>
-<tr><td>{desc}</td><td>{period}</td><td>{amount} MAD</td></tr>
-</table>
-<p class="total">Total : {amount} MAD HT</p>
-</div>
-<p class="stamp">Document généré automatiquement par LexHub. Ne constitue pas encore une facture fiscale définitive
-tant que le paiement électronique n'est pas activé (CMI / PayZone).</p>
-</body></html>"""
+    html_doc = render_cursor_invoice_html(
+        number=number,
+        issued_at=now,
+        cabinet_name=cabinet_name or "",
+        address=address or "",
+        city=city or "",
+        plan_name=plan.name or "LexHub",
+        period_label=period,
+        amount_mad=amount,
+        billing_cycle=cycle,
+        status="issued_mock" if not is_trial else "trial_mock",
+        description=desc,
+    )
     inv = BillingInvoice(
         id=str(uuid.uuid4()),
         cabinet_id=cabinet_id,
@@ -2193,7 +2590,7 @@ tant que le paiement électronique n'est pas activé (CMI / PayZone).</p>
         status="issued_mock",
         period_label=period,
         issued_at=now,
-        pdf_html=html,
+        pdf_html=html_doc,
     )
     db.add(inv)
     db.flush()

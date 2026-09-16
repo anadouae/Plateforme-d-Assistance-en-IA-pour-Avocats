@@ -69,7 +69,7 @@ export default function SettingsPage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const hash = window.location.hash.replace("#", "");
-    if (hash === "abonnement" || hash === "plan" || hash === "factures") setSection("plan");
+    if (hash === "abonnement" || hash === "plan" || hash === "factures" || hash === "billing") setSection("plan");
     else if (hash === "parrainage" || hash === "referral") setSection("plan");
     else if (hash === "security" || hash === "securite") setSection("security");
     else if (hash === "cabinet") setSection("cabinet");

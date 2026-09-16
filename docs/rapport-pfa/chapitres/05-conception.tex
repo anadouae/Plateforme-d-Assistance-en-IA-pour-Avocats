@@ -1,7 +1,174 @@
-\chapter{Conception du système}
+\chapter{Conception et urbanisation du système}
 \label{ch:conception}
 
+Ce chapitre décrit l'architecture déployée, l'urbanisation MADI du SI, puis les diagrammes UML retenus. Le positionnement marché est traité au chapitre~\ref{ch:etat-art} ; les acteurs et exigences au chapitre~\ref{ch:analyse}.
+
+\section{Urbanisation MADI}
+\label{sec:madi}
+
+LexHub est un \textbf{SI de cabinet}, pas « une appli IA ». L'approche \textbf{MADI} (Métier, Applications, Données, Infrastructure) relie le process métier aux applications, aux maîtres de donnée et à l'infrastructure. La grille AS-IS / écart / TO-BE du benchmarking marché (chapitre~\ref{ch:etat-art}) s'applique ici à l'\textbf{intérieur} du SI.
+
+\begin{tcolorbox}[colback=royal!4,colframe=royal!55,title=Règle d'urbanisation]
+Processus maître : \textbf{dossier $\rightarrow$ pièces $\rightarrow$ rédaction $\rightarrow$ livrable}. L'IA est un service partagé ; Postgres est la vérité métier ; le LLM n'est jamais maître des faits.
+\end{tcolorbox}
+
+\subsection{Couche M --- Métier (AS-IS)}
+\label{sec:madi-m}
+
+Processus de valeur : onboarding ; ouverture de dossier ; dépôt de pièces ; rédaction / dictée de plaidoirie (\textbf{cœur}) ; agenda ; équipe ; abonnement ; administration plateforme (côté LexHub).
+
+\subsection{Couche A --- Applications (AS-IS)}
+\label{sec:madi-a}
+
+Un produit, plusieurs applications logiques, un socle de services (auth, fichiers, IA).
+
+\begin{table}[H]
+\centering
+\caption{Blocs applicatifs LexHub (AS-IS)}
+\label{tab:madi-apps}
+\small
+\begin{tabularx}{\textwidth}{@{}>{\bfseries}p{3.1cm}X>{\ttfamily\small}p{3.6cm}@{}}
+\toprule
+Bloc & Rôle & Route / API typique \\
+\midrule
+Auth / compte & Login, OTP, invitation & \texttt{/login}, \texttt{auth.py} \\
+Dossiers & Affaire, parties & \texttt{/cases}, \texttt{cases.py} \\
+Documents & Pièces du dossier & \texttt{/documents}, \texttt{documents.py} \\
+Rédaction / plaidoirie & Templates, dictée, révision & \texttt{/redaction}, \texttt{dictation.py} \\
+Agenda & Planning & \texttt{/agenda} \\
+Équipe & Rôles cabinet & \texttt{/team} \\
+Billing & Plans, checkout & \texttt{/checkout}, \texttt{billing.py} \\
+Admin plateforme & Cabinets, leads & \texttt{/admin} \\
+IA (service partagé) & STT, LLM, OCR, synthèse & Workers + APIs IA \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+L'IA n'est pas une application métier : c'est un \textbf{catalogue de services} (transcrire, corriger, composer, extraire) appelé par les applis métier.
+
+\subsection{Couche D --- Données (AS-IS)}
+\label{sec:madi-d}
+
+\begin{table}[H]
+\centering
+\caption{Maîtres de donnée LexHub}
+\label{tab:madi-data}
+\small
+\begin{tabularx}{\textwidth}{@{}>{\bfseries}p{3.4cm}Xp{4.2cm}@{}}
+\toprule
+Donnée & Maître & Pas maître \\
+\midrule
+Cabinet (tenant) & PostgreSQL \texttt{cabinet} & Frontend, IA \\
+Utilisateur / rôle & PostgreSQL + JWT & MinIO \\
+Dossier / parties & PostgreSQL & Ce que le LLM « croit » \\
+Document (métadonnées) & PostgreSQL & Fichier brut \\
+Fichier binaire & MinIO (chiffré) & Postgres (id seulement) \\
+Index de recherche & ChromaDB & Index seulement \\
+Tâches en cours & Redis & Volatile \\
+Transcription / plaidoirie & Postgres (+ fichier) & Le LLM n'invente pas les faits \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Isolation multi-tenant par \texttt{cabinet\_id}. Règle : le LLM propose ; l'avocat valide ; Postgres enregistre.
+
+\subsection{Couche I --- Infrastructure (AS-IS)}
+\label{sec:madi-i}
+
+\begin{table}[H]
+\centering
+\caption{Infrastructure LexHub (rôle urbain)}
+\label{tab:madi-infra}
+\small
+\begin{tabularx}{\textwidth}{@{}>{\bfseries}p{3.6cm}X@{}}
+\toprule
+Brique & Rôle urbain \\
+\midrule
+Frontend Next.js & Guichet visible \\
+Backend FastAPI & Règles et API \\
+PostgreSQL 16 & Cadastre (données métier) \\
+MinIO & Entrepôt de fichiers \\
+Redis + Celery & Files (OCR, indexation, tâches) \\
+Docker Compose (VPS) & Terrain d'exécution \\
+OpenAI (STT + LLM) & Partenaire externe, pas le cadastre \\
+SMTP / Resend & Courrier transactionnel \\
+HTTPS / JWT / chiffrement fichiers & Sécurité \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Le cloud IA est \textbf{extérieur} à la ville : on l'utilise ; on ne lui confie pas le cadastre. Si le partenaire est indisponible, dossiers et pièces doivent encore exister.
+
+\subsection{Plan de ville AS-IS}
+\label{sec:madi-plan}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  layer/.style={draw=royal!55,fill=royal!5,rounded corners=3pt,align=left,font=\small,inner sep=6pt},
+  arr/.style={-{Stealth},thick,royal!70}
+]
+  \node[layer,minimum width=14.2cm] (m) at (0,4.2) {%
+    \textbf{M --- Métier}\quad Dossier $\rightarrow$ Pièces $\rightarrow$ Plaidoirie $\rightarrow$ Équipe $\rightarrow$ Abonnement};
+  \node[layer,minimum width=14.2cm] (a) at (0,2.7) {%
+    \textbf{A --- Applis}\quad Cases \quad Documents \quad Rédaction/Dictée \quad Billing \quad Admin};
+  \node[layer,minimum width=14.2cm] (d) at (0,1.2) {%
+    \textbf{D --- Données}\quad Postgres (vérité) \quad MinIO (fichiers) \quad Chroma (index) \quad Redis (files)};
+  \node[layer,minimum width=14.2cm] (i) at (0,-0.3) {%
+    \textbf{I --- Infra}\quad Docker/VPS \quad OpenAI (externe) \quad HTTPS/JWT};
+  \draw[arr] (m) -- (a);
+  \draw[arr] (a) -- (d);
+  \draw[arr] (d) -- (i);
+\end{tikzpicture}
+\caption{Cartographie MADI LexHub (AS-IS)}
+\label{fig:madi-plan}
+\end{figure}
+
+\subsection{Cible TO-BE, roadmap et gouvernance}
+\label{sec:madi-tobe}
+
+Urbaniser $\neq$ « tout casser en microservices ». La cible, ce sont des \textbf{règles} : un dossier = un maître (\texttt{case\_id}) ; l'IA = service, pas silo ; LLM $\neq$ cadastre ; multi-tenant partout (\texttt{cabinet\_id}) ; fichier $\neq$ métadonnée (MinIO / Postgres).
+
+Architecture logique cible : \textbf{socle} (identité, tenant, droits, billing) ; \textbf{cœur cabinet} (dossiers, documents, agenda, équipe) ; \textbf{cœur production} (templates, dictée, plaidoirie, export) ; \textbf{socle IA} (STT, OCR, RAG, révision).
+
+\begin{table}[H]
+\centering
+\caption{Roadmap d'urbanisation LexHub}
+\label{tab:madi-waves}
+\small
+\begin{tabularx}{\textwidth}{@{}c>{\bfseries}p{3.2cm}XX@{}}
+\toprule
+Vague & Quoi & Valeur métier & Urbanisation \\
+\midrule
+1 & Dossier + pièces + droits & Le cabinet travaille dedans & Cadastre + routes \\
+2 & Plaidoirie / dictée liée au dossier & Cœur de valeur & Service métier exposé \\
+3 & Référentiels (parties, templates, corpus) & Moins de ressaisie & Couche Données propre \\
+4 & Catalogue d'API interne stable & Mobile, partenaires & Réutilisation \\
+5 & Billing / admin / observabilité & Entreprise & Gouvernance + mesure \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+À la date du rapport, LexHub se situe entre les \textbf{vagues 2 et 3}. Le travail d'urbaniste consiste surtout à \textbf{empêcher la dégradation} (nouveaux écrans ou features IA sans maître de donnée).
+
+\begin{table}[H]
+\centering
+\caption{Gouvernance d'urbanisation --- questions utiles}
+\label{tab:madi-gov}
+\small
+\begin{tabularx}{\textwidth}{@{}>{\bfseries}p{3.4cm}X@{}}
+\toprule
+Rôle & Question \\
+\midrule
+Métier & Est-ce que ça aide à produire un acte \textbf{dans un dossier} ? \\
+Architecte & Ça casse le maître de donnée ? Ça duplique un service ? \\
+Ops & C'est déployable, sauvegardé, isolé par cabinet ? \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
 \section{Architecture générale}
+\label{sec:archi}
 
 LexHub suit une architecture en couches, classique d'un SaaS web. L'\textbf{interface} (application Next.js dans le navigateur) n'établit \textbf{aucune connexion} vers PostgreSQL, Redis ou le stockage de fichiers. Toute lecture ou écriture transite par l'\textbf{API HTTP FastAPI} : le client envoie une requête authentifiée (jeton JWT), le serveur vérifie le rôle et le \texttt{cabinet\_id}, puis accède aux données. C'est cette API --- le backend LexHub --- que désigne la formule « tout transite par l'API ».
 
@@ -17,11 +184,11 @@ La figure~\ref{fig:archi} présente les blocs de production.
   \node[box] (caddy) at (3.5,0) {Caddy\\TLS};
   \node[box] (api) at (7.0,0) {API FastAPI};
   \node[box] (pg) at (10.5,0) {PostgreSQL};
-  \node[box] (stt) at (0,-2.15) {STT cloud};
+  \node[box] (stt) at (0,-2.15) {STT\\Web Speech / Whisper};
   \node[ext] (ocr) at (3.5,-2.15) {OCR cloud};
   \node[box] (rd) at (7.0,-2.15) {Redis\\tâches + temps réel};
   \node[box] (io) at (10.5,-2.15) {Fichiers\\(MinIO)};
-  \node[ext] (llm) at (3.5,-4.2) {LLM\\rédaction};
+  \node[ext] (llm) at (3.5,-4.2) {LLM\\rédaction / révision};
   \node[box] (cel) at (7.0,-4.2) {Celery\\workers};
   \node[ext] (mail) at (10.5,-4.2) {E-mail\\transactionnel};
   \draw[-{Stealth},thick,royal] (fe) -- (caddy);
@@ -78,56 +245,48 @@ Un port base ouvert sur $0.0.0.0$ serait un risque d'énumération. La compositi
 
 \section{Pipeline de traitement de la plaidoirie}
 
-Les cinq traitements correspondent aux cinq étapes de l'atelier :
-
-\begin{enumerate}[label=\textbf{P\arabic*.}]
-  \item Dossier et pièces : métadonnées judiciaires et documents versés ; aucun fond n'est inventé.
-  \item Capture : reconnaissance vocale native intégrée au navigateur (Web Speech API) sans latence de téléversement, ou fichier audio importé.
-  \item Correction de \textbf{forme} (bouton Corriger) : arabe standard, surlignage orange des substitutions STT, contrôle de contradictions factuelles, puis clarification des manques.
-  \item Rédaction assistée du document, chat de révision, validation ou assignation.
-  \item Export officiel Word (.docx) : document d'audience 100\,\% éditable, avec armoiries officielles du Royaume et en-tête bilingue de cabinet.
-\end{enumerate}
+Les cinq traitements de l'atelier (dossier et pièces ; capture vocale ; correction de forme ; rédaction assistée ; export Word) sont formalisés par le diagramme d'activité (figure~\ref{fig:activite}) et détaillés côté usage au chapitre~\ref{ch:realisation}.
 
 \section{Diagrammes UML retenus}
 
-Trois familles suffisent à documenter LexHub sans noyer le lecteur dans des parcours communs à tout SaaS (login, CRUD). Sont retenus : un diagramme de \textbf{cas d'utilisation} (chapitre~\ref{ch:analyse}) ; deux diagrammes de \textbf{séquence} (voix~$\rightarrow$~texte ; validation / visibilité assistant) ; un diagramme d'\textbf{activité} (atelier) ; un diagramme de \textbf{classes} (extrait persistant) ; un diagramme de \textbf{déploiement}.
+Le rapport documente les \textbf{séquences principales} de LexHub : inscription OTP, login / Turnstile, dictée~$\rightarrow$~rédaction, validation / export, dépôt document OCR, et facturation --- sources PlantUML dans \texttt{diagrams/}. S'y ajoutent le diagramme de \textbf{cas d'utilisation} et la \textbf{matrice RBAC} (chapitre~\ref{ch:analyse}), un diagramme d'\textbf{activité} (atelier), un diagramme de \textbf{classes} (extrait persistant), un diagramme de \textbf{déploiement}, et la vue d'\textbf{architecture} logique (figure~\ref{fig:archi}).
 
 \subsection{Séquence --- de la voix au texte corrigé}
 
 \begin{figure}[H]
 \centering
-\begin{tikzpicture}[font=\scriptsize, x=2.35cm, y=-0.52cm]
-  % Lignes de vie
-  \foreach \x/\lab in {0/{Avocat}, 1/{Navigateur\\(Web Speech)}, 2/{API FastAPI}, 3/{Routeur LLM\\(IA)}, 4/{PostgreSQL}} {
+\begin{tikzpicture}[font=\scriptsize, x=2.2cm, y=-0.48cm]
+  \foreach \x/\lab in {0/{Avocat}, 1/{Navigateur}, 2/{API\\FastAPI}, 3/{Whisper\\(STT)}, 4/{LLM}, 5/{PostgreSQL}} {
     \node[align=center,font=\small\bfseries] at (\x,0) {\lab};
-    \draw[linegray,thick,dashed] (\x,0.7) -- (\x,12.2);
+    \draw[linegray,thick,dashed] (\x,0.65) -- (\x,13.0);
   }
 
-  % Barres d'activation UML
-  \draw[fill=royal!15,draw=royal] (-0.08,1.0) rectangle (0.08,11.5);
-  \draw[fill=royal!15,draw=royal] (0.92,1.2) rectangle (1.08,11.2);
-  \draw[fill=royal!15,draw=royal] (1.92,4.8) rectangle (2.08,10.2);
-  \draw[fill=emerald!20,draw=emerald] (2.92,5.8) rectangle (3.08,8.2);
-  \draw[fill=royal!15,draw=royal] (3.92,8.8) rectangle (4.08,9.8);
+  \draw[fill=royal!15,draw=royal] (-0.08,1.0) rectangle (0.08,12.4);
+  \draw[fill=royal!15,draw=royal] (0.92,1.1) rectangle (1.08,12.0);
+  \draw[fill=royal!15,draw=royal] (1.92,3.6) rectangle (2.08,11.4);
+  \draw[fill=emerald!18,draw=emerald] (2.92,5.0) rectangle (3.08,6.6);
+  \draw[fill=emerald!18,draw=emerald] (3.92,8.0) rectangle (4.08,9.4);
+  \draw[fill=royal!15,draw=royal] (4.92,10.0) rectangle (5.08,11.0);
 
-  % Messages synchrones et asynchrones
-  \draw[-{Stealth},thick] (0.08,1.4) -- node[above,font=\tiny]{1. Dictée vocale (micro)} (0.92,1.4);
-  \draw[-{Stealth},thick] (1.08,2.2) -- node[above,font=\tiny]{2. Transcription locale temps réel} (1.5,2.2) -- (1.5,2.8) -- (1.08,2.8);
-  \draw[dashed,-{Stealth}] (0.92,3.4) -- node[above,font=\tiny]{3. Affichage texte brut en direct} (0.08,3.4);
-
-  \draw[-{Stealth},thick] (0.08,4.8) -- node[above,font=\tiny]{4. Clic « Corriger la forme » (JWT)} (1.92,4.8);
-  \draw[-{Stealth},thick] (2.08,5.8) -- node[above,font=\tiny]{5. Prompt structuré + contexte dossier} (2.92,5.8);
-  \draw[dashed,-{Stealth}] (2.92,8.0) -- node[above,font=\tiny]{6. Arabe Fusha + surlignage + contrôle} (2.08,8.0);
-
-  \draw[-{Stealth},thick] (2.08,9.0) -- node[above,font=\tiny]{7. Enregistrement brouillon (draft)} (3.92,9.0);
-  \draw[dashed,-{Stealth}] (3.92,9.6) -- node[above,font=\tiny]{8. Confirmation persistance} (2.08,9.6);
-
-  \draw[dashed,-{Stealth}] (1.92,10.2) -- node[above,font=\tiny]{9. Restitution plaidoirie annotée} (1.08,10.2);
-  \draw[dashed,-{Stealth}] (0.92,11.2) -- node[above,font=\tiny]{10. Affichage et révision interactive} (0.08,11.2);
+  \draw[-{Stealth},thick] (0.08,1.3) -- node[above,font=\tiny]{1. Micro (Chrome/Edge ou Firefox)} (0.92,1.3);
+  \draw[dashed,-{Stealth}] (0.92,2.2) -- node[above,font=\tiny]{2a. Web Speech : texte live (Chrome/Edge)} (0.08,2.2);
+  \draw[-{Stealth},thick] (0.92,3.6) -- node[above,font=\tiny]{2b. MediaRecorder $\rightarrow$ audio (Firefox / fichier)} (1.92,3.6);
+  \draw[-{Stealth},thick] (0.08,4.4) -- node[above,font=\tiny]{3. Terminé + JWT (si Whisper)} (1.92,4.4);
+  \draw[-{Stealth},thick] (2.08,5.2) -- node[above,font=\tiny]{4. Transcription Whisper} (2.92,5.2);
+  \draw[dashed,-{Stealth}] (2.92,6.2) -- node[above,font=\tiny]{5. Texte brut (+ langue auto FR/AR)} (2.08,6.2);
+  \draw[dashed,-{Stealth}] (1.92,7.0) -- node[above,font=\tiny]{6. Affichage transcription} (0.92,7.0);
+  \draw[-{Stealth},thick] (0.08,8.0) -- node[above,font=\tiny]{7. Corriger la forme (JWT)} (1.92,8.0);
+  \draw[-{Stealth},thick] (2.08,8.6) -- node[above,font=\tiny]{8. Prompt forme + dossier anonymisé} (3.92,8.6);
+  \draw[dashed,-{Stealth}] (3.92,9.4) -- node[above,font=\tiny]{9. Fusḥā + surlignage STT} (2.08,9.4);
+  \draw[-{Stealth},thick] (2.08,10.2) -- node[above,font=\tiny]{10. Persistance brouillon} (4.92,10.2);
+  \draw[dashed,-{Stealth}] (4.92,10.8) -- node[above,font=\tiny]{11. OK} (2.08,10.8);
+  \draw[dashed,-{Stealth}] (1.92,11.6) -- node[above,font=\tiny]{12. Texte corrigé à l'avocat} (0.92,11.6);
 \end{tikzpicture}
-\caption{Diagramme de séquence UML --- Atelier vocal et correction IA}
+\caption{Diagramme de séquence UML --- Dictée (Web Speech \emph{ou} Whisper) puis correction}
 \label{fig:seq-stt}
 \end{figure}
+
+\noindent\textit{Note.} Les deux voies STT sont alternatives : Web Speech (aperçu instantané) \emph{ou} Whisper (Firefox / import audio). Ensuite : endpoints \texttt{/clarify} (QCM), \texttt{/compose} (rédaction ancrée) et \texttt{/revise} (révision assistée) --- voir \texttt{seq-dictation.puml}.
 
 \subsection{Séquence --- validation et visibilité assistant}
 
@@ -158,150 +317,241 @@ Trois familles suffisent à documenter LexHub sans noyer le lecteur dans des par
 
   \draw[dashed,-{Stealth}] (0.92,6.6) -- node[above,font=\tiny]{6. Accusé de validation affiché} (0.08,6.6);
 
-  \draw[-{Stealth},thick] (3.92,9.0) -- node[above,font=\tiny]{7. Demande export Word (.docx)} (1.08,9.0);
-  \draw[-{Stealth},thick] (1.08,9.6) -- node[above,font=\tiny]{8. Contrôle RBAC \& génération python-docx} (1.5,9.6) -- (1.5,10.2) -- (1.08,10.2);
+  \draw[-{Stealth},thick] (3.92,9.0) -- node[above,font=\tiny]{7. Demande export Word (.docx) \textbf{ou} PDF} (1.08,9.0);
+  \draw[-{Stealth},thick] (1.08,9.6) -- node[above,font=\tiny]{8. Contrôle RBAC \& génération docx/PDF} (1.5,9.6) -- (1.5,10.2) -- (1.08,10.2);
   \draw[dashed,-{Stealth}] (1.08,10.6) -- node[above,font=\tiny]{9. Téléchargement document officiel} (3.92,10.6);
 \end{tikzpicture}
 \caption{Diagramme de séquence UML --- Validation et gouvernance collaborative}
 \label{fig:seq-val}
 \end{figure}
 
-\subsection{Modèle de données relationnel et architecture des tables}
+\noindent\textit{Note.} Après export réussi, le statut \texttt{finalized} est posé par un \texttt{PATCH} côté UI (\texttt{markFinalizedAfterExport}) --- distinct de la validation assistant.
+
+\subsection{Séquence --- inscription OTP}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize, x=2.2cm, y=-0.48cm]
+  \foreach \x/\lab in {0/{Futur\\admin}, 1/{Navigateur}, 2/{API}, 3/{E-mail}, 4/{PostgreSQL}} {
+    \node[align=center,font=\small\bfseries] at (\x,0) {\lab};
+    \draw[linegray,thick,dashed] (\x,0.65) -- (\x,11.2);
+  }
+  \draw[fill=royal!15,draw=royal] (-0.08,1.0) rectangle (0.08,10.4);
+  \draw[fill=royal!15,draw=royal] (0.92,1.1) rectangle (1.08,10.0);
+  \draw[fill=royal!15,draw=royal] (1.92,1.8) rectangle (2.08,9.6);
+  \draw[fill=emerald!18,draw=emerald] (2.92,2.6) rectangle (3.08,4.0);
+  \draw[fill=royal!15,draw=royal] (3.92,2.0) rectangle (4.08,8.8);
+
+  \draw[-{Stealth},thick] (0.08,1.3) -- node[above,font=\tiny]{1. E-mail cabinet} (0.92,1.3);
+  \draw[-{Stealth},thick] (0.92,2.0) -- node[above,font=\tiny]{2. POST /request-register-otp} (1.92,2.0);
+  \draw[-{Stealth},thick] (2.08,2.8) -- node[above,font=\tiny]{3. Stocke OTP (hash, TTL)} (3.92,2.8);
+  \draw[-{Stealth},thick] (2.08,3.6) -- node[above,font=\tiny]{4. Envoi code 6 chiffres} (2.92,3.6);
+  \draw[dashed,-{Stealth}] (2.92,4.4) -- node[above,font=\tiny]{5. E-mail OTP} (0.08,4.4);
+  \draw[-{Stealth},thick] (0.92,5.4) -- node[above,font=\tiny]{6. POST /verify-register-otp} (1.92,5.4);
+  \draw[-{Stealth},thick] (2.08,6.0) -- node[above,font=\tiny]{7. Vérifie OTP} (3.92,6.0);
+  \draw[-{Stealth},thick] (0.92,7.0) -- node[above,font=\tiny]{8. POST /register (cabinet + MDP)} (1.92,7.0);
+  \draw[-{Stealth},thick] (2.08,7.8) -- node[above,font=\tiny]{9. Cabinet ACTIVE + ADMIN + essai} (3.92,7.8);
+  \draw[dashed,-{Stealth}] (1.92,8.8) -- node[above,font=\tiny]{10. MessageResponse (pas de JWT)} (0.92,8.8);
+  \draw[dashed,-{Stealth}] (0.92,9.8) -- node[above,font=\tiny]{11. Puis login $\rightarrow$ JWT} (0.08,9.8);
+\end{tikzpicture}
+\caption{Diagramme de séquence UML --- Inscription cabinet (OTP e-mail)}
+\label{fig:seq-otp}
+\end{figure}
+
+\subsection{Séquence --- login + Turnstile}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize, x=2.2cm, y=-0.48cm]
+  \foreach \x/\lab in {0/{User}, 1/{Navigateur}, 2/{API}, 3/{Turnstile}, 4/{PostgreSQL}} {
+    \node[align=center,font=\small\bfseries] at (\x,0) {\lab};
+    \draw[linegray,thick,dashed] (\x,0.65) -- (\x,10.6);
+  }
+  \draw[fill=royal!15,draw=royal] (-0.08,1.0) rectangle (0.08,9.8);
+  \draw[fill=royal!15,draw=royal] (0.92,1.1) rectangle (1.08,9.4);
+  \draw[fill=royal!15,draw=royal] (1.92,1.6) rectangle (2.08,9.0);
+  \draw[fill=emerald!18,draw=emerald] (2.92,5.0) rectangle (3.08,7.2);
+  \draw[fill=royal!15,draw=royal] (3.92,3.2) rectangle (4.08,8.6);
+
+  \draw[-{Stealth},thick] (0.08,1.3) -- node[above,font=\tiny]{1. E-mail + mot de passe} (0.92,1.3);
+  \draw[-{Stealth},thick] (0.92,2.0) -- node[above,font=\tiny]{2. GET /captcha-config} (1.92,2.0);
+  \draw[dashed,-{Stealth}] (1.92,2.6) -- node[above,font=\tiny]{3. site\_key + seuil (3 échecs)} (0.92,2.6);
+  \draw[-{Stealth},thick] (0.92,3.4) -- node[above,font=\tiny]{4. POST /login} (1.92,3.4);
+  \draw[-{Stealth},thick] (2.08,4.2) -- node[above,font=\tiny]{5. Vérifie credentials ($<$ 3 échecs)} (3.92,4.2);
+  \draw[-{Stealth},thick] (0.92,5.2) -- node[above,font=\tiny]{6. (si $\geq$ 3) challenge Turnstile} (2.92,5.2);
+  \draw[dashed,-{Stealth}] (2.92,6.0) -- node[above,font=\tiny]{7. token} (0.92,6.0);
+  \draw[-{Stealth},thick] (0.92,6.8) -- node[above,font=\tiny]{8. POST /login + turnstile\_token} (1.92,6.8);
+  \draw[-{Stealth},thick] (2.08,7.4) -- node[above,font=\tiny]{9. verify\_turnstile} (2.92,7.4);
+  \draw[-{Stealth},thick] (2.08,8.2) -- node[above,font=\tiny]{10. Credentials OK} (3.92,8.2);
+  \draw[dashed,-{Stealth}] (1.92,9.0) -- node[above,font=\tiny]{11. JWT (access + refresh)} (0.92,9.0);
+\end{tikzpicture}
+\caption{Diagramme de séquence UML --- Connexion et Turnstile}
+\label{fig:seq-login}
+\end{figure}
+
+\subsection{Séquence --- dépôt document OCR}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize, x=2.0cm, y=-0.48cm]
+  \foreach \x/\lab in {0/{User}, 1/{Navigateur}, 2/{API}, 3/{MinIO}, 4/{Worker}, 5/{PostgreSQL}} {
+    \node[align=center,font=\small\bfseries] at (\x,0) {\lab};
+    \draw[linegray,thick,dashed] (\x,0.65) -- (\x,9.6);
+  }
+  \draw[fill=royal!15,draw=royal] (-0.08,1.0) rectangle (0.08,8.8);
+  \draw[fill=royal!15,draw=royal] (0.92,1.1) rectangle (1.08,3.6);
+  \draw[fill=royal!15,draw=royal] (1.92,1.6) rectangle (2.08,5.2);
+  \draw[fill=royal!15,draw=royal] (2.92,2.2) rectangle (3.08,6.0);
+  \draw[fill=emerald!18,draw=emerald] (3.92,4.0) rectangle (4.08,7.4);
+  \draw[fill=royal!15,draw=royal] (4.92,2.8) rectangle (5.08,8.2);
+
+  \draw[-{Stealth},thick] (0.08,1.3) -- node[above,font=\tiny]{1. Fichier (PDF, Word, image\ldots)} (0.92,1.3);
+  \draw[-{Stealth},thick] (0.92,2.0) -- node[above,font=\tiny]{2. POST /upload (+ JWT)} (1.92,2.0);
+  \draw[-{Stealth},thick] (2.08,2.6) -- node[above,font=\tiny]{3. Stocke objet} (2.92,2.6);
+  \draw[-{Stealth},thick] (2.08,3.4) -- node[above,font=\tiny]{4. Métadonnées (extracted\_text=null)} (4.92,3.4);
+  \draw[dashed,-{Stealth}] (1.92,4.2) -- node[above,font=\tiny]{5. DocumentResponse (en file)} (0.92,4.2);
+  \draw[-{Stealth},thick] (2.08,5.0) -- node[above,font=\tiny]{6. Tâche d'extraction} (3.92,5.0);
+  \draw[-{Stealth},thick] (3.92,5.8) -- node[above,font=\tiny]{7. Lit le fichier} (2.92,5.8);
+  \draw[-{Stealth},thick] (4.08,6.6) -- node[above,font=\tiny]{8. OCR / parse $\rightarrow$ extracted\_text} (4.92,6.6);
+  \draw[dashed,-{Stealth}] (4.92,7.6) -- node[above,font=\tiny]{9. Statut prêt} (1.92,7.6);
+\end{tikzpicture}
+\caption{Diagramme de séquence UML --- Dépôt de pièce et extraction OCR}
+\label{fig:seq-ocr}
+\end{figure}
+
+\subsection{Séquence --- facturation}
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[font=\scriptsize, x=2.4cm, y=-0.48cm]
+  \foreach \x/\lab in {0/{Admin\\cabinet}, 1/{Navigateur}, 2/{API}, 3/{PostgreSQL}} {
+    \node[align=center,font=\small\bfseries] at (\x,0) {\lab};
+    \draw[linegray,thick,dashed] (\x,0.65) -- (\x,10.4);
+  }
+  \draw[fill=royal!15,draw=royal] (-0.08,1.0) rectangle (0.08,9.6);
+  \draw[fill=royal!15,draw=royal] (0.92,1.1) rectangle (1.08,9.2);
+  \draw[fill=royal!15,draw=royal] (1.92,1.6) rectangle (2.08,9.0);
+  \draw[fill=royal!15,draw=royal] (2.92,2.2) rectangle (3.08,8.6);
+
+  \draw[-{Stealth},thick] (0.08,1.3) -- node[above,font=\tiny]{1. Ouvre abonnement} (0.92,1.3);
+  \draw[-{Stealth},thick] (0.92,2.0) -- node[above,font=\tiny]{2. GET /entitlements + /plans} (1.92,2.0);
+  \draw[-{Stealth},thick] (2.08,2.8) -- node[above,font=\tiny]{3. Quotas / plans / packs} (2.92,2.8);
+  \draw[dashed,-{Stealth}] (1.92,3.6) -- node[above,font=\tiny]{4. Offres affichées} (0.92,3.6);
+  \draw[-{Stealth},thick] (0.92,4.6) -- node[above,font=\tiny]{5. POST /select-plan \emph{ou} credit-pack} (1.92,4.6);
+  \draw[-{Stealth},thick] (2.08,5.4) -- node[above,font=\tiny]{6. Abonnement / crédits + facture} (2.92,5.4);
+  \draw[-{Stealth},thick] (0.92,6.4) -- node[above,font=\tiny]{7. GET /history (filtre amount $> 0$)} (1.92,6.4);
+  \draw[-{Stealth},thick] (2.08,7.2) -- node[above,font=\tiny]{8. Factures payées uniquement} (2.92,7.2);
+  \draw[-{Stealth},thick] (0.92,8.2) -- node[above,font=\tiny]{9. GET /invoices/\{id\}/download} (1.92,8.2);
+  \draw[dashed,-{Stealth}] (1.92,9.0) -- node[above,font=\tiny]{10. PDF facture} (0.92,9.0);
+\end{tikzpicture}
+\caption{Diagramme de séquence UML --- Abonnement, packs et factures ($> 0$~MAD)}
+\label{fig:seq-billing}
+\end{figure}
+
+\subsection{Modèle de données relationnel}
 \label{sec:modele-donnees}
 
-La base de données relationnelle PostgreSQL de LexHub est constituée de \textbf{29 tables métier} (accompagnées de la table technique de migration \texttt{alembic\_version}). Loin d'être un schéma redondant ou artificiellement gonflé, cette structure découle d'une modélisation rigoureuse en \textbf{3\textsuperscript{e} forme normale (3NF)}, garantissant l'intégrité référentielle, l'étanchéité multi-tenant par \texttt{cabinet\_id}, la traçabilité déontologique (loi n$^\circ$~28-08) et l'absence totale de verrous bloquants lors des accès concurrents.
-
-Le tableau~\ref{tab:domaines-bdd} synthétise la répartition des tables selon les sept sous-systèmes fonctionnels de la plateforme.
+La base PostgreSQL regroupe les tables métier autour du \textbf{cabinet} (locataire). Le tableau~\ref{tab:domaines-bdd} donne la cartographie par domaine ; la figure~\ref{fig:classes} ne retient que les \textbf{entités maîtresses} et leurs clés --- le détail des 29 tables figure en annexe technique / migrations Alembic, pas dans le schéma de conception.
 
 \begin{table}[H]
 \centering
-\caption{Cartographie modulaire des 29 tables de la base de données LexHub}
+\caption{Domaines de données LexHub (synthèse)}
 \label{tab:domaines-bdd}
 \small
-\renewcommand{\arraystretch}{1.12}
-\begin{tabular}{@{}p{3.8cm}p{4.2cm}p{6.2cm}@{}}
+\renewcommand{\arraystretch}{1.15}
+\begin{tabular}{@{}>{\bfseries}p{3.4cm}p{5.2cm}p{5.0cm}@{}}
 \toprule
-\textbf{Sous-système métier} & \textbf{Tables PostgreSQL} & \textbf{Responsabilité applicative} \\
+Domaine & Tables principales & Rôle \\
 \midrule
-\textbf{1. Multi-Tenancy \& Gouvernance} &
-\texttt{cabinets}, \texttt{cabinet\_invites}, \texttt{membership\_requests}, \texttt{cabinet\_notifications} &
-Isolation étanche des locataires, charte graphique, codes d'adhésion, invitations par e-mail et notifications internes. \\
+Tenant \& accès &
+\texttt{cabinets}, \texttt{users}, \texttt{cabinet\_invites}, sessions / OTP &
+Isolation multi-tenant, RBAC, invitations \\
 \addlinespace
-\textbf{2. Sécurité \& Authentification} &
-\texttt{users}, \texttt{auth\_sessions}, \texttt{email\_otps}, \texttt{email\_tokens}, \texttt{mfa\_recovery\_codes} &
-Comptes utilisateurs, RBAC, rotation des refresh tokens JWT, codes OTP e-mail à 6 chiffres, jetons temporaires et MFA. \\
+Dossier &
+\texttt{cases}, \texttt{documents}, \texttt{agenda\_events} &
+Affaire, pièces (métadonnées), planning \\
 \addlinespace
-\textbf{3. Gestion Juridique \& Contentieux} &
-\texttt{cases}, \texttt{case\_notes}, \texttt{case\_tasks}, \texttt{case\_comments}, \texttt{agenda\_events} &
-Dossiers judiciaires (art. 32 CPC), notes d'audience, planning de tâches, fil collaboratif et calendrier des délais de recours. \\
+Plaidoirie &
+\texttt{plaidoirie\_drafts}, \texttt{plaidoirie\_revisions}, templates &
+Brouillon $\rightarrow$ validé $\rightarrow$ finalisé \\
 \addlinespace
-\textbf{4. Atelier Plaidoirie \& IA} &
-\texttt{plaidoirie\_drafts}, \texttt{plaidoirie\_revisions}, \texttt{cabinet\_plaidoirie\_templates}, \texttt{documents} &
-Cycle de vie des conclusions (brouillon $\rightarrow$ validé $\rightarrow$ finalisé), versioning des textes, modèles types et pièces OCR MinIO. \\
+Facturation &
+plans, abonnements, packs, factures, quotas &
+Essai, crédits, sièges \\
 \addlinespace
-\textbf{5. Facturation \& Monétisation SaaS} &
-\texttt{subscription\_plans}, \texttt{cabinet\_subscriptions}, \texttt{billing\_credit\_pack\_purchases}, \texttt{billing\_invoices}, \texttt{usage\_counters}, \texttt{cabinet\_referrals}, \texttt{payment\_transfer\_requests} &
-Catalogue des forfaits, abonnements actifs, packs de crédits FIFO (12 mois), facturation HT/TTC, compteurs de quotas et parrainage. \\
-\addlinespace
-\textbf{6. Croissance Commerciale} &
-\texttt{commercial\_leads} &
-Qualification humaine en 7 critères pour l'offre Entreprise et les devis personnalisés Sur mesure. \\
-\addlinespace
-\textbf{7. Traçabilité \& Rétention} &
-\texttt{audit\_logs}, \texttt{activity\_archives}, \texttt{admin\_audit\_archives} &
-Journal d'audit immuable (Loi 28-08) et archivage automatisé des flux au-delà de 90 jours pour préserver la performance SQL. \\
+Audit &
+\texttt{audit\_logs}, archives &
+Traçabilité (loi~28-08) \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-La figure~\ref{fig:classes} expose les relations clés entre les entités centrales du domaine.
+La figure~\ref{fig:classes} est un \textbf{extrait relationnel} (ER) : une ligne = une FK. Les fichiers binaires restent dans MinIO ; Postgres ne conserve que le chemin et les métadonnées.
 
 \begin{figure}[H]
 \centering
 \begin{tikzpicture}[
-  cls/.style={draw=royal,fill=royal!4,align=left,font=\scriptsize,inner sep=4pt,rounded corners=2pt},
-  subsys/.style={draw=royal!40,fill=royal!2,dashed,rounded corners=4pt}
+  font=\scriptsize,
+  ent/.style={
+    draw=royal!70, thick, rounded corners=3pt, fill=royal!4,
+    align=left, inner sep=5pt, minimum width=3.55cm
+  },
+  lbl/.style={font=\tiny\bfseries, text=royal!80},
+  ln/.style={-{Stealth}, thick, royal!55}
 ]
-  % Zone Tenancy & Utilisateurs
-  \node[cls] (c) at (0,3.2) {\textbf{Cabinet}\\
-  \underline{id} : UUID\\
-  nom, ville, barreau, ice\\
-  referral\_code, status};
+  % --- Ligne 1 : tenant ---
+  \node[ent] (cab) at (0, 4.2) {%
+    \textbf{Cabinet}\\
+    \underline{id}\\
+    nom, status, referral\_code};
+  \node[ent] (usr) at (5.0, 4.2) {%
+    \textbf{User}\\
+    \underline{id} \quad cabinet\_id\\
+    email, role};
+  \node[ent] (plan) at (10.0, 4.2) {%
+    \textbf{SubscriptionPlan}\\
+    \underline{id}\\
+    slug, prix, quotas};
 
-  \node[cls] (u) at (6.5,3.2) {\textbf{User}\\
-  \underline{id} : UUID\\
-  cabinet\_id (FK)\\
-  email, role, is\_active};
+  % --- Ligne 2 : métier ---
+  \node[ent] (cas) at (0, 1.6) {%
+    \textbf{Case}\\
+    \underline{id} \quad cabinet\_id\\
+    référence, matière, tribunal};
+  \node[ent] (doc) at (5.0, 1.6) {%
+    \textbf{Document}\\
+    \underline{id} \quad case\_id\\
+    storage\_path, extracted\_text};
+  \node[ent] (sub) at (10.0, 1.6) {%
+    \textbf{CabinetSubscription}\\
+    \underline{id} \quad cabinet\_id\\
+    plan\_id, status, crédits};
 
-  \node[cls] (s) at (11.5,3.2) {\textbf{AuthSession}\\
-  \underline{id} : UUID\\
-  user\_id (FK)\\
-  token\_hash, expires\_at};
+  % --- Ligne 3 : plaidoirie ---
+  \node[ent] (drf) at (2.5, -1.0) {%
+    \textbf{PlaidoirieDraft}\\
+    \underline{id} \quad case\_id, user\_id\\
+    status (draft/validated/finalized)\\
+    assigned\_to\_user\_id};
+  \node[ent] (rev) at (7.5, -1.0) {%
+    \textbf{PlaidoirieRevision}\\
+    \underline{id} \quad draft\_id\\
+    body\_snapshot, created\_at};
 
-  % Zone Affaires & Agenda
-  \node[cls] (k) at (0,-0.2) {\textbf{Case}\\
-  \underline{id} : UUID\\
-  cabinet\_id (FK), responsible\_id (FK)\\
-  reference, tribunal, status\\
-  appeal\_deadline\_at};
+  % Liens
+  \draw[ln] (usr) -- node[lbl, above]{N:1} (cab);
+  \draw[ln] (cas) -- node[lbl, left]{N:1} (cab);
+  \draw[ln] (doc) -- node[lbl, above]{N:1} (cas);
+  \draw[ln] (drf) -- node[lbl, left]{N:1} (cas);
+  \draw[ln] (rev) -- node[lbl, above]{N:1} (drf);
+  \draw[ln] (sub) -- node[lbl, right]{1:1} (cab);
+  \draw[ln] (sub) -- node[lbl, right]{N:1} (plan);
 
-  \node[cls] (ev) at (6.5,-0.2) {\textbf{AgendaEvent}\\
-  \underline{id} : UUID\\
-  cabinet\_id (FK), case\_id (FK)\\
-  event\_type, starts\_at};
-
-  % Zone Plaidoirie & Pièces
-  \node[cls] (p) at (0,-3.6) {\textbf{PlaidoirieDraft}\\
-  \underline{id} : UUID\\
-  cabinet\_id (FK), case\_id (FK), user\_id (FK)\\
-  body, status (draft/validated/finalized)\\
-  assigned\_to\_user\_id (FK)};
-
-  \node[cls] (rev) at (6.5,-3.6) {\textbf{PlaidoirieRevision}\\
-  \underline{id} : UUID\\
-  draft\_id (FK), user\_id (FK)\\
-  body\_snapshot, created\_at};
-
-  \node[cls] (d) at (11.5,-0.2) {\textbf{Document}\\
-  \underline{id} : UUID\\
-  case\_id (FK), storage\_path\\
-  extracted\_text, ocr\_score};
-
-  % Zone Monétisation
-  \node[cls] (sub) at (0,-6.6) {\textbf{CabinetSubscription}\\
-  \underline{id} : UUID\\
-  cabinet\_id (FK), plan\_id (FK)\\
-  status (trial/active), trial\_ends\_at\\
-  prepaid\_ai\_credits, on\_demand\_enabled};
-
-  \node[cls] (plan) at (6.5,-6.6) {\textbf{SubscriptionPlan}\\
-  \underline{id} : UUID\\
-  slug, price\_mad\_monthly\\
-  max\_avocats, max\_ai\_credits\_month};
-
-  \node[cls] (pack) at (11.5,-6.6) {\textbf{BillingCreditPackPurchase}\\
-  \underline{id} : UUID\\
-  cabinet\_id (FK)\\
-  credits\_remaining, expires\_at (12 m)};
-
-  % Liens relationnels et cardinalités
-  \draw[-{Stealth},thick] (u) -- node[above,font=\tiny]{1..* $\rightarrow$ 1} (c);
-  \draw[-{Stealth},thick] (s) -- node[above,font=\tiny]{1..* $\rightarrow$ 1} (u);
-  
-  \draw[-{Stealth},thick] (k) -- node[left,font=\tiny]{1..* $\rightarrow$ 1} (c);
-  \draw[-{Stealth},thick] (k.north east) -- node[above,font=\tiny,sloped]{responsable} (u.south west);
-  \draw[-{Stealth},thick] (ev) -- node[above,font=\tiny]{0..* $\rightarrow$ 1} (k);
-
-  \draw[-{Stealth},thick] (p) -- node[left,font=\tiny]{0..* $\rightarrow$ 1} (k);
-  \draw[-{Stealth},thick] (p) -- node[above,font=\tiny,sloped]{rédigé par} (u);
-  \draw[-{Stealth},thick] (rev) -- node[above,font=\tiny]{1..* $\rightarrow$ 1} (p);
-  \draw[-{Stealth},thick] (d) -- node[above,font=\tiny]{1..* $\rightarrow$ 1} (k);
-
-  \draw[-{Stealth},thick] (sub) -- node[left,font=\tiny]{1 $\rightarrow$ 1} (c);
-  \draw[-{Stealth},thick] (sub) -- node[above,font=\tiny]{1..* $\rightarrow$ 1} (plan);
-  \draw[-{Stealth},thick] (pack) -- node[above,font=\tiny]{0..* $\rightarrow$ 1} (c.south east);
+  % Légende
+  \node[anchor=west, font=\tiny, text=royal!70] at (-0.2, -2.5)
+    {Règle : toute ligne métier porte \texttt{cabinet\_id}. MinIO = fichiers ; LLM $\neq$ source de vérité.};
 \end{tikzpicture}
-\caption{Schéma relationnel UML des entités maîtresses de LexHub (Production)}
+\caption{Schéma relationnel (extrait) --- entités maîtresses LexHub}
 \label{fig:classes}
 \end{figure}
 
@@ -338,7 +588,7 @@ Conformément à la norme internationale OMG UML~2.5, le diagramme d'activité d
   \node[decision] (q2) at (0,-8.8) {Valider ?};
   \node[action] (wait) at (4.5,-8.8) {Maintien en brouillon\\(édition ultérieure)};
   
-  \node[action] (exp) at (0,-10.5) {Génération \& export Word (.docx)};
+  \node[action] (exp) at (0,-10.5) {Génération \& export Word (.docx) / PDF};
   
   % Nœud final d'activité UML (œil-de-bœuf)
   \node[finalouter] (e_out) at (0,-11.9) {};
@@ -380,7 +630,7 @@ Conformément à la norme internationale OMG UML~2.5, le diagramme d'activité d
   \node[node] (pg) at (2.05,-1.55) {PostgreSQL};
   \node[node] (rd) at (5.05,-1.55) {Redis};
   \node[node] (io) at (8.05,-1.55) {MinIO};
-  \node[ext] (stt) at (11.35,0.45) {STT / OCR\\cloud};
+  \node[ext] (stt) at (11.35,0.45) {Whisper /\\OCR cloud};
   \node[ext] (llm) at (11.35,-1.55) {LLM cloud};
   \draw[-{Stealth},thick] (user) -- (caddy);
   \draw[-{Stealth},thick] (caddy) -- (fe);
@@ -396,25 +646,6 @@ Conformément à la norme internationale OMG UML~2.5, le diagramme d'activité d
 \label{fig:deploy}
 \end{figure}
 
-Les images d'application (\texttt{frontend}, \texttt{backend}, \texttt{celery}) sont publiées par GitHub Actions vers GHCR, puis tirées sur le VPS. Caddy sert \texttt{lexhub.space} en HTTPS.
+Les images d'application (\texttt{frontend}, \texttt{backend}, \texttt{celery}) sont publiées par GitHub Actions vers GHCR, puis tirées sur le VPS. Caddy sert \texttt{lexhub.space} en HTTPS. Le détail opératoire du déploiement figure au chapitre~\ref{ch:tests}.
 
-Les images d'application (\texttt{frontend}, \texttt{backend}, \texttt{celery}) sont publiées par GitHub Actions vers GHCR, puis tirées sur le VPS. Caddy sert \texttt{lexhub.space} en HTTPS.
-
-\section{Organisation fonctionnelle du produit}
-
-Plutôt qu'une liste de « modules » techniques, le produit se lit comme un cabinet numérique.
-
-\paragraph{Atelier de plaidoirie.}
-Cœur du métier. L'avocat relie une affaire, dicte ou importe un audio, relit la transcription, corrige la forme, complète les manques, obtient un acte structuré, l'édite, le valide, l'exporte.
-
-\paragraph{Mémoire du dossier.}
-Identité judiciaire, pièces OCR, synthèse à la demande, fiche orale d'audience. Ces éléments nourrissent la rédaction ; ils ne la remplacent pas.
-
-\paragraph{Travail d'équipe.}
-L'avocat décide ce qui sort du brouillon. L'assistant travaille sur du \textbf{validé}. L'admin cabinet invite par e-mail, paie, brandit le logo.
-
-\paragraph{Pilotage.}
-Planning, journal d'activité, notifications. Côté plateforme : suspension d'un cabinet sans lecture des pièces.
-
-\paragraph{Économie.}
-Plans, essai, crédits, parrainage --- chapitre~\ref{ch:economie}.
+La lecture fonctionnelle du produit (atelier, équipe, pilotage, économie) est spécifiée au chapitre~\ref{ch:analyse} et illustrée au chapitre~\ref{ch:realisation} ; le modèle économique au chapitre~\ref{ch:economie}.

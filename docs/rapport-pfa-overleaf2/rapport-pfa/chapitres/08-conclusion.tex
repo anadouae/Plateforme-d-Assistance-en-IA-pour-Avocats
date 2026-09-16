@@ -1,10 +1,8 @@
-\chapter{Conclusion générale et perspectives}
+\chapter{Conclusion générale}
 \label{ch:conclusion}
 
-Ce stage a permis de livrer \textbf{LexHub} en production (\url{https://lexhub.space}) : atelier en cinq étapes, espace cabinet isolé, visibilité assistant fondée sur la \textbf{validation}, export officiel, et modèle économique du chapitre~\ref{ch:economie}. Ce n'est pas un démonstrateur hors ligne, ni l'ancienne chaîne à trois étapes.
+Le PFA a consisté à concevoir, réaliser et \textbf{mettre en production} LexHub (\url{https://lexhub.space}) chez WebVoice, sous tutelle de l'ENSA Tétouan : un SI de cabinet dont le cœur est le couple dossier + plaidoirie, et non un chatbot autonome.
 
-Le travail a relié analyse des besoins, conception, réalisation et mise en production, sous le suivi de Prof.~Mohammed Al Achhab et de M.~Hatim Benhaddou (WEBVOICE).
+L'atelier en cinq étapes, la clarification QCM, l'assistant de révision (réponse + édition), la règle « assistant = plaidoiries validées », l'isolation multi-tenant et le modèle d'abonnement sont en service. L'architecture (navigateur $\rightarrow$ Caddy $\rightarrow$ FastAPI $\rightarrow$ PostgreSQL / Redis / MinIO, plus services cloud STT, OCR et LLM) et l'urbanisation MADI (chapitre~\ref{ch:conception}) cadrent un SaaS exploitable.
 
-Perspectives produit --- le CI/CD est déjà en place : précision et latence de la dictée arabe ; modèles par domaine ; lien planning--plaidoirie ; \textbf{activation réelle} du paiement opérateur CMI / PayZone.
-
-LexHub est en service. Ces axes visent à le rendre plus utile au quotidien de l'avocat.
+Le paiement carte opérateur reste à activer ; les perspectives (section~\ref{sec:perspectives}) prolongent ce positionnement sans s'y substituer. LexHub accélère le passage de la parole à l'acte : le cabinet reste maître de ses dossiers et responsable de ce qu'il plaide.

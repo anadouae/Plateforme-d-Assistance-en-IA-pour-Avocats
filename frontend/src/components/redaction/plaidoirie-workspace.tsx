@@ -58,16 +58,15 @@ import {
   QUALITY_OPTIONS,
   TRIBUNAL_OPTIONS,
   actTypeToTemplate,
+  caseTypeToPleaTemplate,
   degreeToBriefJurisdiction,
-  indicativeDeadlineHint,
   missingLegalFields,
   opposingRoleFor,
   partyRoleOptions,
-  qualityHelp,
-  roleHelp,
   roleToBriefPosture,
   suggestTribunal,
 } from "@/lib/case-legal";
+import { caseDomainLabel } from "@/lib/i18n/labels";
 import { NewCaseModal } from "@/components/cases/new-case-modal";
 import { cleanDictationNoise, lightCleanDictation, useSpeechInput } from "@/hooks/use-speech-input";
 import { useWhisperDictation } from "@/hooks/use-whisper-dictation";
@@ -96,7 +95,7 @@ import {
   savePleaSession,
   type PleaSessionSnapshot,
 } from "@/lib/plea-session";
-import { looksLikeGibberish } from "@/lib/dictation-quality";
+import { looksLikeGibberish, hasCheckableFacts } from "@/lib/dictation-quality";
 import { useRouter } from "next/navigation";
 import { ComposeProgressOverlay } from "@/components/redaction/compose-progress";
 import {
@@ -236,6 +235,25 @@ export function PlaidoirieWorkspace({ templateId, draftId, initialCaseId, resume
   const [reviseChat, setReviseChat] = useState<
     { id: string; role: "user" | "assistant"; content: string; at: number; provider?: string }[]
   >([]);
+  const reviseGenRef = useRef(0);
+  /** Whisper auto : FR ou AR sans changer toute l’UI. Bouton « Terminé » (pas re-clic micro). */
+  const {
+    recording: reviseWhisperRec,
+    transcribing: reviseWhisperTx,
+    startRecording: startReviseWhisper,
+    stopRecordingAndTranscribe: stopReviseWhisper,
+    supported: reviseWhisperOk,
+    micLevel: reviseMicLevel,
+  } = useWhisperDictation("auto");
+  const {
+    listening: reviseSpeechOn,
+    supported: reviseSpeechOk,
+    startListening: startReviseSpeech,
+    stopListening: stopReviseSpeech,
+  } = useSpeechInput("ar");
+  const reviseMicOn = reviseWhisperRec || reviseWhisperTx || reviseSpeechOn;
+  const reviseBaseAtMicRef = useRef("");
+
   const [docEditorKey, setDocEditorKey] = useState(0);
   const docEditorRef = useRef<HTMLDivElement | null>(null);
   const [wordPreviewOpen, setWordPreviewOpen] = useState(false);
@@ -901,6 +919,7 @@ export function PlaidoirieWorkspace({ templateId, draftId, initialCaseId, resume
       at: Date.now(),
     };
     setReviseChat((prev) => [...prev, userMsg]);
+    const gen = ++reviseGenRef.current;
     setBusy("revise");
     setError("");
     setMessage("");
@@ -914,6 +933,7 @@ export function PlaidoirieWorkspace({ templateId, draftId, initialCaseId, resume
         case_id: caseId || undefined,
         language: dictationLang,
       });
+      if (gen !== reviseGenRef.current) return;
       const nextTitle = stripStars(res.title || docTitle);
       const nextBody = fixArabicBidiDisplay(
         structurePlaidoirieBody(stripStars(res.body || "")),
@@ -925,10 +945,14 @@ export function PlaidoirieWorkspace({ templateId, draftId, initialCaseId, resume
         /d[ée]vel+o*p|eplsu|plus\s+(cette|ce|la|le)|élargir|enrichir|d[ée]taill|allong|وسع|طور|فصل|طوّل|المزيد/i.test(
           instruction,
         );
-      const fillAsk =
-        /rien\s+[eé]crit|n['’ ]?a\s*s?\s+rien|pas\s+[eé]crit|est\s+vide|compl[eè]t|remplir|écris|ecris|فارغ|أكمل|املأ|خامساً?|لهذه\s*الأسباب/i.test(
+      const introAsk =
+        /introduc|pr[eé]ambule|preambule|ouverture|ajoute[rz]?\s+(une?\s+)?intro|مقدمة|تقديم|استهلال|سيدي\s*الرئيس|حضرة\s*المحكمة/i.test(
           instruction,
         );
+      const fillAsk =
+        /rien\s+[eé]crit|n['’ ]?a\s*s?\s+rien|pas\s+[eé]crit|est\s+vide|compl[eè]te[rz]?|remplir|\b[eé]cris\b|\becris\b|raison|expliq|pourquoi|فارغ|أكمل|املأ|خامساً?|لهذه\s*الأسباب|الملتمسات/i.test(
+          instruction,
+        ) && !introAsk;
       const sectionPayload = (text: string, marker: string) => {
         const base = marker.replace(/ً$/, "");
         const re = new RegExp(`${base}ً?\\s*[:：]?\\s*`);
@@ -952,34 +976,53 @@ export function PlaidoirieWorkspace({ templateId, draftId, initialCaseId, resume
       const weakFill =
         fillAsk &&
         ((/خامساً?/.test(instruction) && sectionStillThin("خامساً")) ||
-          (/لهذه\s*الأسباب/.test(instruction) && sectionStillThin("لهذه الأسباب")) ||
-          ((!/خامساً?|لهذه\s*الأسباب/.test(instruction) &&
-            (sectionStillThin("خامساً") || sectionStillThin("لهذه الأسباب")))));
+          (/لهذه\s*الأسباب|raison|ملتمسات/i.test(instruction) && sectionStillThin("لهذه الأسباب")) ||
+          (/خامساً?|لهذه\s*الأسباب|فارغ|vide|rien/i.test(instruction) &&
+            (sectionStillThin("خامساً") || sectionStillThin("لهذه الأسباب"))));
       const afterHead = afterNorm.slice(0, 160);
       const visiblyChanged =
         beforeHead !== afterHead || Math.abs(docBody.length - nextBody.length) >= 40;
+      const introOk =
+        !introAsk ||
+        afterNorm.length >= beforeNorm.length + 60 ||
+        beforeHead !== afterHead;
       const weakExpand = expandAsk && grew < 80;
-      const weakChange = weakExpand || weakFill;
+      const weakIntro = introAsk && !introOk;
+      const weakChange = weakExpand || weakFill || weakIntro;
       setDocTitle(nextTitle);
       setDocBody(nextBody);
       setDocEditorKey((k) => k + 1);
       setReviseInstruction("");
       setProvider(res.provider || "openai");
-      const chatMsg = weakFill
-        ? uiFr
-          ? "L’IA n’a pas encore rempli les passages vides (خامساً / لهذه الأسباب). Renvoyez simplement la même demande — le langage naturel suffit."
-          : "الذكاء الاصطناعي لم يملأ بعد المقاطع الفارغة. أعيدوا نفس الطلب بصياغتكم العادية."
-        : weakExpand
-          ? uiFr
-            ? "L’IA n’a presque pas développé le passage. Renvoyez la demande en collant le début du paragraphe à allonger."
-            : "الذكاء الاصطناعي لم يطوّر المقطع تقريباً. أعيدوا الطلب مع لصق بداية الفقرة."
-          : visiblyChanged
+      const aiReply = (res.reply || "").trim();
+      const chatMsg = aiReply
+        ? aiReply +
+          (weakChange
             ? uiFr
-              ? `Modification appliquée (${res.provider || "ChatGPT"}). Relisez le document ci-dessus — le passage visé a été mis à jour.`
-              : `طُبّق التعديل (${res.provider || "ChatGPT"}). راجعوا الوثيقة أعلاه — تم تحديث المقطع.`
+              ? "\n\n(Document mis à jour — relisez le passage sous خامساً / لهذه الأسباب.)"
+              : "\n\n(تم تحديث الوثيقة — راجعوا المقطع تحت خامساً / لهذه الأسباب.)"
             : uiFr
-              ? "Réponse reçue, mais le texte n’a presque pas changé. Reformulez en une phrase simple ce que vous voulez."
-              : "وصلت الإجابة لكن النص لم يتغيّر تقريباً. اكتبوا المطلوب بجملة بسيطة.";
+              ? "\n\n✓ Document mis à jour ci-dessus."
+              : "\n\n✓ تم تحديث الوثيقة أعلاه.")
+        : weakIntro
+          ? uiFr
+            ? "L’introduction n’apparaît pas encore clairement en tête. Renvoyez « ajoute une introduction » — les fautes sont OK."
+            : "المقدمة لم تظهر بوضوح في البداية. أعيدوا «أضف مقدمة» — الأخطاء مقبولة."
+          : weakFill
+            ? uiFr
+              ? "L’IA n’a pas encore rempli les passages vides (خامساً / لهذه الأسباب). Cliquez « Modifier la requête » ou renvoyez la même demande."
+              : "الذكاء الاصطناعي لم يملأ بعد المقاطع الفارغة. اضغطوا «تعديل الطلب» أو أعيدوا نفس الطلب."
+            : weakExpand
+              ? uiFr
+                ? "L’IA n’a presque pas développé le passage. Renvoyez la demande en collant le début du paragraphe à allonger."
+                : "الذكاء الاصطناعي لم يطوّر المقطع تقريباً. أعيدوا الطلب مع لصق بداية الفقرة."
+              : visiblyChanged || introOk
+                ? uiFr
+                  ? `Modification appliquée (${res.provider || "ChatGPT"}). Relisez le document ci-dessus.`
+                  : `طُبّق التعديل (${res.provider || "ChatGPT"}). راجعوا الوثيقة أعلاه.`
+                : uiFr
+                  ? "Réponse reçue, mais le texte n’a presque pas changé. Reformulez en une phrase simple ce que vous voulez."
+                  : "وصلت الإجابة لكن النص لم يتغيّر تقريباً. اكتبوا المطلوب بجملة بسيطة.";
       setReviseChat((prev) => [
         ...prev,
         {
@@ -990,16 +1033,16 @@ export function PlaidoirieWorkspace({ templateId, draftId, initialCaseId, resume
           provider: res.provider || undefined,
         },
       ]);
-      setMessage(chatMsg);
+      setMessage(chatMsg.split("\n")[0] || chatMsg);
       pushToast(
-        weakChange || !visiblyChanged
+        weakChange && !aiReply
           ? uiFr
             ? "Peu de changement — reformulez la consigne"
             : "تغيير ضعيف — أعيدوا صياغة الطلب"
           : uiFr
-            ? "Modification ChatGPT appliquée"
-            : "طُبّق تعديل ChatGPT",
-        weakChange || !visiblyChanged ? "info" : "success",
+            ? "Assistant IA : réponse + document mis à jour"
+            : "المساعد: رد + تحديث الوثيقة",
+        weakChange && !aiReply ? "info" : "success",
       );
       void notifySpend("revise");
       try {
@@ -1018,6 +1061,7 @@ export function PlaidoirieWorkspace({ templateId, draftId, initialCaseId, resume
         docEditorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
       });
     } catch (e) {
+      if (gen !== reviseGenRef.current) return;
       setReviseChat((prev) => [
         ...prev,
         {
@@ -1034,8 +1078,118 @@ export function PlaidoirieWorkspace({ templateId, draftId, initialCaseId, resume
       ]);
       setError(e instanceof ApiError ? e.message : "Révision IA indisponible.");
     } finally {
-      setBusy(null);
+      if (gen === reviseGenRef.current) setBusy(null);
     }
+  }
+
+  function cancelRevise() {
+    reviseGenRef.current += 1;
+    if (reviseSpeechOn) stopReviseSpeech();
+    if (reviseWhisperRec || reviseWhisperTx) {
+      void stopReviseWhisper({ skipFinalTranscribe: true }).catch(() => undefined);
+    }
+    setBusy(null);
+    setMessage(uiFr ? "Requête annulée." : "أُلغيت الطلب.");
+    setReviseChat((prev) => [
+      ...prev,
+      {
+        id: `a-cancel-${Date.now()}`,
+        role: "assistant",
+        content: uiFr
+          ? "Requête annulée — vous pouvez modifier le texte et renvoyer."
+          : "أُلغيت الطلب — يمكنكم تعديل النص وإعادة الإرسال.",
+        at: Date.now(),
+      },
+    ]);
+  }
+
+  function editLastReviseRequest() {
+    const lastUser = [...reviseChat].reverse().find((m) => m.role === "user");
+    if (lastUser) setReviseInstruction(lastUser.content);
+  }
+
+  async function cancelReviseMicRecording() {
+    if (reviseSpeechOn) stopReviseSpeech();
+    if (reviseWhisperRec || reviseWhisperTx) {
+      await stopReviseWhisper({ skipFinalTranscribe: true }).catch(() => undefined);
+    }
+    setMessage(uiFr ? "Dictée annulée." : "أُلغي الإملاء.");
+  }
+
+  async function finishReviseMic() {
+    if (reviseSpeechOn) {
+      stopReviseSpeech();
+      setMessage(
+        uiFr
+          ? "Dictée arrêtée — relisez puis « Appliquer / répondre »."
+          : "توقف الإملاء — راجعوا ثم «تطبيق / رد».",
+      );
+      return;
+    }
+    if (!reviseWhisperRec && !reviseWhisperTx) return;
+    try {
+      const res = await stopReviseWhisper();
+      const spoken = (res?.text || "").trim();
+      if (spoken) {
+        const base = reviseBaseAtMicRef.current.trim();
+        setReviseInstruction(base ? `${base} ${spoken}` : spoken);
+        setError("");
+        setMessage(
+          uiFr
+            ? "Texte ajouté (FR/AR détecté auto) — vous pouvez encore corriger avant d’envoyer."
+            : "أُضيف النص (كشف FR/AR تلقائي) — يمكنكم التصحيح قبل الإرسال.",
+        );
+      } else {
+        setError(
+          uiFr
+            ? "Aucune parole détectée — réessayez près du micro."
+            : "لم يُلتقط كلام — أعيدوا المحاولة قرب الميكروفون.",
+        );
+      }
+    } catch {
+      setError(uiFr ? "Transcription micro échouée." : "فشل تحويل الصوت.");
+    }
+  }
+
+  async function startReviseMic() {
+    if (reviseMicOn || busy !== null) return;
+    reviseBaseAtMicRef.current = reviseInstruction.trim();
+    setError("");
+
+    // Whisper en priorité : détection auto FR/AR, qualité arabe, bouton Terminé
+    if (reviseWhisperOk) {
+      setMessage(
+        uiFr
+          ? "Parlez en français ou en arabe — puis cliquez « Terminé »."
+          : "تكلّموا بالفرنسية أو العربية — ثم اضغطوا «تم».",
+      );
+      const ok = await startReviseWhisper();
+      if (!ok) {
+        setError(
+          uiFr
+            ? "Micro bloqué — autorisez l’accès (cadenas du navigateur)."
+            : "الميكروفون محظور — اسمحوا بالوصول (قفل المتصفح).",
+        );
+      }
+      return;
+    }
+
+    // Secours navigateur (rare) — langues arabes d’abord
+    if (reviseSpeechOk) {
+      const baseAtStart = reviseBaseAtMicRef.current;
+      startReviseSpeech((finals, interim) => {
+        const spoken = [finals, interim].filter(Boolean).join(" ").trim();
+        if (!spoken) return;
+        setReviseInstruction(baseAtStart ? `${baseAtStart} ${spoken}` : spoken);
+      });
+      return;
+    }
+
+    setError(
+      uiFr
+        ? "Micro indisponible — autorisez le micro ou utilisez Chrome/Edge."
+        : "الميكروفون غير متاح — اسمحوا بالوصول أو استخدموا Chrome/Edge.",
+    );
   }
 
   async function markFinalizedAfterExport() {
@@ -1073,11 +1227,16 @@ export function PlaidoirieWorkspace({ templateId, draftId, initialCaseId, resume
 
   async function handleExportWord(): Promise<boolean> {
     if (!docBody.trim()) return false;
+    const profileIncomplete = user?.cabinet_profile_complete === false;
     const ok = await confirm({
       title: uiFr ? "Exporter en Word ?" : "تصدير Word؟",
-      description: uiFr
-        ? "Le fichier sort à l’en-tête de votre cabinet (logo, barreau). Prêt à joindre au dossier."
-        : "يخرج الملف بترويسة مكتبكم (الشعار، الهيئة). جاهز لإرفاقه بالملف.",
+      description: profileIncomplete
+        ? uiFr
+          ? "Astuce : le nom / la ville / le barreau du cabinet ne sont pas encore renseignés — l’en-tête Word sera générique. Vous pouvez exporter quand même, ou compléter dans Paramètres → Cabinet."
+          : "تنبيه: اسم المكتب/المدينة/الهيئة غير مكتملة — ستكون الترويسة عامة. يمكن التصدير الآن أو الإكمال من الإعدادات ← المكتب."
+        : uiFr
+          ? "Le fichier sort à l’en-tête de votre cabinet (logo, barreau). Prêt à joindre au dossier."
+          : "يخرج الملف بترويسة مكتبكم (الشعار، الهيئة). جاهز لإرفاقه بالملف.",
       confirmLabel: uiFr ? "Télécharger Word" : "تحميل Word",
     });
     if (!ok) return false;
@@ -1142,26 +1301,61 @@ export function PlaidoirieWorkspace({ templateId, draftId, initialCaseId, resume
   }
 
   async function handlePolish(source?: string) {
+    // Si la dictée est encore active, l’arrêter pour débloquer Corriger
+    if (dictationActive) {
+      setDictationActive(false);
+      setDictationPaused(false);
+      chromeOnlyRef.current = false;
+      stopLivePreview();
+      cancelTranscribing();
+    }
     const cleaned = cleanDictationNoise(source ?? raw);
-    if (!cleaned) return;
-    const refuseSense = (whyFr: string, whyAr: string) => {
+    if (!cleaned) {
+      setError(
+        uiFr
+          ? "Aucun texte à corriger — dictez ou collez un texte d’abord."
+          : "لا نص للتصحيح — أملوا أو الصقوا نصاً أولاً.",
+      );
+      setMessage("");
+      return;
+    }
+    const refuseSense = (whyFr: string, whyAr: string, wipe = false) => {
       setSenseAlert(uiFr ? whyFr : whyAr);
       setError("");
-      setMessage("");
-      setPolished("");
+      setMessage(
+        uiFr
+          ? wipe
+            ? "Correction refusée — pur clavier au hasard, pas une phrase."
+            : "Correction limitée — reformulez un peu puis réessayez Corriger."
+          : wipe
+            ? "رُفض التصحيح — نقرات عشوائية وليست جملة."
+            : "تصحيح محدود — أعيدوا الصياغة ثم جرّبوا «تصحيح».",
+      );
+      if (wipe) {
+        setPolished("");
+        setRaw("");
+      }
       setContradictions([]);
       setContradictionCheck("idle");
       setFormEdits([]);
       setPleaVariables([]);
       pushToast(
-        uiFr ? "Ce texte n’a pas de sens — correction refusée" : "النص بلا معنى — رُفض التصحيح",
+        wipe
+          ? uiFr
+            ? "Pur clavier — correction refusée"
+            : "نقرات عشوائية — رُفض التصحيح"
+          : uiFr
+            ? "Essayez une phrase un peu plus claire"
+            : "جرّبوا جملة أوضح قليلاً",
         "info",
       );
     };
-    if (looksLikeGibberish(cleaned)) {
+    // Pur clavier uniquement — les fautes arabes passent à ChatGPT pour approximation
+    if (looksLikeGibberish(cleaned) && !/[\u0600-\u06FF]{2,}/.test(cleaned)) {
       refuseSense(
-        "Ce texte n’a pas de sens (touches au hasard, lettres isolées, pas une phrase). ChatGPT ne le « corrige » pas : dictez ou écrivez une vraie phrase, sinon la rédaction IA n’aura rien de solide.",
-        "هذا النص بلا معنى (نقرات عشوائية، حروف بلا جملة). لن يُصلحه ChatGPT: أملوا أو اكتبوا جملة حقيقية، وإلا لن تستطيع الصياغة بناء مرافعة.",
+        "Ce texte est du clavier au hasard (pas une phrase). Écrivez ou dictez des mots — même avec fautes, Corriger essaiera d’approcher.",
+        "هذا نقرات عشوائية وليست جملة. اكتبوا أو أملوا كلمات — حتى مع أخطاء، «تصحيح» سيحاول التقريب.",
+        true,
       );
       return;
     }
@@ -1178,18 +1372,30 @@ export function PlaidoirieWorkspace({ templateId, draftId, initialCaseId, resume
       if (gen !== polishGenRef.current) return;
       if ((res.provider || "") === "nonsense") {
         refuseSense(
-          "ChatGPT a lu le texte : il n’a pas de sens utilisable pour une plaidoirie. Réécrivez ou dictez les faits (qui, quoi, quelle demande).",
-          "قرأ ChatGPT النص: لا معنى صالحاً لمرافعة. أعيدوا الكتابة أو الإملاء (من، ماذا، أي طلب).",
+          "Impossible d’approcher un mot correct (pur bruit). Essayez une phrase avec quelques mots arabes, même fautifs.",
+          "تعذّر تقريب كلمة صحيحة (ضوضاء فقط). جرّبوا جملة بكلمات عربية ولو فيها أخطاء.",
+          !/[\u0600-\u06FF]{2,}/.test(cleaned),
         );
         setBusy(null);
         return;
       }
       // Ne pas repasser lightCleanDictation : détruit paragraphes et balises ‹ ›
       const out = stripStars((res.polished || cleaned).replace(/\r\n/g, "\n")).trim();
+      if (!out) {
+        refuseSense(
+          "La correction n’a rien renvoyé. Réessayez Corriger.",
+          "لم يُرجع التصحيح شيئاً. أعيدوا «تصحيح».",
+        );
+        setBusy(null);
+        return;
+      }
       setPolished(fixArabicBidiDisplay(out || cleaned));
       setProvider(res.provider || "fidelity");
       setContradictions(res.contradictions || []);
-      setContradictionCheck("verified");
+      // « verified » seulement si le moteur a vraiment tourné (pas un simple passthrough local)
+      const degraded = (res.provider || "") === "fidelity" || (res.provider || "") === "none" || (res.provider || "") === "passthrough";
+      const viaAi = !degraded && (res.provider || "").includes("openai");
+      setContradictionCheck(degraded ? "idle" : "verified");
       void notifySpend("polish");
       // Ignorer suggestions identiques / bruit — le corrigé contient déjà les vrais fixes
       const realEdits = (res.edits || []).filter((e) => {
@@ -1212,51 +1418,66 @@ export function PlaidoirieWorkspace({ templateId, draftId, initialCaseId, resume
         ? res.guessed_words.length
         : (out.match(/‹[^›]{1,80}›/g) || []).length;
       const nAlert = (res.contradictions || []).length;
-      const degraded = (res.provider || "") === "fidelity" || (res.provider || "") === "none";
       const plainOut = (out || "").replace(/[‹›]/g, "").replace(/\s+/g, " ").trim();
       const plainIn = cleaned.replace(/[‹›]/g, "").replace(/\s+/g, " ").trim();
       const changed = plainOut !== plainIn;
-      // Ne pas afficher « aucune contradiction » comme succès de réécriture si rien n’a bougé
-      // et qu’il n’y a pas non plus d’alertes — le bandeau message suffit (peu de changements).
-      setMessage(
-        uiFr
-          ? [
-              degraded
-                ? changed
-                  ? guessed
-                    ? `Correction de forme (fusḥā locale) — faits conservés · ${guessed} substitution(s) STT ‹…›`
-                    : "Correction de forme (fusḥā locale) — faits conservés."
-                  : "Correction locale — peu de changements détectés (texte déjà correct ?)."
-                : guessed
-                  ? `Correction ChatGPT (fusḥā) — ${guessed} mot(s) STT ‹…›`
-                  : "Correction ChatGPT appliquée (forme fusḥā, sans résumé inventé).",
-              nAlert ? `· ${nAlert} alerte(s)` : "",
-            ]
-              .filter(Boolean)
-              .join(" ")
-          : [
-              degraded
-                ? changed
-                  ? guessed
-                    ? `تم التصحيح الشكلي (فصحى محلية) — مع الحفاظ على الوقائع · ${guessed} استبدال STT ‹…›`
-                    : "تم التصحيح الشكلي (فصحى محلية) — مع الحفاظ على كل الوقائع."
-                  : "تصحيح محلي — تغييرات قليلة (النص قد يكون سليماً أصلاً)."
-                : guessed
-                  ? `تصحيح ChatGPT (فصحى) — ${guessed} استبدال ‹…›`
-                  : "طُبّق تصحيح ChatGPT (فصحى شكلية دون تلخيص).",
-              nAlert ? `· ${nAlert} تنبيه` : "",
-            ]
-              .filter(Boolean)
-              .join(" "),
-      );
+      let polishMsg = "";
+      if (uiFr) {
+        if (degraded) {
+          polishMsg = changed
+            ? guessed
+              ? `Correction locale légère — ${guessed} substitution(s). Relisez : le service IA n'a pas réécrit le texte.`
+              : "Correction locale légère. Relisez : le service IA n'a pas réécrit le texte."
+            : "Texte inchangé — si des lettres manquent, reformulez un peu puis réessayez Corriger.";
+        } else {
+          polishMsg = viaAi
+            ? guessed
+              ? `ChatGPT a réécrit le texte — ${guessed} mot(s) approximé(s) (orange = à vérifier).`
+              : changed
+                ? "ChatGPT a réécrit / corrigé votre texte (forme fusḥā)."
+                : "ChatGPT a relu le texte (déjà correct)."
+            : guessed
+              ? `Correction appliquée — ${guessed} mot(s) approché(s) (surlignage orange = à vérifier).`
+              : changed
+                ? "Correction appliquée — mots approchés / forme fusḥā."
+                : "Correction de forme appliquée.";
+        }
+        if (nAlert) polishMsg += ` · ${nAlert} alerte(s)`;
+      } else {
+        if (degraded) {
+          polishMsg = changed
+            ? guessed
+              ? `تصحيح محلي خفيف — ${guessed} استبدال. راجعوا: لم يعد كتابة النص بالذكاء.`
+              : "تصحيح محلي خفيف. راجعوا: لم يعد كتابة النص بالذكاء."
+            : "النص كما هو — إن نقصت حروف، أعيدوا صياغة بسيطة ثم «تصحيح».";
+        } else {
+          polishMsg = viaAi
+            ? guessed
+              ? `أعاد ChatGPT كتابة النص — ${guessed} كلمة مقرّبة (برتقالي = للتحقق).`
+              : changed
+                ? "أعاد ChatGPT تصحيح/صياغة النص (شكل فصيح)."
+                : "راجع ChatGPT النص (كان سليماً)."
+            : guessed
+              ? `تم التصحيح — ${guessed} كلمة/كلمات مقرّبة (البرتقالي = للتحقق).`
+              : changed
+                ? "تم التصحيح — تقريب كلمات / شكل فصيح."
+                : "طبق تصحيح الشكل.";
+        }
+        if (nAlert) polishMsg += ` · ${nAlert} تنبيه`;
+      }
+      setMessage(polishMsg);
       pushToast(
         degraded
           ? uiFr
-            ? "Correction locale appliquée"
-            : "طُبّق التصحيح المحلي"
+            ? changed
+              ? "Correction locale — relisez"
+              : "Texte inchangé — reformulez"
+            : changed
+              ? "تصحيح محلي — راجعوا"
+              : "النص كما هو — أعيدوا الصياغة"
           : uiFr
-            ? "Correction ChatGPT réussie"
-            : "نجاح تصحيح ChatGPT",
+            ? "Correction appliquée"
+            : "تم التصحيح",
         degraded ? "info" : "success",
       );
       setStep(2);
@@ -1577,7 +1798,6 @@ export function PlaidoirieWorkspace({ templateId, draftId, initialCaseId, resume
     : ["dossier"];
   // Gaps based on saved case only (not draft) — pour le bouton Continuer
   const savedLegalGaps = selectedCase ? missingLegalFields(selectedCase) : ["dossier"];
-  const rolesHelp = roleHelp(uiFr);
 
   async function saveLegalInline(): Promise<boolean> {
     if (!caseId || !selectedCase) return false;
@@ -2012,27 +2232,6 @@ export function PlaidoirieWorkspace({ templateId, draftId, initialCaseId, resume
         </div>
       )}
 
-      <div
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 10,
-          marginBottom: 12,
-          padding: "10px 14px",
-          borderRadius: 14,
-          border: "1px solid rgba(27,63,156,0.14)",
-          background: "rgba(27,63,156,0.05)",
-        }}
-      >
-        <p style={{ margin: 0, fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.45 }}>
-          {uiFr
-            ? "Progression sauvegardée automatiquement. Restez dans cet atelier jusqu’à l’export — pas besoin de retourner aux dossiers."
-            : "يُحفظ التقدّم تلقائياً. ابقوا في هذه الورشة حتى التصدير — لا حاجة للعودة إلى الملفات."}
-        </p>
-      </div>
-
       <PleaStepCarousel
         step={step}
         onStepChange={goStep}
@@ -2045,10 +2244,10 @@ export function PlaidoirieWorkspace({ templateId, draftId, initialCaseId, resume
         <div className="plea-step-panel" style={{ display: step === 0 ? "block" : "none" }}>
           <div className="card doc-preview">
             <span className="badge">{uiFr ? "Étape 1 · Dossier" : "الخطوة ١ · الملف"}</span>
-            <p style={{ fontSize: 12, lineHeight: 1.45, color: "var(--ink-soft)", margin: "0 0 12px", padding: "8px 10px", borderRadius: 10, background: "rgba(27,63,156,0.06)", border: "1px solid rgba(27,63,156,0.12)" }}>
+            <p style={{ fontSize: 12, lineHeight: 1.45, color: "var(--ink-soft)", margin: "0 0 12px" }}>
               {uiFr
-                ? "L’IA rédige à partir de 3 sources : fiche dossier (matière, degré, tribunal, rôles, nature personne physique/morale) + pièces OCR + votre dictée. Confidentialité cabinet : les vrais noms deviennent PARTIE_A / PARTIE_B avant l’IA, puis sont restaurés dans le document final."
-                : "الذكاء الاصطناعي يصوغ من 3 مصادر: بطاقة الملف + المرفقات + إملاؤكم. السرية: تُستبدل الأسماء بـ PARTIE_A قبل الإرسال ثم تُعاد في الوثيقة النهائية."}
+                ? "Choisissez le dossier, complétez l’identité des parties, vérifiez les pièces — puis dictez."
+                : "اختاروا الملف، أكملوا هوية الأطراف، تحققوا من المرفقات — ثم أملوا."}
             </p>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12, padding: "12px 14px", borderRadius: 12, border: "1px solid var(--line)", background: "rgba(255,252,246,0.9)", direction: "ltr" }}>
               <div style={{ flex: 1, textAlign: "right", direction: "rtl", fontWeight: 700, color: "#1a3a2a", fontSize: 13 }}>
@@ -2154,7 +2353,7 @@ export function PlaidoirieWorkspace({ templateId, draftId, initialCaseId, resume
                     }}
                   >
                     <span style={{ fontSize: 13, fontWeight: 700, color: "#1B3F9C" }}>
-                      {uiFr ? "1 · Identité juridique & type d’acte" : "١ · الهوية القانونية ونوع الوثيقة"}
+                      {uiFr ? "1 · Identité des parties" : "١ · هوية الأطراف"}
                     </span>
                     <ChevronDown
                       size={18}
@@ -2177,17 +2376,11 @@ export function PlaidoirieWorkspace({ templateId, draftId, initialCaseId, resume
                         background: savedLegalGaps.length ? "rgba(254,226,226,0.25)" : undefined,
                       }}
                     >
-                      <p style={{ margin: "10px 0 10px", fontSize: 11, color: "var(--ink-soft)", lineHeight: 1.45 }}>
-                        {qualityHelp(uiFr)}
-                      </p>
-                      <p style={{ margin: "0 0 10px", fontSize: 11, color: "var(--ink-soft)", lineHeight: 1.45 }}>
-                        {rolesHelp.demandeur} {rolesHelp.defendeur}
-                      </p>
                       {savedLegalGaps.length > 0 ? (
-                        <p style={{ margin: "0 0 10px", fontSize: 12, fontWeight: 600, color: "#991b1b" }}>
+                        <p style={{ margin: "10px 0 10px", fontSize: 12, fontWeight: 600, color: "#991b1b" }}>
                           {uiFr
-                            ? `À compléter : ${savedLegalGaps.join(", ")}. Enregistrez ci-dessous — sans quitter.`
-                            : `أكملوا: ${savedLegalGaps.join("، ")}. احفظوا أدناه دون مغادرة.`}
+                            ? `À compléter : ${savedLegalGaps.join(", ")}. Enregistrez ci-dessous.`
+                            : `أكملوا: ${savedLegalGaps.join("، ")}. احفظوا أدناه.`}
                         </p>
                       ) : null}
                       <div style={{ display: "grid", gap: 10, gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
@@ -2259,7 +2452,7 @@ export function PlaidoirieWorkspace({ templateId, draftId, initialCaseId, resume
                           <input
                             value={legalDraft.client_domicile}
                             onChange={(e) => setLegalDraft((prev) => ({ ...prev, client_domicile: e.target.value }))}
-                            placeholder={uiFr ? "Adresse (art. 32 CPC)" : "العنوان"}
+                            placeholder={uiFr ? "Adresse" : "العنوان"}
                             style={{ display: "block", width: "100%", marginTop: 4, border: "1px solid var(--line)", borderRadius: 10, padding: "9px 10px", background: "#fff" }}
                           />
                         </label>
@@ -2286,9 +2479,6 @@ export function PlaidoirieWorkspace({ templateId, draftId, initialCaseId, resume
                           </select>
                         </label>
                       </div>
-                      <p style={{ margin: "10px 0 0", fontSize: 11, color: "var(--ink-soft)", lineHeight: 1.45 }}>
-                        {indicativeDeadlineHint(legalDraft.jurisdiction_degree, uiFr)}
-                      </p>
                       <button
                         type="button"
                         className="chip-btn primary"
@@ -2302,7 +2492,7 @@ export function PlaidoirieWorkspace({ templateId, draftId, initialCaseId, resume
 
                       <div style={{ marginTop: 16, paddingTop: 14, borderTop: "1px solid var(--line)" }}>
                         <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--ink-soft)", marginBottom: 6 }}>
-                          {uiFr ? "Type d’acte (cette génération)" : "نوع الوثيقة لهذه المرة"}
+                          {uiFr ? "Type d’acte" : "نوع الوثيقة"}
                         </label>
                         <select
                           value={actType}
@@ -2322,39 +2512,67 @@ export function PlaidoirieWorkspace({ templateId, draftId, initialCaseId, resume
                             </option>
                           ))}
                         </select>
-                        <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--ink-soft)", marginBottom: 6 }}>
-                          {uiFr ? "Modèle de marafua (par domaine)" : "نموذج المرافعة (حسب المجال)"}
-                        </label>
-                        <select
-                          value={pleaType}
-                          onChange={(e) => setPleaType(e.target.value)}
-                          style={{
-                            width: "100%",
-                            border: "1px solid var(--line)",
-                            borderRadius: 12,
-                            padding: "11px 12px",
-                            background: "var(--parchment)",
-                          }}
-                        >
-                          {PLAIDOIRIE_DOMAIN_GROUPS.map((g) => (
-                            <optgroup key={g.key} label={uiFr ? g.labelFr : g.labelAr}>
-                              {g.ids.map((id) => {
-                                const tpl = getPlaidoirieTemplate(id);
-                                if (!tpl) return null;
-                                return (
-                                  <option key={id} value={id}>
-                                    {uiFr ? tpl.labelFr : tpl.labelAr}
-                                  </option>
-                                );
-                              })}
-                            </optgroup>
-                          ))}
-                        </select>
-                        <p style={{ margin: "8px 0 0", fontSize: 11, color: "var(--ink-soft)", lineHeight: 1.45 }}>
-                          {uiFr
-                            ? "Le domaine adapte la structure ChatGPT (ملتمسات, posture). Le type d’acte précise la forme (requête, réplique…)."
-                            : "المجال يكيّف هيكل ChatGPT. نوع الوثيقة يحدد الشكل (مقال، جواب…)."}
-                        </p>
+                        {selectedCase?.case_type ? (
+                          <p
+                            style={{
+                              margin: 0,
+                              fontSize: 13,
+                              fontWeight: 650,
+                              color: "var(--ink)",
+                              lineHeight: 1.45,
+                              padding: "10px 12px",
+                              borderRadius: 12,
+                              border: "1px solid var(--line)",
+                              background: "var(--parchment)",
+                            }}
+                          >
+                            {uiFr
+                              ? `Domaine de plaidoirie : ${caseDomainLabel(selectedCase.case_type, locale)} (lié au dossier)`
+                              : `مجال المرافعة: ${caseDomainLabel(selectedCase.case_type, locale)} (مرتبط بالملف)`}
+                            {(() => {
+                              const tid =
+                                caseTypeToPleaTemplate(selectedCase.case_type) ||
+                                actTypeToTemplate(actType, selectedCase.case_type);
+                              const tpl = getPlaidoirieTemplate(tid);
+                              return tpl
+                                ? uiFr
+                                  ? ` — modèle « ${tpl.labelFr} »`
+                                  : ` — نموذج « ${tpl.labelAr} »`
+                                : "";
+                            })()}
+                          </p>
+                        ) : (
+                          <>
+                            <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--ink-soft)", marginBottom: 6 }}>
+                              {uiFr ? "Domaine de plaidoirie" : "مجال المرافعة"}
+                            </label>
+                            <select
+                              value={pleaType}
+                              onChange={(e) => setPleaType(e.target.value)}
+                              style={{
+                                width: "100%",
+                                border: "1px solid var(--line)",
+                                borderRadius: 12,
+                                padding: "11px 12px",
+                                background: "var(--parchment)",
+                              }}
+                            >
+                              {PLAIDOIRIE_DOMAIN_GROUPS.map((g) => (
+                                <optgroup key={g.key} label={uiFr ? g.labelFr : g.labelAr}>
+                                  {g.ids.map((id) => {
+                                    const tpl = getPlaidoirieTemplate(id);
+                                    if (!tpl) return null;
+                                    return (
+                                      <option key={id} value={id}>
+                                        {uiFr ? tpl.labelFr : tpl.labelAr}
+                                      </option>
+                                    );
+                                  })}
+                                </optgroup>
+                              ))}
+                            </select>
+                          </>
+                        )}
                       </div>
                     </div>
                   ) : null}
@@ -2605,8 +2823,8 @@ export function PlaidoirieWorkspace({ templateId, draftId, initialCaseId, resume
                     <div style={{ padding: "12px 14px 14px", borderTop: "1px solid var(--line)" }}>
                       <p style={{ margin: 0, fontSize: 13, color: "var(--ink-soft)", lineHeight: 1.5 }}>
                         {uiFr
-                          ? "Vérifiez identité + pièces, puis passez à la dictée. L’IA (ChatGPT) rédigera en arabe fusḥā selon le modèle choisi."
-                          : "تحققوا من الهوية والمرفقات ثم انتقلوا للإملاء. يصوغ ChatGPT بالعربية الفصحى حسب النموذج."}
+                          ? "Identité et pièces prêtes ? Passez à la dictée."
+                          : "الهوية والمرفقات جاهزة؟ انتقلوا إلى الإملاء."}
                       </p>
                       {!cabinetLogoUrl ? (
                         <p style={{ margin: "10px 0 0", fontSize: 12, color: "var(--ink-soft)" }}>
@@ -2668,8 +2886,8 @@ export function PlaidoirieWorkspace({ templateId, draftId, initialCaseId, resume
           </div>
           <p style={{ margin: "0 0 14px", fontSize: 13, color: "var(--ink-soft)", fontWeight: 500, lineHeight: 1.55 }}>
             {uiFr
-              ? "Dictez au micro, ou importez un enregistrement (wav, mp3, ogg, m4a, webm). Le même moteur vocal cloud transcrit le fichier."
-              : "أملوا في الميكروفون، أو ارفعوا تسجيلاً صوتياً (wav, mp3, ogg, m4a, webm). نفس محرك التفريغ السحابي يعالج الملف."}
+              ? "Dictez au micro, ou importez un fichier audio (WAV, MP3, OGG, M4A, WebM). Transcription Whisper (OpenAI)."
+              : "أملوا في الميكروفون، أو ارفعوا ملفاً صوتياً (WAV, MP3, OGG, M4A, WebM). التفريغ عبر Whisper (OpenAI)."}
           </p>
           <div className="voice-orb-wrap" style={{ padding: "18px 8px 10px" }}>
             <VoiceOrb listening={isLive} />
@@ -2827,7 +3045,7 @@ export function PlaidoirieWorkspace({ templateId, draftId, initialCaseId, resume
             <button
               type="button"
               className="chip-btn"
-              disabled={!raw.trim() || (busy !== null && busy !== "polish") || recording || transcribing || dictationActive}
+              disabled={!raw.trim() || (busy !== null && busy !== "polish") || recording || transcribing}
               onClick={() => {
                 if (busy === "polish") {
                   cancelPolish();
@@ -2977,7 +3195,10 @@ export function PlaidoirieWorkspace({ templateId, draftId, initialCaseId, resume
                 : "⚠️ خدمة التحقق غير متاحة. لم يتم فحص التناقضات (أرقام الملفات، التواريخ، الأسماء، المبالغ) في هذا النص. راجعوا بعناية قبل الاعتماد، أو أعيدوا المحاولة عند عودة الخدمة."}
             </motion.div>
           )}
-          {contradictionCheck === "verified" && polished && contradictions.length === 0 && (
+          {contradictionCheck === "verified" &&
+            polished &&
+            contradictions.length === 0 &&
+            hasCheckableFacts(polished) && (
             <motion.p
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -2985,21 +3206,11 @@ export function PlaidoirieWorkspace({ templateId, draftId, initialCaseId, resume
               style={{ fontSize: 12, color: "var(--emerald)", marginTop: 8, fontWeight: 600 }}
             >
               {uiFr
-                ? "✅ Vérifié : aucune contradiction détectée (n°, dates, montants, noms)."
-                : "✅ تم التحقق: لم يُرصد تناقض (أرقام، تواريخ، مبالغ، أسماء)."}
+                ? "Aucune contradiction entre les faits cités (n°, dates, montants)."
+                : "لا تناقض بين الوقائع المذكورة (أرقام، تواريخ، مبالغ)."}
             </motion.p>
           )}
-          {contradictionCheck === "idle" && polished && (
-            <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              style={{ fontSize: 12, color: "#92400e", marginTop: 8, fontWeight: 600 }}
-            >
-              {uiFr
-                ? "Contrôle des contradictions non exécuté sur ce texte."
-                : "لم يُنفَّذ فحص التناقضات على هذا النص."}
-            </motion.p>
-          )}
+          {contradictionCheck === "idle" && polished && null}
           {polished && (
             <PleaAssistPanel
               uiFr={uiFr}
@@ -3128,11 +3339,6 @@ export function PlaidoirieWorkspace({ templateId, draftId, initialCaseId, resume
                 ))}
               </select>
             </label>
-            {selectedCase?.jurisdiction_degree ? (
-              <p style={{ margin: "10px 0 0", fontSize: 11, color: "var(--ink-soft)", lineHeight: 1.45 }}>
-                {indicativeDeadlineHint(selectedCase.jurisdiction_degree, uiFr)}
-              </p>
-            ) : null}
           </div>
           <div className="plea-step-actions">
             <button type="button" className="chip-btn" onClick={() => goStep(1)}>
@@ -3196,15 +3402,15 @@ export function PlaidoirieWorkspace({ templateId, draftId, initialCaseId, resume
               </p>
               <p style={{ margin: "0 0 10px", fontSize: 12, color: "var(--ink-soft)", lineHeight: 1.45 }}>
                 {uiFr
-                  ? "Décrivez le changement voulu. L’IA met à jour le document ci-dessus ; l’historique reste ici comme un chat."
-                  : "صفوا التعديل المطلوب. يحدّث الذكاء الوثيقة أعلاه؛ ويبقى السجل هنا كمحادثة."}
+                  ? "Posez une question ou demandez une modification (fautes OK). L’IA répond dans le chat ET met à jour le document."
+                  : "اطرحوا سؤالاً أو اطلبوا تعديلاً (الأخطاء مقبولة). يردّ الذكاء في المحادثة ويحدّث الوثيقة."}
               </p>
               {reviseChat.length > 0 ? (
                 <div
                   style={{
-                    maxHeight: 220,
+                    maxHeight: 200,
                     overflowY: "auto",
-                    marginBottom: 12,
+                    marginBottom: 10,
                     display: "flex",
                     flexDirection: "column",
                     gap: 8,
@@ -3272,48 +3478,169 @@ export function PlaidoirieWorkspace({ templateId, draftId, initialCaseId, resume
                             cursor: "pointer",
                           }}
                         >
-                          {uiFr ? "Réutiliser" : "إعادة استخدام"}
+                          {uiFr ? "Modifier cette requête" : "تعديل هذا الطلب"}
                         </button>
                       ) : null}
                     </div>
                   ))}
                 </div>
               ) : null}
-              <textarea
-                value={reviseInstruction}
-                onChange={(e) => setReviseInstruction(e.target.value)}
-                rows={3}
-                placeholder={
-                  uiFr
-                    ? "Écrivez naturellement (fautes OK) — ex. « rien écrit sous خامساً », « développez ce paragraphe… »"
-                    : "اكتبوا بصياغتكم العادية — مثال: « ما كتب والو تحت خامساً »، « طوّروا هذه الفقرة… »"
-                }
-                style={{
-                  width: "100%",
-                  border: "1px solid var(--line)",
-                  borderRadius: 10,
-                  padding: "10px 12px",
-                  fontSize: 13,
-                  resize: "vertical",
-                  background: "#fff",
-                }}
-              />
-              <button
-                type="button"
-                className="chip-btn primary"
-                style={{ marginTop: 10 }}
-                disabled={!reviseInstruction.trim() || busy !== null}
-                onClick={() => void handleRevise()}
-              >
-                {busy === "revise" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 width={14} height={14} />}
-                {busy === "revise"
-                  ? uiFr
-                    ? "Modification…"
-                    : "جاري التعديل…"
-                  : uiFr
-                    ? "Appliquer la modification"
-                    : "تطبيق التعديل"}
-              </button>
+              <div style={{ display: "flex", gap: 8, alignItems: "stretch" }}>
+                <textarea
+                  value={reviseInstruction}
+                  onChange={(e) => setReviseInstruction(e.target.value)}
+                  rows={2}
+                  placeholder={
+                    uiFr
+                      ? "Écrivez ou dictez (FR ou AR) — ex. « pourquoi لهذه الأسباب sans raisons ? »"
+                      : "اكتبوا أو أملوا (فرنسية أو عربية) — مثال: « لماذا لهذه الأسباب بلا ملتمسات؟ »"
+                  }
+                  disabled={reviseWhisperRec || reviseWhisperTx}
+                  style={{
+                    flex: 1,
+                    width: "100%",
+                    minHeight: 44,
+                    maxHeight: 88,
+                    border: "1px solid var(--line)",
+                    borderRadius: 10,
+                    padding: "8px 12px",
+                    fontSize: 13,
+                    resize: "vertical",
+                    background: "#fff",
+                    lineHeight: 1.4,
+                    opacity: reviseWhisperRec || reviseWhisperTx ? 0.85 : 1,
+                  }}
+                />
+                {!reviseMicOn ? (
+                  <button
+                    type="button"
+                    className="chip-btn"
+                    title={
+                      uiFr
+                        ? "Dicter la requête (français ou arabe — détection auto)"
+                        : "إملاء الطلب (فرنسية أو عربية — كشف تلقائي)"
+                    }
+                    onClick={() => void startReviseMic()}
+                    disabled={busy === "revise"}
+                    style={{
+                      alignSelf: "flex-start",
+                      minWidth: 44,
+                      height: 44,
+                      padding: 0,
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Mic className="h-4 w-4" />
+                  </button>
+                ) : null}
+              </div>
+              {reviseMicOn ? (
+                <div
+                  style={{
+                    marginTop: 10,
+                    padding: "10px 12px",
+                    borderRadius: 12,
+                    border: "1px solid rgba(180,83,9,0.35)",
+                    background: "rgba(255,247,237,0.95)",
+                    display: "flex",
+                    flexWrap: "wrap",
+                    alignItems: "center",
+                    gap: 10,
+                  }}
+                >
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      fontSize: 13,
+                      fontWeight: 600,
+                      color: "#9a3412",
+                    }}
+                  >
+                    <span
+                      aria-hidden
+                      style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: 999,
+                        background: reviseWhisperTx ? "#94a3b8" : "#dc2626",
+                        boxShadow: reviseWhisperTx ? "none" : "0 0 0 4px rgba(220,38,38,0.2)",
+                        animation: reviseWhisperTx ? undefined : "pulse 1.2s ease-in-out infinite",
+                      }}
+                    />
+                    {reviseWhisperTx
+                      ? uiFr
+                        ? "Transcription en cours…"
+                        : "جاري التحويل…"
+                      : uiFr
+                        ? "Écoute en cours — parlez (FR ou AR)"
+                        : "جاري الاستماع — تكلّموا (فرنسية أو عربية)"}
+                    {reviseWhisperRec && reviseMicLevel > 0 ? (
+                      <span style={{ fontWeight: 500, opacity: 0.75, fontSize: 11 }}>
+                        · {Math.min(100, reviseMicLevel)}%
+                      </span>
+                    ) : null}
+                  </span>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginInlineStart: "auto" }}>
+                    <button
+                      type="button"
+                      className="chip-btn primary"
+                      disabled={reviseWhisperTx}
+                      onClick={() => void finishReviseMic()}
+                    >
+                      {reviseWhisperTx ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Check className="h-3.5 w-3.5" />
+                      )}
+                      {uiFr ? "Terminé" : "تم"}
+                    </button>
+                    <button
+                      type="button"
+                      className="chip-btn"
+                      disabled={reviseWhisperTx}
+                      onClick={() => void cancelReviseMicRecording()}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                      {uiFr ? "Annuler" : "إلغاء"}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p style={{ margin: "6px 0 0", fontSize: 11, color: "var(--ink-soft)", lineHeight: 1.4 }}>
+                  {uiFr
+                    ? "Micro : parlez en français ou en arabe — l’interface reste comme elle est. Cliquez « Terminé » quand vous avez fini."
+                    : "الميكروفون: تكلّموا بالفرنسية أو العربية — الواجهة لا تتغيّر. اضغطوا «تم» عند الانتهاء."}
+                </p>
+              )}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
+                {busy === "revise" ? (
+                  <button type="button" className="chip-btn" onClick={cancelRevise}>
+                    <X className="h-3.5 w-3.5" />
+                    {uiFr ? "Annuler la requête" : "إلغاء الطلب"}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="chip-btn primary"
+                    disabled={!reviseInstruction.trim() || busy !== null || reviseMicOn}
+                    onClick={() => void handleRevise()}
+                  >
+                    <Wand2 width={14} height={14} />
+                    {uiFr ? "Appliquer / répondre" : "تطبيق / رد"}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="chip-btn"
+                  disabled={busy === "revise" || reviseMicOn || !reviseChat.some((m) => m.role === "user")}
+                  onClick={editLastReviseRequest}
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  {uiFr ? "Modifier la requête" : "تعديل الطلب"}
+                </button>
+              </div>
             </div>
             </>
           ) : (

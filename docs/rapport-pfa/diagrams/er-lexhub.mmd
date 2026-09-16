@@ -1,0 +1,70 @@
+%% Schéma relationnel LexHub (extrait) — source Mermaid
+%% Fichier : diagrams/er-lexhub.mmd
+%% Aperçu : mermaid.live / GitHub
+
+erDiagram
+  CABINET ||--o{ USER : "emploie"
+  CABINET ||--o{ CASE : "possède"
+  CABINET ||--|| CABINET_SUBSCRIPTION : "abonné"
+  SUBSCRIPTION_PLAN ||--o{ CABINET_SUBSCRIPTION : "définit"
+  CASE ||--o{ DOCUMENT : "pièces"
+  CASE ||--o{ PLAIDOIRIE_DRAFT : "plaidoiries"
+  USER ||--o{ PLAIDOIRIE_DRAFT : "rédige"
+  PLAIDOIRIE_DRAFT ||--o{ PLAIDOIRIE_REVISION : "versions"
+
+  CABINET {
+    uuid id PK
+    string nom
+    string status
+    string referral_code
+  }
+
+  USER {
+    uuid id PK
+    uuid cabinet_id FK
+    string email
+    string role
+  }
+
+  CASE {
+    uuid id PK
+    uuid cabinet_id FK
+    string reference
+    string matiere
+    string tribunal
+  }
+
+  DOCUMENT {
+    uuid id PK
+    uuid case_id FK
+    string storage_path
+    text extracted_text
+    float ocr_score
+  }
+
+  PLAIDOIRIE_DRAFT {
+    uuid id PK
+    uuid case_id FK
+    uuid user_id FK
+    string status
+    uuid assigned_to_user_id FK
+  }
+
+  PLAIDOIRIE_REVISION {
+    uuid id PK
+    uuid draft_id FK
+    text body_snapshot
+  }
+
+  SUBSCRIPTION_PLAN {
+    uuid id PK
+    string slug
+    int price_mad
+  }
+
+  CABINET_SUBSCRIPTION {
+    uuid id PK
+    uuid cabinet_id FK
+    uuid plan_id FK
+    string status
+  }

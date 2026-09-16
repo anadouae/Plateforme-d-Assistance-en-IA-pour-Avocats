@@ -18,12 +18,20 @@ function initials(name?: string | null) {
  * Menu compte toujours visible (topbar) — Paramètres + Déconnexion.
  * Évite le dock-foot masqué en &lt; 880px et les menus coupés par overflow.
  */
-export function UserAccountMenu({ compact = false }: { compact?: boolean }) {
+export function UserAccountMenu({
+  compact = false,
+  hideSettings = false,
+}: {
+  compact?: boolean;
+  /** Espace admin plateforme : pas de lien Paramètres cabinet. */
+  hideSettings?: boolean;
+}) {
   const { user, logout } = useAuthStore();
   const t = useTranslations().app;
   const router = useRouter();
   const locale = useLocaleStore((s) => s.locale);
   const ar = locale === "ar";
+  const isPlatformAdmin = user?.role === "admin_webvoice" || hideSettings;
   const [open, setOpen] = useState(false);
   const [box, setBox] = useState<{ top: number; right: number } | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -110,6 +118,36 @@ export function UserAccountMenu({ compact = false }: { compact?: boolean }) {
                 {user?.email || ""}
               </p>
             </div>
+            {!isPlatformAdmin ? (
+              <button
+                type="button"
+                role="menuitem"
+                className="btn-ghost"
+                style={{
+                  width: "100%",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 10,
+                  justifyContent: ar ? "flex-end" : "flex-start",
+                  flexDirection: ar ? "row-reverse" : "row",
+                  border: "none",
+                  borderRadius: 0,
+                  padding: "11px 14px",
+                  background: "transparent",
+                  cursor: "pointer",
+                  fontSize: 13.5,
+                  fontWeight: 600,
+                  color: "var(--ink, #0A1228)",
+                }}
+                onClick={() => {
+                  setOpen(false);
+                  router.push("/settings");
+                }}
+              >
+                <User width={16} height={16} />
+                {t.nav.settings}
+              </button>
+            ) : null}
             <button
               type="button"
               role="menuitem"
@@ -146,35 +184,39 @@ export function UserAccountMenu({ compact = false }: { compact?: boolean }) {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => {
-          logout();
-          router.replace("/login");
-        }}
-        aria-label={ar ? "تسجيل الخروج" : "Déconnexion"}
-        title={ar ? "تسجيل الخروج" : "Déconnexion"}
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 6,
-          border: "1px solid rgba(185, 28, 28, 0.25)",
-          background: "rgba(254, 242, 242, 0.95)",
-          borderRadius: 999,
-          padding: compact ? "8px 10px" : "8px 12px",
-          cursor: "pointer",
-          fontSize: 12.5,
-          fontWeight: 700,
-          color: "#b91c1c",
-          boxShadow: "var(--shadow-sm, 0 8px 24px -12px rgba(14,21,38,0.18))",
-        }}
-      >
-        <LogOut width={14} height={14} />
-        {!compact ? (ar ? "خروج" : "Déconnexion") : null}
-      </button>
+      {!compact ? (
+        <button
+          type="button"
+          onClick={() => {
+            logout();
+            router.replace("/login");
+          }}
+          aria-label={ar ? "تسجيل الخروج" : "Déconnexion"}
+          title={ar ? "تسجيل الخروج" : "Déconnexion"}
+          className="topbar-logout-btn"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            border: "1px solid rgba(185, 28, 28, 0.25)",
+            background: "rgba(254, 242, 242, 0.95)",
+            borderRadius: 999,
+            padding: "8px 12px",
+            cursor: "pointer",
+            fontSize: 12.5,
+            fontWeight: 700,
+            color: "#b91c1c",
+            boxShadow: "var(--shadow-sm, 0 8px 24px -12px rgba(14,21,38,0.18))",
+          }}
+        >
+          <LogOut width={14} height={14} />
+          {ar ? "خروج" : "Déconnexion"}
+        </button>
+      ) : null}
       <button
         ref={btnRef}
         type="button"
+        className="topbar-account-btn"
         onClick={() => {
           setOpen((v) => {
             const next = !v;
@@ -197,12 +239,13 @@ export function UserAccountMenu({ compact = false }: { compact?: boolean }) {
           padding: compact ? "4px" : "4px 10px 4px 4px",
           cursor: "pointer",
           boxShadow: "var(--shadow-sm, 0 8px 24px -12px rgba(14,21,38,0.18))",
+          flexShrink: 0,
         }}
       >
         <span
           style={{
-            width: 34,
-            height: 34,
+            width: compact ? 36 : 34,
+            height: compact ? 36 : 34,
             borderRadius: "50%",
             background: "linear-gradient(155deg, var(--royal-700), var(--royal-900))",
             color: "#fff",

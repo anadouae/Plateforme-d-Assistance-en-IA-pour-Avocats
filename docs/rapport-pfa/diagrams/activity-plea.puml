@@ -1,18 +1,25 @@
 @startuml activity-plea
+!theme plain
 skinparam shadowing false
+title Activité — atelier plaidoirie (5 étapes UI)
+
 start
-:Dossier et pièces;
-:Dicter ou importer l'audio;
-repeat
-  :Transcrire (STT cloud);
-  :Corriger la forme;
-  :Contrôle contradictions;
-repeat while (Relire encore ?) is (oui)
-->non;
-:Rédiger le document;
-if (Valider ?) then (oui)
-  :Notifier les assistants;
+:Étape 1 — Dossier & pièces\n(sélection case_id, identité, OCR);
+:Étape 2 — Dictée\n(Web Speech ou Whisper /transcribe);
+:Étape 3 — Transcription\n(édition + POST /polish);
+if (Texte refusable /\nsans phrase ?) then (oui)
+  :Message d'erreur\n(pas d'invention IA);
+  stop
+else (non)
 endif
-:Exporter Word/PDF;
+:Clarification QCM optionnelle\n(POST /clarify, 0–5 questions);
+:Étape 4 — Rédaction IA\n(POST /compose + /revise);
+:Sauvegarde brouillon\n(POST/PATCH /drafts, status=draft);
+if (Valider pour l'équipe ?) then (oui)
+  :POST /drafts/{id}/validate\n(+ assign optionnel);
+else (non)
+endif
+:Étape 5 — Export\n(POST /export-docx et/ou /export-pdf);
+:UI : status → finalized\n(après export);
 stop
 @enduml

@@ -91,13 +91,13 @@ export function LexProductModal({
 
   return (
     <div
-      className={cn("fixed inset-0 flex items-end justify-center p-3 sm:items-center sm:p-4", zIndexClass)}
+      className={cn("fixed inset-0 flex items-end justify-center p-0 sm:items-center sm:p-4", zIndexClass)}
       role="dialog"
       aria-modal
       aria-labelledby={`lex-modal-title-${gemId}`}
     >
       <button type="button" className="absolute inset-0 bg-black/55" aria-label={closeLabel} onClick={onClose} />
-      <div className={cn("lex-modal relative", className)}>
+      <div className={cn("lex-modal relative z-[1] w-full sm:w-auto", className)}>
         <button
           type="button"
           className="lex-close lex-close--modal"

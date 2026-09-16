@@ -1,0 +1,40 @@
+@startuml seq-validate-assign
+!theme plain
+skinparam shadowing false
+title Validation / assignation — visibilité assistant + exports
+
+actor "Avocat /\nadmin cabinet" as Av
+participant "API\n/api/plaidoirie-templates" as API
+database PostgreSQL
+participant "Redis pub/sub\n+ WebSocket" as RT
+participant "E-mail" as Mail
+actor "Assistant\njuridique" as As
+
+alt Valider seule
+  Av -> API : POST /drafts/{id}/validate
+  API -> PostgreSQL : status = validated
+  API -> PostgreSQL : CabinetNotification (assistants)
+  API -> RT : publish_cabinet_event
+  API -> Mail : send_plea_validated_email (si configuré)
+else Assigner (met aussi en avant)
+  Av -> API : POST /drafts/{id}/assign
+  API -> PostgreSQL : assigned_to_user_id\n(+ status=validated si besoin)
+  API -> RT : événement temps réel
+end
+
+RT --> As : rafraîchir liste
+note over As, PostgreSQL
+  Filtre list drafts : assistant ne voit que\nstatus ∈ {validated, finalized}\n(pas les brouillons draft).
+end note
+
+As -> API : GET /drafts
+API --> As : plaidoiries validées / finalisées
+
+As -> API : POST /export-docx\nou POST /export-pdf
+API --> As : fichier binaire (.docx / .pdf)
+
+opt Après export côté avocat (UI)
+  Av -> API : PATCH /drafts/{id}\n(status = finalized)
+  note right : markFinalizedAfterExport (frontend)
+end
+@enduml

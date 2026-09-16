@@ -36,20 +36,27 @@ export function TeamPanel() {
     setLoading(true);
     setError("");
     try {
-      const [team, invites, entitlements] = await Promise.all([
-        api.getTeam(),
-        api.listTeamInvites().catch(() => [] as CabinetInviteItem[]),
-        api.getBillingEntitlements().catch(() => null),
-      ]);
-      setMembers(team);
-      setPersonalInvites(invites);
-      setEnt(entitlements);
+      // Membres d'abord (critique) — timeout court pour ne pas rester en spinner infini.
+      const team = await api.getTeam().catch((e) => {
+        throw e instanceof ApiError ? e : new ApiError("Erreur équipe", 0);
+      });
+      setMembers(Array.isArray(team) ? team : []);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Erreur");
+      setMembers([]);
+      setError(e instanceof ApiError ? e.message : ar ? "تعذّر تحميل الفريق." : "Impossible de charger l’équipe.");
     } finally {
       setLoading(false);
     }
-  }, []);
+    // Secondaires : ne bloquent jamais l’UI
+    void api
+      .listTeamInvites()
+      .then((invites) => setPersonalInvites(Array.isArray(invites) ? invites : []))
+      .catch(() => setPersonalInvites([]));
+    void api
+      .getBillingEntitlements()
+      .then((entitlements) => setEnt(entitlements))
+      .catch(() => setEnt(null));
+  }, [ar]);
 
   useEffect(() => {
     void load();

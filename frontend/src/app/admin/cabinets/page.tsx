@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { api, ApiError, type AdminCabinet, type AdminCabinetDetail } from "@/lib/api";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useTranslations } from "@/store/locale";
 
 function statusLabel(status: string) {
   if (status === "active") return { text: "Actif", cls: "bg-green-100 text-green-700" };
@@ -29,6 +30,7 @@ function fmtDate(iso?: string | null) {
 }
 
 export default function AdminCabinetsPage() {
+  const t = useTranslations().adminPlatform;
   const askConfirm = useConfirm();
   const [cabinets, setCabinets] = useState<AdminCabinet[]>([]);
   const [detail, setDetail] = useState<AdminCabinetDetail | null>(null);
@@ -125,10 +127,8 @@ export default function AdminCabinetsPage() {
     <AdminShell>
       <div className="space-y-6 p-6">
         <div>
-          <h1 className="font-serif text-2xl font-bold text-[#0B1A4D]">Cabinets</h1>
-          <p className="text-sm text-slate-600">
-            Vue plateforme — abonnements, résiliations et comptes supprimés.
-          </p>
+          <h1 className="font-serif text-2xl font-bold text-[#0B1A4D]">{t.cabinetsTitle}</h1>
+          <p className="text-sm text-slate-600">{t.cabinetsSubtitle}</p>
         </div>
 
         {insights && insights.total > 0 ? (
@@ -277,7 +277,7 @@ export default function AdminCabinetsPage() {
               <section className="rounded-2xl border border-[#C9A227]/35 bg-gradient-to-br from-white to-[#F7F5F0] p-4">
                 <h3 className="font-semibold text-[#0B1A4D]">Abonnement & factures</h3>
                 <p className="mt-1 text-xs text-slate-500">
-                  Vue facturation du cabinet — plan, reçus d’essai et factures téléchargeables.
+                  Vue facturation du cabinet — plan et factures payantes (> 0 MAD) uniquement.
                 </p>
 
                 {detail.subscription ? (
@@ -332,7 +332,7 @@ export default function AdminCabinetsPage() {
                     onBusy={setInvBusy}
                     onError={setInvError}
                     compact
-                    emptyHint="Aucun reçu ni facture pour ce cabinet."
+                    emptyHint="Aucune facture payante (> 0 MAD) pour ce cabinet."
                   />
                 </div>
 

@@ -15,6 +15,7 @@ from app.models import (
     CaseTask,
     Document,
     PlaidoirieDraft,
+    PlaidoirieRevision,
     User,
     UserRole,
 )
@@ -331,6 +332,16 @@ def _purge_case_dependencies(db: Session, case: Case) -> None:
     db.query(CaseNote).filter(CaseNote.case_id == case.id).delete(synchronize_session=False)
     db.query(CaseTask).filter(CaseTask.case_id == case.id).delete(synchronize_session=False)
     db.query(AgendaEvent).filter(AgendaEvent.case_id == case.id).delete(synchronize_session=False)
+
+    # Révisions AVANT brouillons (FK draft_id) — sinon IntegrityError et le dossier « revient »
+    draft_ids = [
+        r[0]
+        for r in db.query(PlaidoirieDraft.id).filter(PlaidoirieDraft.case_id == case.id).all()
+    ]
+    if draft_ids:
+        db.query(PlaidoirieRevision).filter(PlaidoirieRevision.draft_id.in_(draft_ids)).delete(
+            synchronize_session=False
+        )
     db.query(PlaidoirieDraft).filter(PlaidoirieDraft.case_id == case.id).delete(
         synchronize_session=False
     )
@@ -354,17 +365,14 @@ def delete_case(
     if not case:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dossier introuvable")
 
-    if case.responsible_id:
-        if case.responsible_id != user.id:
+    # Admin cabinet : peut supprimer tout dossier du cabinet.
+    # Avocat : uniquement s’il est le responsable.
+    if user.role != UserRole.ADMIN_CABINET:
+        if not case.responsible_id or case.responsible_id != user.id:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Seul l’avocat responsable de ce dossier peut le supprimer.",
+                detail="Seul l’avocat responsable (ou l’admin cabinet) peut supprimer ce dossier.",
             )
-    elif user.role != UserRole.ADMIN_CABINET:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Seul l’avocat responsable de ce dossier peut le supprimer.",
-        )
 
     log_audit(db, "case.delete", user=user, request=request, details=case.reference)
     _purge_case_dependencies(db, case)

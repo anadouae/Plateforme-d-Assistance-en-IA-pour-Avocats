@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth";
 import { useClientLocale, useTranslations } from "@/store/locale";
@@ -23,12 +24,14 @@ import { PageTransition } from "@/components/motion/page-transition";
 import { useOnboardingTour } from "@/hooks/use-onboarding";
 import { getUiDensity, getUiTheme } from "@/hooks/use-ui-prefs";
 import { workspaceRoleLabel } from "@/lib/i18n/labels";
+import { canManageTeam } from "@/lib/roles";
 import { useCabinetRealtime } from "@/hooks/use-cabinet-realtime";
+import { useIsMobile } from "@/hooks/use-is-mobile";
 import { api } from "@/lib/api";
 
 function AmbientBlobs() {
   return (
-    <div className="blobs" aria-hidden suppressHydrationWarning>
+    <div className="blobs max-md:hidden" aria-hidden suppressHydrationWarning>
       <div className="blob b1" />
       <div className="blob b2" />
       <div className="blob b3" />
@@ -38,7 +41,7 @@ function AmbientBlobs() {
 
 function GooFilter() {
   return (
-    <svg width="0" height="0" aria-hidden style={{ position: "absolute" }}>
+    <svg width="0" height="0" aria-hidden className="max-md:hidden" style={{ position: "absolute" }}>
       <filter id="goo">
         <feGaussianBlur in="SourceGraphic" stdDeviation="7" result="b" />
         <feColorMatrix
@@ -72,6 +75,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const firstPath = useRef(true);
   const { open: tourOpen, complete: completeTour } = useOnboardingTour();
   const [cabinetLogo, setCabinetLogo] = useState<string | null>(null);
+  const isMobile = useIsMobile();
   useCabinetRealtime(!!token || !!user);
 
   useEffect(() => {
@@ -149,52 +153,88 @@ export function AppShell({ children }: { children: ReactNode }) {
         <AppSidebar />
         <div className="main">
           <header className="topbar">
-            <div className="topbar-identity">
-              <div className="greeting">
-                {greeting} <b>{displayName}</b>
-              </div>
-              <div className="topbar-workspace-role">{workspaceRoleLabel(user?.role, locale)}</div>
-              <div className="topbar-cabinet" title={cabinetName}>
-                {cabinetLogo ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={cabinetLogo} alt="" className="topbar-cabinet__logo" />
-                ) : (
-                  <span className="topbar-cabinet__mark" aria-hidden>
-                    {cabinetName.slice(0, 1).toUpperCase()}
-                  </span>
-                )}
-                <span className="topbar-cabinet__name">{cabinetName}</span>
+            <div className="topbar-start">
+              <Link href="/dashboard" className="topbar-lexhub" aria-label="LexHub" data-tour-id="brand-mobile">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/logo-lexhub-cube.png?v=cube-3"
+                  alt=""
+                  width={48}
+                  height={48}
+                  className="topbar-lexhub__img"
+                  decoding="async"
+                />
+                <span className="topbar-lexhub__meta">
+                  <span className="topbar-lexhub__word">LexHub</span>
+                </span>
+              </Link>
+              <div className="topbar-identity">
+                <div className="greeting">
+                  {greeting} <b>{displayName}</b>
+                </div>
+                <div className="topbar-workspace-role">{workspaceRoleLabel(user?.role, locale)}</div>
+                <div className="topbar-cabinet" title={cabinetName}>
+                  {cabinetLogo ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={cabinetLogo} alt="" className="topbar-cabinet__logo" />
+                  ) : (
+                    <span className="topbar-cabinet__mark" aria-hidden>
+                      {cabinetName.slice(0, 1).toUpperCase()}
+                    </span>
+                  )}
+                  <span className="topbar-cabinet__name">{cabinetName}</span>
+                </div>
               </div>
             </div>
             <div
-              className="lang-toggle"
-              style={{ display: "flex", alignItems: "center", gap: 12 }}
+              className="lang-toggle topbar-end"
+              style={{ display: "flex", alignItems: "center", gap: isMobile ? 6 : 12 }}
             >
               <TopbarActionIcons />
-              <div data-tour-id="lang-toggle">
+              <div data-tour-id="lang-toggle" className="topbar-lang-wrap">
                 <LanguageSwitch />
               </div>
-              <UserAccountMenu />
+              <UserAccountMenu compact={isMobile} />
             </div>
           </header>
           <div className="main-scroll">
             <SubscriptionBanner />
-            <SmartInsightsStrip />
+            {user?.role !== "admin_webvoice" &&
+            user?.cabinet_profile_complete === false &&
+            canManageTeam(user?.role) ? (
+              <div
+                className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5 text-sm text-sky-950"
+                role="status"
+              >
+                <span>
+                  {locale === "ar"
+                    ? "تذكير: أكملوا اسم المكتب والمدينة والهيئة من الإعدادات لتحسين ترويسة Word. يمكنكم العمل الآن بدون ذلك."
+                    : "Rappel : complétez le nom du cabinet, la ville et le barreau dans Paramètres pour un meilleur en-tête Word. Vous pouvez travailler sans cela."}
+                </span>
+                <a
+                  href="/settings#cabinet"
+                  className="shrink-0 rounded-lg bg-[#0B1A4D] px-3 py-1.5 text-xs font-semibold text-white"
+                >
+                  {locale === "ar" ? "الإعدادات" : "Paramètres"}
+                </a>
+              </div>
+            ) : null}
+            {!isMobile ? <SmartInsightsStrip /> : null}
             <div className="panel show">
               <PageTransition>{children}</PageTransition>
             </div>
           </div>
         </div>
       </div>
-      {routeBusy ? (
+      {routeBusy && !isMobile ? (
         <div className="sanad-route-bar" aria-hidden>
           <span />
         </div>
       ) : null}
       <LexHubOnboarding open={tourOpen} onComplete={() => void completeTour()} />
       <ProfileCompletionModal />
-      <PlansNudgeModal />
-      <ReferralNudgeModal />
+      {!isMobile ? <PlansNudgeModal /> : null}
+      {!isMobile ? <ReferralNudgeModal /> : null}
       <CommandPalette />
       <CreditSpendHost />
       <QuotaGuidanceHost />

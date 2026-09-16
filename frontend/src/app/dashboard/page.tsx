@@ -207,7 +207,7 @@ export default function DashboardPage() {
                         )}
                       >
                         <span className="min-w-0">
-                          <span className="block truncate text-sm font-medium text-[var(--ink)]">
+                          <span className="block line-clamp-2 break-words text-sm font-medium text-[var(--ink)]" dir="auto">
                             {d.title || (ar ? "مرافعة" : "Plaidoirie")}
                           </span>
                           <span className="text-xs text-[var(--ink-soft)]">
@@ -250,7 +250,7 @@ export default function DashboardPage() {
                         )}
                       >
                         <span className="min-w-0">
-                          <span className="block truncate text-sm font-medium text-[var(--ink)]">
+                          <span className="block line-clamp-2 break-words text-sm font-medium text-[var(--ink)]" dir="auto">
                             {d.title || (ar ? "مرافعة" : "Plaidoirie")}
                           </span>
                           <span className="text-xs text-[var(--ink-soft)]">

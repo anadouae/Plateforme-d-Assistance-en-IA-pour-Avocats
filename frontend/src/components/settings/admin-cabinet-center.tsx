@@ -112,14 +112,14 @@ export function AdminCabinetCenter() {
               {inTrial ? (
                 <p className="text-xs text-slate-500">
                   {ar
-                    ? "أثناء التجربة لا تُنشأ فاتورة مدفوعة. تظهر الفواتير تلقائياً بعد بدء الاشتراك المدفوع."
-                    : "Pendant l’essai : aucune facture payante. Les factures apparaissent automatiquement après le début de l’abonnement."}
+                    ? "أثناء التجربة لا تظهر فواتير بـ 0 درهم. تظهر الفواتير بعد دفع حقيقي فقط."
+                    : "Pendant l’essai : aucune facture à 0 MAD. Les factures apparaissent après un paiement réel (> 0 MAD)."}
                 </p>
               ) : (
                 <p className="text-xs text-slate-500">
                   {ar
-                    ? "الفواتير تُنشأ عند الدفع — تظهر أدناه مع حالتها (مدفوعة / غير مدفوعة)."
-                    : "Les factures sont créées au paiement — liste ci-dessous avec statut (payée / en attente)."}
+                    ? "الفواتير تُنشأ عند الدفع — القائمة تعرض فقط المبالغ المدفوعة (> 0 درهم)."
+                    : "Les factures sont créées au paiement — la liste n’affiche que les montants > 0 MAD."}
                 </p>
               )}
               {msg ? <p className="text-xs text-emerald-700">{msg}</p> : null}

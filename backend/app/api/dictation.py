@@ -26,6 +26,8 @@ _PLAIDOIRIE_TYPE_PATTERN = "^(" + "|".join(re.escape(k) for k in sorted(PLAIDOIR
 
 def _norm_lang(language: str | None) -> str:
     lang = (language or "ar").strip().lower()
+    if lang in ("auto", "detect", ""):
+        return "auto"
     if lang.startswith("fr"):
         return "fr"
     return "ar"
@@ -308,11 +310,13 @@ def polish_dictation_endpoint(
     alerts = detect_dictation_contradictions(polished, source=data.text)
     from app.services.dictation import _stt_garbage_heavy
 
-    # Ne jamais écraser ChatGPT sur du bruit STT ; sinon filet anti-résumé prudent
+    # Ne jamais écraser ChatGPT sur phrase courte / fautes (approximation) ;
+    # filet anti-résumé seulement sur textes longs « propres ».
     if (
         any(a.kind == "missing_fact" for a in alerts)
         and not _stt_garbage_heavy(data.text or "")
         and provider not in ("fidelity", "local", "rules", "none")
+        and len((data.text or "").strip()) >= 160
     ):
         src_tokens = (data.text or "").split()
         src_uniq = (len(set(src_tokens)) / max(1, len(src_tokens))) if src_tokens else 1.0
@@ -547,6 +551,7 @@ class ReviseResponse(BaseModel):
     title: str
     body: str
     provider: str
+    reply: str = ""
 
 
 @router.post("/revise", response_model=ReviseResponse)
@@ -570,7 +575,7 @@ def revise_plaidoirie(
 
     _ent, slot = begin_ai_action(db, user.cabinet_id, "revise", request=request)
     try:
-        title, body, provider = revise_plaidoirie_body(
+        title, body, provider, reply = revise_plaidoirie_body(
             db,
             cabinet_id=user.cabinet_id,
             case_id=data.case_id,
@@ -589,7 +594,7 @@ def revise_plaidoirie(
         )
         finish_ai_action(db, user.cabinet_id, "revise", slot_token=slot, success=True)
         db.commit()
-        return ReviseResponse(title=title, body=body, provider=provider)
+        return ReviseResponse(title=title, body=body, provider=provider, reply=reply or "")
     except Exception:
         finish_ai_action(db, user.cabinet_id, "revise", slot_token=slot, success=False)
         db.rollback()
