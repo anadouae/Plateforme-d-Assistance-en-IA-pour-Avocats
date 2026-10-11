@@ -3,123 +3,236 @@
 
 \section{Stack technique déployée}
 
+Sur \url{https://lexhub.space}, le navigateur parle à Caddy (HTTPS), qui route vers Next.js et FastAPI. FastAPI lit PostgreSQL, Redis et MinIO, délègue à Celery, et appelle ChatGPT, OCR, Whisper, Resend ou Turnstile selon le besoin.
+
 \begin{table}[H]
 \centering
-\caption{Technologies de production (\url{https://lexhub.space})}
+\caption{Technologies LexHub}
 \label{tab:stack}
-\begin{tabular}{@{}ll@{}}
-\toprule
-\textbf{Couche} & \textbf{Choix réel} \\
-\midrule
-Interface & Next.js, TypeScript, Tailwind ; FR / AR \\
+\small
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{|p{3.0cm}|p{10.2cm}|}
+\hline
+\rowcolor{tablehead}
+\theadcell{Couche} & \theadcell{Choix déployé} \\
+\hline
+Langages & Python (API, Celery, masquage PII)~; TypeScript (Next.js)~; SQL \\
+\hline
+Interface & Next.js, Tailwind CSS, bilingue FR / AR \\
+\hline
 API & FastAPI, SQLAlchemy, Alembic \\
-Données & PostgreSQL~16, MinIO (objets), Redis~7 \\
+\hline
+Données & PostgreSQL~16, Redis~7, MinIO \\
+\hline
 Tâches & Celery (OCR, e-mails, rappels) \\
-Dictée & Web Speech API (Chrome / Edge) ; MediaRecorder $\rightarrow$ Whisper OpenAI (Firefox + Terminé) ; import audio \\
-IA texte & Modèle de langage cloud (composition, révision pédagogue, synthèse), consignes anti-invention ; noms masqués avant l'IA \\
-OCR & OCR cloud sur les pièces \\
-Export & Word (.docx) officiel + PDF (RTL arabe, armoiries, en-tête cabinet) \\
-Infra & Docker Compose, Caddy (TLS), VPS, images GHCR \\
-Exploitation BDD & Adminer conteneurisé via tunnel SSH local ; pas d'exposition web publique \\
-\bottomrule
+\hline
+Dictée & Web Speech (Chrome/Edge)~; Whisper (Firefox / audio) \\
+\hline
+IA texte & ChatGPT (OpenAI)~: correction et rédaction \\
+\hline
+OCR / export & OCR cloud~; Word (.docx) avec en-tête cabinet \\
+\hline
+Infra & Caddy, Docker Compose, VPS, GHCR (CI/CD) \\
+\hline
+Sécurité / mail & Turnstile (après 3 échecs)~; Resend (OTP, invitations, rappels) \\
+\hline
 \end{tabular}
 \end{table}
 
-La dictée combine deux voies : (1)~\textit{Web Speech API} dans Chrome / Edge pour un aperçu instantané ; (2)~\textit{MediaRecorder} puis transcription \textbf{Whisper} (OpenAI) lorsque le navigateur ne fournit pas Web Speech (Firefox inclus), avec boutons \textbf{Terminé} / \textbf{Annuler} et détection automatique FR / AR. L'import de fichier audio emprunte la même voie Whisper.
+\section{Préfixes API}
+\label{sec:apis-prod}
+
+Le frontend Next.js appelle FastAPI via ces préfixes (JWT).
+
+\begin{table}[H]
+\centering
+\caption{Préfixes API LexHub}
+\label{tab:apis}
+\footnotesize
+\renewcommand{\arraystretch}{1.22}
+\begin{tabular}{|p{4.6cm}|p{8.6cm}|}
+\hline
+\rowcolor{tablehead}
+\theadcell{Préfixe} & \theadcell{Rôle} \\
+\hline
+\texttt{/api/auth} & Inscription OTP, login, JWT, Turnstile, 2FA \\
+\hline
+\texttt{/api/dictation} & Whisper, correction, clarification, composition, révision \\
+\hline
+\texttt{/api/plaidoirie-}\newline\texttt{templates} & Brouillons, validation, assignation, export Word \\
+\hline
+\texttt{/api/documents} & Upload MinIO, OCR, questions sur pièce \\
+\hline
+\texttt{/api/cases} & Dossiers, analyse, clé de barre, planning lié \\
+\hline
+\texttt{/api/billing} & Plans, packs, sièges avocats +99~MAD, PAYG, factures \\
+\hline
+\texttt{/api/admin/billing} & Édition des plans (admin plateforme) \\
+\hline
+\texttt{/api/team} & Invitations e-mail, membres, rôles \\
+\hline
+\texttt{/api/workspace} & Tableau de bord cabinet \\
+\hline
+\texttt{/api/settings} & Charte, sécurité, suppression de compte \\
+\hline
+\texttt{/api/notifications} & Notifications in-app et digest \\
+\hline
+\texttt{/api/summarize} & Synthèses documentaires \\
+\hline
+\texttt{/api/corpus} & Corpus textuel cabinet \\
+\hline
+\texttt{/api/admin} & Cabinets, suspension, journal d'audit \\
+\hline
+\texttt{/api/ws/cabinet} & WebSocket temps réel (Redis) \\
+\hline
+\end{tabular}
+\end{table}
 
 \section{Rôles et espace cabinet}
 
-L'\textbf{admin cabinet} a le même atelier que l'avocat, plus l'équipe, le plan, le logo et le parrainage. L'\textbf{avocat} dicte, rédige, valide et exporte, sans payer. L'\textbf{assistant} ouvre le menu \textbf{Plaidoiries validées} : aperçu, consultation et téléchargement Word (.docx) / PDF des plaidoiries au statut \textit{validated} ou \textit{finalized} ; il dépose des pièces.
+Chaque rôle voit un périmètre distinct. Les détails des cas d'utilisation figurent au chapitre~\ref{ch:analyse}~; ici l'essentiel pour l'usage déployé.
 
-L'assistant n'utilise pas l'atelier de dictée, ni les fonctions d'IA de rédaction, de synthèse documentaire, ou de fiche orale d'audience (la \textbf{clé de barre} : document de préparation à plaider, généré depuis le dossier --- ce n'est ni un mot de passe, ni un code d'accès).
+\subsection{Avocat}
+\begin{enumerate}[leftmargin=*,label=\arabic*.]
+  \item Dicte, corrige, rédige, valide et exporte.
+  \item Gère dossiers, pièces, planning et activité.
+  \item Ne gère pas le paiement ni les invitations.
+\end{enumerate}
 
-L'\textbf{admin plateforme} (WebVoice) supervise les cabinets depuis \texttt{/admin}, sans lire le contenu des affaires.
+\subsection{Admin cabinet}
+\begin{enumerate}[leftmargin=*,label=\arabic*.]
+  \item Dispose du même atelier que l'avocat.
+  \item Invite l'équipe, gère le plan, le logo et le parrainage.
+  \item Accède au menu Équipe et aux paramètres de facturation.
+\end{enumerate}
 
-Le menu cabinet (dock fixe en bas sur mobile) : Plaidoirie, Dossiers, Documents, Planning, Activité, Équipe (admin cabinet). Paramètres : cabinet, plan et usage, sécurité, zone sensible. L'admin plateforme LexHub a un dock dédié (Aperçu, Cabinets, Plans, Leads, Logs, Coach) et un en-tête marque \textbf{LexHub} --- sans lien Paramètres cabinet.
+\subsection{Assistant juridique}
+\begin{enumerate}[leftmargin=*,label=\arabic*.]
+  \item Consulte et télécharge les plaidoiries \textbf{validées} ou \textbf{finalisées} uniquement.
+  \item Dépose des pièces et consulte le planning.
+  \item N'utilise ni dictée, ni rédaction IA, ni synthèse, ni clé de barre.
+\end{enumerate}
 
-\section{Expérience multi-support (desktop et mobile)}
-\label{sec:mobile}
+\subsection{Admin plateforme}
+\begin{enumerate}[leftmargin=*,label=\arabic*.]
+  \item Supervise LexHub depuis \texttt{/admin} sans lire le contenu des dossiers.
+  \item Active, suspend ou purge un cabinet~; édite les plans~; consulte le journal d'audit.
+  \item Les lifecycle emails partent automatiquement (Celery + Resend), sans action manuelle.
+\end{enumerate}
 
-LexHub est un SaaS \textbf{web} unique (\url{https://lexhub.space}) : il n'existe pas d'application native App Store / Play Store séparée. L'atout est la \textbf{continuité d'usage} : le même compte, les mêmes rôles et le même contrôle d'accès sur \textbf{ordinateur} (rédaction approfondie) et sur \textbf{smartphone} (continuité hors cabinet).
-
-\paragraph{Quel type de mobile ?}
-Il ne s'agit pas d'une liste de marques, mais d'une adaptation aux \textbf{écrans tactiles courants} (largeurs typiques $360$--$430$\,px : iPhone, Galaxy, etc.), validée en navigateur mobile et en émulation (outils développeur). Au-delà d'environ $880$\,px de largeur, l'interface retrouve le mode bureau (dock latéral).
-
-\paragraph{Impact UX.}
-Sur téléphone : navigation en \textbf{dock fixé en bas} (gestes au pouce), mise en page mono-colonne, en-tête allégé. Les rôles avocat, assistant et admin plateforme conservent leurs spécificités (pas de dictée pour l'assistant ; pas de lecture des affaires pour l'admin plateforme).
-
-\paragraph{Valeur métier.}
-L'avocat peut reprendre un brouillon ou consulter un dossier en déplacement ; l'assistant récupère une plaidoirie validée ; l'exploitation LexHub reste pilotable depuis un mobile. Desktop et mobile ne sont pas deux produits : c'est \textbf{une seule expérience cabinet}, adaptée à la forme de l'écran.
+\noindent Menu cabinet~: Plaidoirie, Dossiers, Documents, Planning, Activité, Équipe (admin cabinet). Paramètres~: cabinet, plan et usage, sécurité.
 
 \section{Inscription et entrée en équipe}
 
-L'inscription d'un \textbf{nouveau cabinet} : e-mail, OTP à six chiffres, nom du cabinet, mot de passe. Le cabinet est créé \textbf{actif} (plan Découverte) ; la connexion est immédiate. Il n'y a pas de validation LexHub à l'inscription.
+L'inscription d'un \textbf{nouveau cabinet} : e-mail, OTP à six chiffres (Resend), nom du cabinet, mot de passe. Le cabinet est créé \textbf{actif} (plan Découverte, rôle ADMIN\_CABINET, essai). Aucun JWT n'est délivré à l'inscription ; l'utilisateur se connecte ensuite.
 
-Pour rejoindre un cabinet \emph{existant}, l'admin envoie une \textbf{invitation par e-mail}. Le destinataire ouvre le lien, choisit son propre mot de passe, et accède au cabinet. Il n'existe plus de code cabinet circulant dans l'équipe.
+Pour rejoindre un cabinet \emph{existant}, l'admin envoie une \textbf{invitation par e-mail} (Resend). Le destinataire ouvre le lien, choisit son propre mot de passe, et accède au cabinet.
 
 \section{Les cinq étapes de la plaidoirie}
 \label{sec:guide}
 
-Libellés de production (rail « Étape $X$ / $5$ ») --- figures~\ref{fig:plaidoirie} et~\ref{fig:transcription}.
+Libellés du rail « Étape $X$ / $5$ » (capture en annexe, figure~\ref{fig:plaidoirie}).
 
 \begin{enumerate}[leftmargin=1.4em]
-  \item \textbf{Dossier \& pièces.} Dossier obligatoire. Fiche d'identité juridique. À la création, chaque champ affiche une \textbf{aide contextuelle} (pourquoi le renseigner, exemple). Ajout de pièces. Ces données nourrissent la rédaction ; elles n'inventent pas le fond.
-  \item \textbf{Dictée.} Reconnaissance vocale du navigateur (Web Speech, Chrome / Edge) ou capture micro \textbf{Whisper} (MediaRecorder --- Firefox inclus) ou import audio. Commandes démarrer / arrêter. La langue parlée (FR / AR) peut être détectée automatiquement.
-  \item \textbf{Transcription.} Texte brut éditable. Bouton \textbf{Corriger} : forme standard, sans résumer ; les fautes de frappe / STT sont approximées intelligemment (pas de refus pour un texte encore compréhensible). Un texte sans phrase (touches au hasard) est \textbf{refusé} : l'IA n'invente pas une affaire. Surlignage orange des substitutions STT et alertes de contradiction. Avant la rédaction : feuille \textbf{Clarification rapide} (QCM 0--5) : LexHub anonymise dossier + dictée, le LLM prépare les questions, l'avocat confirme ou passe ; les réponses alimentent la composition. Le bouton \textbf{Nouvelle plaidoirie} propose de reprendre un brouillon local ou d'ouvrir une page vide (plus de réouverture silencieuse).
-  \item \textbf{Rédaction IA.} Document éditable (structure \texttt{أولاً} \ldots \texttt{خامساً}, \texttt{لهذه الأسباب} / الملتمسات). Panneau \textbf{Assistant IA --- modifications} : historique type chat ; consignes ou questions en langage naturel (fautes OK) ; l'IA \textbf{répond pédagogiquement} (ex.\ rôle du titre « pour ces motifs ») \textbf{et} met à jour le corps (remplissage des sections vides à partir des faits déjà présents). UX micro alignée sur les assistants grand public : bandeau d'écoute, boutons \textbf{Terminé} / \textbf{Annuler}, détection auto FR/AR sans changer l'UI ; \textbf{Annuler la requête} / \textbf{Modifier la requête} pendant ou après l'envoi. L'avocat enregistre, valide ou assigne.
-  \item \textbf{Export officiel Word (.docx) et PDF.} Génération du document Word officiel (standard modifiable des juridictions marocaines) et du PDF homologue : typographie Noto Naskh Arabic RTL, logo ou armoiries centrés, en-tête bilingue. Le .docx reste 100\,\% éditable avant audience. Après export réussi : statut \textit{finalized} (mise à jour UI). Les alertes « infos manquantes » de la rédaction ne s'affichent plus à cette étape.
+  \item \textbf{Dossier \& pièces.} Dossier obligatoire. Fiche d'identité juridique. Ajout de pièces.
+  \item \textbf{Dictée.} Web Speech (Chrome/Edge) ou Whisper (Firefox / fichier audio).
+  \item \textbf{Transcription.} Texte brut éditable. Bouton \textbf{Corriger} (ChatGPT) : forme standard, sans résumer. Un texte sans phrase est \textbf{refusé}. Avant la rédaction : feuille \textbf{Clarification rapide}.
+  \item \textbf{Rédaction IA.} Document éditable (ChatGPT), puis panneau de révision en langage naturel. L'avocat enregistre, valide ou assigne.
+  \item \textbf{Export Word (.docx).} Document officiel : en-tête cabinet, typographie arabe. Après export réussi : statut \textit{finalized}.
 \end{enumerate}
 
 \section{Validation, assignation et assistant}
 
 \begin{table}[H]
 \centering
-\caption{Collaboration autour d'une plaidoirie (comportement déployé)}
+\caption{Collaboration autour d'une plaidoirie}
 \label{tab:collab}
 \small
-\begin{tabular}{@{}lp{9.8cm}@{}}
-\toprule
-\textbf{Action} & \textbf{Effet réel} \\
-\midrule
-Valider & Statut \textit{validated} : \textbf{tous} les assistants du cabinet la voient. \\
-Assigner & Valide le brouillon si besoin et la met en avant pour l'assistant choisi. \\
-Exporter Word (.docx) / PDF & Statut \textit{finalized} : classée « Finalisée » (distinct du brouillon local). \\
+\renewcommand{\arraystretch}{1.25}
+\begin{tabular}{|p{3.0cm}|p{10.2cm}|}
+\hline
+\rowcolor{tablehead}
+\theadcell{Action} & \theadcell{Effet} \\
+\hline
+Valider & Statut \textit{validated}~: tous les assistants du cabinet la voient. \\
+\hline
+Assigner & Valide si besoin et met la plaidoirie en avant pour l'assistant choisi. \\
+\hline
+Exporter Word & Statut \textit{finalized}. \\
+\hline
 Épingler & Mise en tête de liste. \\
-Dévalider & Retour brouillon : plus visible des assistants. \\
-\bottomrule
+\hline
+Dévalider & Retour brouillon~: invisible des assistants. \\
+\hline
 \end{tabular}
 \end{table}
 
-Trois statuts en production : \textbf{brouillon} (\texttt{draft}), \textbf{validée} (\texttt{validated}), \textbf{finalisée} (\texttt{finalized}). Valider pour l'assistant et finaliser après export sont deux gestes distincts.
-
-L'assistant juridique est un collaborateur du cabinet, pas le moteur d'IA. Son droit de lecture des plaidoiries dépend du \textbf{statut validé ou finalisé} du document, non du fait d'être nommé dans une assignation. L'assignation oriente le travail ; elle ne constitue pas, à elle seule, le contrôle d'accès.
+Trois statuts~: brouillon, validée, finalisée. L'assistant ne voit que le validé ou le finalisé.
 
 \section{Sécurité applicative}
 \label{sec:securite}
 
-La sécurité de LexHub combine des contrôles \emph{d'accès}, d'\emph{isolation} et d'\emph{exploitation}.
-
 \paragraph{Accès.}
-Chaque requête authentifiée porte un JWT. Les routes sont filtrées par rôle (avocat, assistant, admin cabinet, admin plateforme). L'inscription d'un cabinet passe par un OTP e-mail. Les invitations d'équipe sont des liens à usage nominatif, expirables, distincts du parrainage. Une authentification à deux facteurs (TOTP) est optionnelle.
+Chaque requête authentifiée porte un JWT. Les routes sont filtrées par rôle. L'inscription d'un cabinet passe par un OTP e-mail (Resend). Les invitations d'équipe sont des liens nominatifs expirables. Une authentification à deux facteurs (TOTP) est optionnelle.
 
 \paragraph{Anti-robot (Cloudflare Turnstile).}
-Turnstile est un widget Cloudflare qui distingue un humain d'un script, sans puzzle visuel du type CAPTCHA classique. Sur LexHub il n'est \textbf{pas} affiché à la première connexion : le formulaire e-mail / mot de passe suffit. Après \textbf{trois} échecs (seuil configuré), le frontend charge le widget ; l'API refuse le login tant que le jeton n'est pas validé auprès de Cloudflare. Le mécanisme est \textbf{actif en production} (clés réelles, pas les clés de test). Il ne s'applique pas à l'inscription (OTP e-mail) ni aux parcours métier (dictée, plaidoirie). En environnement \texttt{production}, le backend refuse de démarrer sans ces clés.
-
-\paragraph{Confidentialité avant IA.}
-Avant tout appel LLM (composition, clarification QCM, révision), les noms des parties sont remplacés par des jetons (\texttt{PARTIE\_A}, \ldots) puis restaurés dans le document présenté à l'avocat. L'audio Whisper et les pièces OCR transitent chiffrés (HTTPS) ; le stockage objet (MinIO) n'est pas exposé publiquement.
+Après \textbf{trois} échecs de login, le frontend charge le widget Turnstile ; l'API refuse le login tant que le jeton n'est pas validé auprès de Cloudflare.
 
 \paragraph{Isolation.}
-Toutes les entités métier sont rattachées à un \texttt{cabinet\_id}. L'API refuse une ressource hors locataire. Le navigateur n'ouvre jamais PostgreSQL : il ne parle qu'à FastAPI en HTTPS.
+Toutes les entités métier sont rattachées à un \texttt{cabinet\_id}. L'API refuse une ressource hors locataire. Le navigateur ne parle qu'à FastAPI en HTTPS.
 
-\paragraph{Données au repos.}
-Fichiers dans le magasin d'objets ; base relationnelle sur le VPS, ports liés à l'hôte local. Adminer, lorsqu'il est utilisé, n'écoute que sur \texttt{127.0.0.1} et s'atteint par tunnel SSH.
+\paragraph{Pseudonymisation côté serveur (avant l'API).}
+Coulisse backend, pas une étape de l'atelier~: juste avant l'appel à l'API OpenAI, \texttt{pii\_mask.py} remplace les identités par des codes (\texttt{PARTIE\_1}, \texttt{CIN\_1}, \ldots)~; \texttt{pii\_store.py} conserve la correspondance en PostgreSQL~; après la réponse, \texttt{unmask\_text} restaure les vrais noms pour l'UI et le Word. Le module traite noms (dossier + heuristiques dictée) et identifiants structurés (regex CIN / tél / e-mail). Ce n'est pas un NER entraîné~: une PII non reconnue peut partir en clair (marge d'erreur). Détail séquence~: diagramme~\ref{sec:seq-pii}.
 
-\paragraph{Abus.}
-Limitation de débit sur l'authentification et les endpoints sensibles, complétée par Turnstile après échecs répétés. Journal d'activité. L'admin plateforme suspend ou purge un cabinet sans ouvrir les dossiers. Le journal d'audit plateforme enregistre l'adresse IP de la requête (traçabilité des connexions, pratique standard des SaaS) ; ce n'est pas une donnée métier. Les factures visibles côté plateforme sont les reçus de chaque cabinet (essai, packs), pas un livre de comptes interne WebVoice.
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.88\textwidth]{fig_security_layers.png}
+\caption{Couches de confidentialité LexHub en production (TLS, auth, RBAC, multi-tenant, PII, Adminer SSH).}
+\label{fig:security-layers}
+\end{figure}
 
-\paragraph{Paramètres cabinet.}
-Outre l'abonnement, l'espace Paramètres porte la charte (logo, en-tête), la sécurité (2FA TOTP), les invitations d'équipe, le parrainage, le digest e-mail des notifications et l'export du planning au format \texttt{ICS} (Google Agenda / Outlook).
+\paragraph{Stockage des fichiers et de la base.}
+Les pièces et logos sont dans MinIO. PostgreSQL reste sur le VPS, sans port ouvert sur Internet. Pour consulter la base en local, on utilise Adminer via un tunnel SSH (\texttt{http://127.0.0.1:8088}), jamais depuis l'URL publique du site.
 
-\paragraph{Parrainage.}
-\label{sec:parrainage}
-Le code de parrainage n'est pas un secret d'accès. Sa révélation ne compromet pas les dossiers ; elle permet au plus l'attribution d'un bonus d'essai, plafonnée.
+\paragraph{Limitation d'abus et paramètres cabinet.}
+Limitation de débit sur l'authentification et journal d'activité. L'admin plateforme peut suspendre un cabinet sans ouvrir les dossiers. Paramètres cabinet~: logo, 2FA, invitations, parrainage, digest e-mail, export planning.
+
+\section{Lifecycle emails --- rétention et conversion}
+\label{sec:emails}
+
+Les e-mails automatiques de LexHub forment un levier \textbf{Growth / Retention}~: accompagner l'essai, rappeler les échéances, alerter sur les quotas et sécuriser le parcours (OTP, invitations). Canal unique~: \textbf{Resend}~; envoi via Celery. Le navigateur n'envoie jamais de mail directement. Le tableau~\ref{tab:emails} indique qui reçoit quoi et quand.
+
+\begin{table}[H]
+\centering
+\caption{Lifecycle emails LexHub --- familles et déclencheurs}
+\label{tab:emails}
+\footnotesize
+\renewcommand{\arraystretch}{1.2}
+\begin{tabular}{|p{3.2cm}|p{2.8cm}|p{6.2cm}|}
+\hline
+\rowcolor{tablehead}
+\theadcell{Famille} & \theadcell{Destinataire} & \theadcell{Quand} \\
+\hline
+OTP / sécurité & Utilisateur &
+Inscription, reset mot de passe, changement d'e-mail. \\
+\hline
+Équipe & Admin cabinet et invité &
+L'admin envoie l'invitation~; l'invité reçoit le lien~; l'admin est notifié s'il accepte ou refuse. \\
+\hline
+Plaidoirie & Assistant &
+Validation, rappel agenda, digest. \\
+\hline
+Essai et abonnement & Admin cabinet &
+Bienvenue essai, rappels fin d'essai, facture, alerte quota ou sièges. \\
+\hline
+Parrainage & Admin cabinet &
+Lien de parrainage et récompense. \\
+\hline
+Impayé / renouvellement & Admin cabinet &
+Échec de paiement, rappels, renouvellement. \\
+\hline
+\end{tabular}
+\end{table}
+
+\noindent Les messages portent un lien ou un code~; le corps du mail ne recopie pas le contenu des dossiers ni des plaidoiries.
+
