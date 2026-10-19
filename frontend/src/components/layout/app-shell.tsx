@@ -11,6 +11,7 @@ import { UserAccountMenu } from "@/components/layout/user-account-menu";
 import { TopbarActionIcons } from "@/components/layout/topbar-action-icons";
 import { CommandPalette } from "@/components/layout/command-palette";
 import { SubscriptionBanner } from "@/components/billing/subscription-banner";
+import { SetPasswordBanner } from "@/components/auth/set-password-gate";
 import { SmartInsightsStrip } from "@/components/billing/smart-insights-strip";
 import { PlansNudgeModal } from "@/components/billing/plans-nudge-modal";
 import { ReferralNudgeModal } from "@/components/billing/referral-nudge-modal";
@@ -19,12 +20,10 @@ import { QuotaGuidanceHost } from "@/components/billing/quota-guidance-host";
 import { ActionToastHost } from "@/components/ui/action-toast-host";
 import { LexHubPageLoader } from "@/components/brand/lexhub-page-loader";
 import { LexHubOnboarding } from "@/components/onboarding/lexhub-onboarding";
-import { ProfileCompletionModal } from "@/components/onboarding/profile-completion-modal";
 import { PageTransition } from "@/components/motion/page-transition";
 import { useOnboardingTour } from "@/hooks/use-onboarding";
 import { getUiDensity, getUiTheme } from "@/hooks/use-ui-prefs";
 import { workspaceRoleLabel } from "@/lib/i18n/labels";
-import { canManageTeam } from "@/lib/roles";
 import { useCabinetRealtime } from "@/hooks/use-cabinet-realtime";
 import { useIsMobile } from "@/hooks/use-is-mobile";
 import { api } from "@/lib/api";
@@ -199,26 +198,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </header>
           <div className="main-scroll">
             <SubscriptionBanner />
-            {user?.role !== "admin_webvoice" &&
-            user?.cabinet_profile_complete === false &&
-            canManageTeam(user?.role) ? (
-              <div
-                className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-sky-200 bg-sky-50 px-3 py-2.5 text-sm text-sky-950"
-                role="status"
-              >
-                <span>
-                  {locale === "ar"
-                    ? "تذكير: أكملوا اسم المكتب والمدينة والهيئة من الإعدادات لتحسين ترويسة Word. يمكنكم العمل الآن بدون ذلك."
-                    : "Rappel : complétez le nom du cabinet, la ville et le barreau dans Paramètres pour un meilleur en-tête Word. Vous pouvez travailler sans cela."}
-                </span>
-                <a
-                  href="/settings#cabinet"
-                  className="shrink-0 rounded-lg bg-[#0B1A4D] px-3 py-1.5 text-xs font-semibold text-white"
-                >
-                  {locale === "ar" ? "الإعدادات" : "Paramètres"}
-                </a>
-              </div>
-            ) : null}
+            <SetPasswordBanner />
             {!isMobile ? <SmartInsightsStrip /> : null}
             <div className="panel show">
               <PageTransition>{children}</PageTransition>
@@ -232,9 +212,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       ) : null}
       <LexHubOnboarding open={tourOpen} onComplete={() => void completeTour()} />
-      <ProfileCompletionModal />
-      {!isMobile ? <PlansNudgeModal /> : null}
-      {!isMobile ? <ReferralNudgeModal /> : null}
+      {/* Popups growth : aussi mobile, sheet scrollable (pas de modal cabinet = doublon bannière) */}
+      <PlansNudgeModal />
+      <ReferralNudgeModal />
       <CommandPalette />
       <CreditSpendHost />
       <QuotaGuidanceHost />

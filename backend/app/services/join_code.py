@@ -216,20 +216,3 @@ def record_join_approval(db: Session, cabinet: Any) -> None:
     cabinet.join_code_approved_count = n
     if n >= max_approvals():
         assign_unique_join_code(db, cabinet)
-
-
-def find_pending_join_block(db: Session, email: str, password: str) -> bool:
-    from app.core.security import verify_password
-    from app.models import MembershipRequest, MembershipRequestStatus
-
-    req = (
-        db.query(MembershipRequest)
-        .filter(
-            MembershipRequest.email == email.lower().strip(),
-            MembershipRequest.status == MembershipRequestStatus.PENDING.value,
-        )
-        .first()
-    )
-    if not req:
-        return False
-    return verify_password(password, req.hashed_password)

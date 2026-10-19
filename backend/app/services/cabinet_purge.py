@@ -17,18 +17,12 @@ from app.models import (
     Cabinet,
     CabinetInvite,
     CabinetNotification,
-    CabinetPlaidoirieTemplate,
     CabinetReferral,
     CabinetSubscription,
     Case,
-    CaseComment,
-    CaseNote,
-    CaseTask,
     Document,
     EmailToken,
-    MembershipRequest,
     MfaRecoveryCode,
-    PaymentTransferRequest,
     PlaidoirieDraft,
     PlaidoirieRevision,
     SubscriptionEvent,
@@ -80,12 +74,6 @@ def purge_cabinet(db: Session, cabinet_id: str) -> dict:
             stats["documents"] += 1
 
         # —— Contenu dossiers (ordre FK) ——
-        db.query(CaseNote).filter(CaseNote.cabinet_id == cabinet_id).delete(
-            synchronize_session=False
-        )
-        db.query(CaseTask).filter(CaseTask.cabinet_id == cabinet_id).delete(
-            synchronize_session=False
-        )
         db.query(AgendaEvent).filter(AgendaEvent.cabinet_id == cabinet_id).delete(
             synchronize_session=False
         )
@@ -96,12 +84,6 @@ def purge_cabinet(db: Session, cabinet_id: str) -> dict:
         db.query(PlaidoirieDraft).filter(PlaidoirieDraft.cabinet_id == cabinet_id).delete(
             synchronize_session=False
         )
-        db.query(CaseComment).filter(CaseComment.cabinet_id == cabinet_id).delete(
-            synchronize_session=False
-        )
-        db.query(CabinetPlaidoirieTemplate).filter(
-            CabinetPlaidoirieTemplate.cabinet_id == cabinet_id
-        ).delete(synchronize_session=False)
 
         cases = db.query(Case).filter(Case.cabinet_id == cabinet_id).all()
         for case in cases:
@@ -113,9 +95,6 @@ def purge_cabinet(db: Session, cabinet_id: str) -> dict:
             synchronize_session=False
         )
         db.query(CabinetInvite).filter(CabinetInvite.cabinet_id == cabinet_id).delete(
-            synchronize_session=False
-        )
-        db.query(MembershipRequest).filter(MembershipRequest.cabinet_id == cabinet_id).delete(
             synchronize_session=False
         )
         db.query(ActivityArchive).filter(ActivityArchive.cabinet_id == cabinet_id).delete(
@@ -135,10 +114,6 @@ def purge_cabinet(db: Session, cabinet_id: str) -> dict:
             db.query(MfaRecoveryCode).filter(MfaRecoveryCode.user_id.in_(user_ids)).delete(
                 synchronize_session=False
             )
-            # Nullifier résolveurs d'adhésion hors cabinet si besoin
-            db.query(MembershipRequest).filter(MembershipRequest.resolved_by.in_(user_ids)).update(
-                {MembershipRequest.resolved_by: None}, synchronize_session=False
-            )
         for u in users:
             db.delete(u)
             stats["users"] += 1
@@ -153,9 +128,6 @@ def purge_cabinet(db: Session, cabinet_id: str) -> dict:
         db.query(UsageCounter).filter(UsageCounter.cabinet_id == cabinet_id).delete(
             synchronize_session=False
         )
-        db.query(PaymentTransferRequest).filter(
-            PaymentTransferRequest.cabinet_id == cabinet_id
-        ).delete(synchronize_session=False)
         db.query(CabinetSubscription).filter(CabinetSubscription.cabinet_id == cabinet_id).delete(
             synchronize_session=False
         )

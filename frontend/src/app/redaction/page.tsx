@@ -142,14 +142,19 @@ function LawyerPleaLibrary() {
   const labels = isAr
     ? {
         title: "المرافعات",
-        subtitle: "نظّموا المرافعات كالملفات — عنوان، تاريخ، ملف مرتبط. التحقق يجعلها ظاهرة للمساعد.",
+        subtitle:
+          "انقروا على مرافعة لفتح التفاصيل ثم القيام بالإجراءات (اعتماد، إسناد لمساعد، تصدير، حذف…).",
+        statusLegend:
+          "الحالات: مسودة = خاصة بالمحامي · معتمدة = ظاهرة للمساعدين · منتهية = بعد تصدير Word/PDF.",
+        detailHint:
+          "هنا: اعتماد للمساعد، إسناد إلى مساعد، ربط بملف، تصدير أو حذف.",
         new: "مرافعة جديدة",
         search: "بحث عن مرافعة…",
         all: "الكل",
         drafts: "مسودات",
         validated: "معتمدة",
         finalized: "منتهية",
-        empty: "لا توجد مرافعة بعد. أنشئوا واحدة بالتسجيل الصوتي.",
+        empty: "لا توجد مرافعة بعد.",
         draft: "مسودة",
         validatedBadge: "معتمدة",
         finalizedBadge: "منتهية",
@@ -185,14 +190,18 @@ function LawyerPleaLibrary() {
     : {
         title: "Plaidoiries",
         subtitle:
-          "Organisez comme vos dossiers : titre, date, dossier lié. Validez pour les montrer à l’assistant.",
+          "Cliquez sur une plaidoirie pour ouvrir le détail et faire les actions (valider, assigner à un assistant, exporter, supprimer…).",
+        statusLegend:
+          "Statuts : Brouillon = visible seulement par l’avocat · Validée = visible par les assistants · Finalisée = après export Word/PDF.",
+        detailHint:
+          "Ici : valider pour l’assistant, assigner à un assistant, lier un dossier, exporter ou supprimer.",
         new: "Nouvelle plaidoirie",
         search: "Rechercher une plaidoirie…",
         all: "Toutes",
         drafts: "Brouillons",
         validated: "Validées",
         finalized: "Finalisées",
-        empty: "Aucune plaidoirie encore. Créez-en une par dictée.",
+        empty: "Aucune plaidoirie.",
         draft: "Brouillon",
         validatedBadge: "Validée",
         finalizedBadge: "Finalisée",
@@ -538,6 +547,9 @@ function LawyerPleaLibrary() {
                   <dd>{formatDate(selected.updated_at, locale)}</dd>
                 </div>
               </dl>
+              <p className="mt-3 text-xs leading-relaxed text-[var(--ink-soft)]">
+                {labels.detailHint}
+              </p>
             </div>
           </div>
 
@@ -676,7 +688,13 @@ function LawyerPleaLibrary() {
       <div className="plea-library__head flex flex-wrap items-end justify-between gap-3">
         <div className="min-w-0 flex-1">
           <h1 className="text-2xl font-bold text-[var(--ink)] max-md:text-xl">{labels.title}</h1>
-          <p className="mt-1 max-w-xl text-sm text-[var(--ink-soft)] max-md:text-xs">{labels.subtitle}</p>
+          <p className="mt-1 max-w-2xl text-sm text-[var(--ink-soft)] max-md:text-xs">{labels.subtitle}</p>
+          <p
+            className="mt-2 max-w-2xl rounded-xl border border-[var(--line)] bg-white/70 px-3 py-2 text-xs leading-relaxed text-[var(--ink)] max-md:text-[11px]"
+            style={{ borderColor: "rgba(15, 76, 129, 0.18)" }}
+          >
+            {labels.statusLegend}
+          </p>
         </div>
         <button type="button" className="chip-btn primary inline-flex items-center gap-2 max-md:w-full max-md:justify-center" onClick={openNew}>
           <Mic className="h-4 w-4" />
@@ -705,17 +723,17 @@ function LawyerPleaLibrary() {
               {localDraft.preview}
             </p>
           ) : null}
-          <button
-            type="button"
+                    <button
+                      type="button"
             className="chip-btn mt-3"
             onClick={() => router.push(localDraft.href)}
-          >
+                    >
             {isAr ? "استئناف هذه المسودة" : "Reprendre ce brouillon"}
-          </button>
-          <button
-            type="button"
+                    </button>
+                    <button
+                      type="button"
             className="chip-btn mt-3 ms-2"
-            onClick={() => {
+                      onClick={() => {
               dismissLocalDraft();
               pushToast(
                 isAr ? "تم مسح المسودة المحلية." : "Brouillon local effacé.",
@@ -808,11 +826,11 @@ function LawyerPleaLibrary() {
               </span>
               <button type="button" className="chip-btn" disabled={busy} onClick={clearSelection}>
                 {labels.deselectAll}
-              </button>
-              <button
-                type="button"
+                    </button>
+                    <button
+                      type="button"
                 className="chip-btn inline-flex items-center gap-1.5 text-red-700"
-                disabled={busy}
+                      disabled={busy}
                 onClick={() => void onDeleteSelected()}
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -835,7 +853,7 @@ function LawyerPleaLibrary() {
           <button type="button" className="chip-btn primary mt-4 inline-flex items-center gap-2" onClick={openNew}>
             <Mic className="h-4 w-4" />
             {labels.new}
-          </button>
+                    </button>
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -876,8 +894,8 @@ function LawyerPleaLibrary() {
                     aria-label={isAr ? "تحديد المرافعة" : "Sélectionner la plaidoirie"}
                   />
                 </label>
-                <button
-                  type="button"
+                    <button
+                      type="button"
                   onClick={() => setSelected(d)}
                   className="w-full text-start"
                 >
@@ -907,10 +925,10 @@ function LawyerPleaLibrary() {
                   </div>
                 </button>
               </div>
-            );
-          })}
+              );
+            })}
         </div>
-      )}
+        )}
     </div>
   );
 }
@@ -965,7 +983,8 @@ function AssistantPleaLibrary() {
   const labels = isAr
     ? {
         title: "مرافعات معتمدة",
-        subtitle: "يظهر هنا فقط ما اعتمده المحامي — معاينة، طباعة وتحميل.",
+        subtitle:
+          "انقروا على مرافعة لفتحها ثم الطباعة أو التحميل. تظهر هنا فقط ما اعتمده المحامي (معتمدة أو منتهية).",
         empty: "لا توجد مرافعة معتمدة بعد. عندما يعتمد المحامي مرافعة، تظهر هنا.",
         back: "العودة",
         case: "الملف",
@@ -983,7 +1002,7 @@ function AssistantPleaLibrary() {
     : {
         title: "Plaidoiries validées",
         subtitle:
-          "Uniquement ce que l’avocat a validé — aperçu, impression et téléchargement.",
+          "Cliquez sur une plaidoirie pour l’ouvrir, puis imprimer ou télécharger. Seules les plaidoiries validées ou finalisées par l’avocat apparaissent ici.",
         empty:
           "Aucune plaidoirie validée. Dès que l’avocat valide une plaidoirie, elle apparaît ici.",
         back: "Retour",
@@ -1073,16 +1092,16 @@ function AssistantPleaLibrary() {
   }
 
   if (selected) {
-    return (
+  return (
       <div className="space-y-4" dir={isAr ? "rtl" : "ltr"}>
-        <button
-          type="button"
+              <button
+                type="button"
           className="inline-flex items-center gap-2 text-sm font-semibold text-[var(--ink-soft)]"
           onClick={() => setSelected(null)}
         >
           <ArrowLeft className="h-4 w-4" />
           {labels.back}
-        </button>
+              </button>
         <div className="rounded-2xl border border-[var(--line)] bg-white/80 p-5 shadow-sm">
           <h1 className="text-xl font-bold text-[var(--ink)]" dir="auto">
             {selected.title}
@@ -1100,23 +1119,23 @@ function AssistantPleaLibrary() {
             </div>
           </dl>
           <div className="mt-4 flex flex-wrap gap-2">
-            <button
-              type="button"
+                  <button
+                    type="button"
               className="chip-btn primary inline-flex items-center gap-1.5"
               onClick={() => printPlea(selected)}
             >
               <Printer className="h-4 w-4" />
               {labels.print}
-            </button>
-            <button
-              type="button"
+                  </button>
+                  <button
+                    type="button"
               className="chip-btn inline-flex items-center gap-1.5"
               disabled={exportBusy}
               onClick={() => void exportWord(selected)}
             >
               <Download className="h-4 w-4" />
               {labels.word}
-            </button>
+                  </button>
           </div>
           <PlaidoirieDocumentPreview
             title={selected.title}

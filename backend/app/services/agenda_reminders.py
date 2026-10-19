@@ -1,4 +1,4 @@
-"""Rappels agenda J-7 / J-2 / J-1 (+ legacy 48h)."""
+"""Rappels agenda J-7 / J-2 / J-1."""
 
 from __future__ import annotations
 
@@ -30,7 +30,6 @@ _REMINDER_WINDOWS = (
     ("reminder_7d_sent_at", 7 * 24, 6, "J-7"),
     ("reminder_2d_sent_at", 2 * 24, 4, "J-2"),
     ("reminder_1d_sent_at", 24, 3, "J-1"),
-    ("reminder_48h_sent_at", 48, 2, "J-2"),  # legacy alias ~48h
 )
 
 
@@ -136,10 +135,6 @@ def send_due_agenda_reminders(db: Session) -> dict:
             try:
                 n, e = _notify_event(db, event, label)
                 setattr(event, attr, now)
-                # legacy: mark 48h when sending J-2
-                if label == "J-2" and hasattr(event, "reminder_48h_sent_at"):
-                    if event.reminder_48h_sent_at is None:
-                        event.reminder_48h_sent_at = now
                 notified_users += n
                 emails_sent += e
                 processed += 1

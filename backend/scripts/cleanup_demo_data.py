@@ -6,7 +6,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.database import SessionLocal
-from app.models import AgendaEvent, Case, CaseNote, CaseTask, Document
+from app.models import AgendaEvent, Case, Document
 
 DEMO_REFERENCES = ("WV-2026-0001", "WV-2026-0002")
 
@@ -21,8 +21,6 @@ def cleanup():
 
         for case in cases:
             doc_ids = [d.id for d in db.query(Document).filter(Document.case_id == case.id).all()]
-            db.query(CaseNote).filter(CaseNote.case_id == case.id).delete()
-            db.query(CaseTask).filter(CaseTask.case_id == case.id).delete()
             db.query(AgendaEvent).filter(AgendaEvent.case_id == case.id).delete()
             db.query(Document).filter(Document.case_id == case.id).delete()
             db.delete(case)

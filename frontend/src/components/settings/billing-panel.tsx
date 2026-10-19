@@ -21,7 +21,7 @@ import {
   type PaymentEnv,
 } from "@/lib/api";
 import { canManageTeam } from "@/lib/roles";
-import { checkoutHref, commercialHref, needsCommercialQualification } from "@/lib/billing-intent";
+import { checkoutHref } from "@/lib/billing-intent";
 import { useAuthStore } from "@/store/auth";
 import { useClientLocale } from "@/store/locale";
 
@@ -133,17 +133,17 @@ export function BillingPanel() {
     if (!slug || !isAdmin || !plans.length) return;
     const match = plans.find((p) => p.slug === slug);
     if (match && match.slug !== "free") {
-      if (needsCommercialQualification(match.slug)) {
-        window.location.assign(commercialHref("enterprise"));
-        return;
-      }
       setPitchPlan(match);
     }
   }, [searchParams, plans, isAdmin]);
 
   function openCheckout(slug: string) {
-    if (needsCommercialQualification(slug)) {
-      window.location.assign(commercialHref("enterprise"));
+    if (user?.must_set_password && !user?.auth_via_google) {
+      setError(
+        ar
+          ? "أنشئوا كلمة مرور أولاً (شريط أصفر أعلى الصفحة) قبل الاشتراك."
+          : "Créez d’abord un mot de passe (bandeau jaune) avant un abonnement.",
+      );
       return;
     }
     const match = plans.find((p) => p.slug === slug);
@@ -151,8 +151,12 @@ export function BillingPanel() {
   }
 
   function goToCheckout(plan: BillingPlan) {
-    if (needsCommercialQualification(plan.slug)) {
-      window.location.assign(commercialHref("enterprise"));
+    if (user?.must_set_password && !user?.auth_via_google) {
+      setError(
+        ar
+          ? "أنشئوا كلمة مرور أولاً قبل الاشتراك."
+          : "Créez d’abord un mot de passe avant un abonnement.",
+      );
       return;
     }
     window.location.assign(checkoutHref(plan.slug, cycle));
@@ -644,9 +648,17 @@ export function BillingPanel() {
       </div>
       ) : null}
 
-      {/* Packs — uniquement abonnement actif payant (jamais pendant l’essai) */}
-      {isAdmin && (ent.is_active_paying || addons?.credit_packs_available) ? (
+      {/* Packs — catalogue visible ; achat seulement après conversion payante */}
+      {isAdmin && ((addons?.credit_packs || ent.credit_packs || []).length > 0) ? (
         <div id="packs-credits" className="scroll-mt-24 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          {inTrial && !ent.is_active_paying ? (
+            <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50/90 px-4 py-3 text-sm text-sky-950">
+              {ar
+                ? "الحزم ظاهرة للمعاينة أثناء التجربة. الشراء يُفعَّل بعد التحويل إلى اشتراك مدفوع — أثناء التجربة تُستخدم فقط حصص التجربة."
+                : "Les packs sont visibles pendant l’essai (aperçu). L’achat s’active après conversion en abonnement payant — pendant l’essai, seuls les quotas d’essai s’appliquent."}
+            </div>
+          ) : null}
+
           {addons?.show_pack_banner ? (
             <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50/90 px-4 py-3 text-sm text-amber-950">
               {ar
@@ -715,10 +727,18 @@ export function BillingPanel() {
                   type="button"
                   size="sm"
                   className="mt-3 w-full"
-                  disabled={!!busy}
+                  disabled={!!busy || inTrial || !ent.is_active_paying || !(addons?.credit_packs_available ?? ent.is_active_paying)}
                   onClick={() => void buyPack(pack.id)}
                 >
-                  {busy === `pack:${pack.id}` ? "…" : ar ? "شراء" : "Acheter"}
+                  {busy === `pack:${pack.id}`
+                    ? "…"
+                    : inTrial || !ent.is_active_paying
+                      ? ar
+                        ? "متاح بعد الاشتراك"
+                        : "Après abonnement"
+                      : ar
+                        ? "شراء"
+                        : "Acheter"}
                 </Button>
               </div>
             ))}

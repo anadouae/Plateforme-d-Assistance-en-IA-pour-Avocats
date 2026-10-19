@@ -819,7 +819,8 @@ class Entitlements:
             "credit_packs_available": is_active_paying(self),
             "is_active_paying": is_active_paying(self),
             "is_trial": is_trial_status(self),
-            "credit_packs": list(CREDIT_PACKS) if is_active_paying(self) else [],
+            # Catalogue toujours visible (achat uniquement si abonnement payant actif)
+            "credit_packs": list(CREDIT_PACKS),
             "usage": {
                 "plaidoiries_used": self.plaidoiries_used,
                 "plaidoiries_limit": self.plaidoiries_limit,

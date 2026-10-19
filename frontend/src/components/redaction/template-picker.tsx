@@ -7,12 +7,10 @@ import {
   FileEdit,
   FileText,
   History,
-  Trash2,
   X,
 } from "lucide-react";
 import {
   api,
-  type CabinetPlaidoirieTemplate,
   type PlaidoirieDraftItem,
 } from "@/lib/api";
 import {
@@ -30,13 +28,11 @@ export const PLEA_DRAFT_RESTORE_KEY_LEGACY = "sanad_plea_draft_restore";
 
 type Props = {
   systemTemplates: PlaidoirieTemplate[];
-  customTemplates: CabinetPlaidoirieTemplate[];
   onSelect: (id: string) => void;
-  onDeleteCustom: (id: string) => void;
 };
 
 type CardItem = {
-  kind: "system" | "custom";
+  kind: "system";
   id: string;
   title: string;
   subtitle: string;
@@ -51,9 +47,7 @@ type CardItem = {
  */
 export function TemplatePicker({
   systemTemplates,
-  customTemplates,
   onSelect,
-  onDeleteCustom,
 }: Props) {
   const locale = useLocaleStore((s) => s.locale);
   const isAr = locale === "ar";
@@ -112,14 +106,7 @@ export function TemplatePicker({
     );
   };
 
-  const { customCards, featuredCards, otherCards } = useMemo(() => {
-    const custom = customTemplates.map((tpl) => ({
-      kind: "custom" as const,
-      id: tpl.id,
-      title: tpl.name,
-      subtitle: isAr ? "نموذج المكتب" : "Modèle du cabinet",
-      body: tpl.body,
-    }));
+  const { featuredCards, otherCards } = useMemo(() => {
     const system = systemTemplates
       .filter((tpl) => tpl.id !== "libre")
       .filter((tpl) => matchesDomain(tpl, domainFilter))
@@ -138,15 +125,14 @@ export function TemplatePicker({
       (a, b) => featuredOrder.indexOf(a.id) - featuredOrder.indexOf(b.id),
     );
     return {
-      customCards: custom,
       featuredCards: featured,
       otherCards: others,
     };
-  }, [customTemplates, systemTemplates, isAr, featuredOrder, domainFilter]);
+  }, [systemTemplates, isAr, featuredOrder, domainFilter]);
 
   const allCards = useMemo(
-    () => [...customCards, ...featuredCards, ...otherCards],
-    [customCards, featuredCards, otherCards],
+    () => [...featuredCards, ...otherCards],
+    [featuredCards, otherCards],
   );
   const modalCard = allCards.find((c) => c.id === modalId) ?? null;
 
@@ -189,19 +175,6 @@ export function TemplatePicker({
 
         </button>
 
-        {tpl.kind === "custom" ? (
-          <button
-            type="button"
-            className="absolute end-3 top-3 grid h-8 w-8 place-items-center rounded-full text-[var(--ink-mute)] hover:bg-[rgba(180,60,60,0.1)] hover:text-[var(--danger,#b43c3c)]"
-            aria-label={isAr ? "حذف" : "Supprimer"}
-            onClick={(e) => {
-              e.stopPropagation();
-              onDeleteCustom(tpl.id);
-            }}
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
-        ) : null}
       </div>
     );
   }

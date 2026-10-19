@@ -69,6 +69,14 @@ function parseApiDetail(detail: unknown, fallback: string): { message: string; p
 function humanizeApiDetail(raw: string): string {
   const t = (raw || "").trim();
   if (!t) return apiMsg("serverError");
+  // Jamais afficher « Erreur serveur » / Internal Server Error / 500 brut
+  if (
+    /erreur\s*(de\s*)?serveur|error\s*server|internal\s*server\s*error|server\s*error|http\s*500|status\s*500/i.test(
+      t,
+    )
+  ) {
+    return apiMsg("serverError");
+  }
   // Limite technique trop courte (ex. ancien brief_jurisdiction 80 car.)
   const maxLen = /(?:at most|max(?:imum)?(?: length)?(?: of)?|au plus)\s*(\d+)\s*characters?/i.exec(t)
     || /String should have at most (\d+) characters/i.exec(t);
@@ -76,7 +84,7 @@ function humanizeApiDetail(raw: string): string {
     return `Un champ est trop long (max. ${maxLen[1]} caractères). Raccourcissez le texte ou rechargez la page (Ctrl+F5).`;
   }
   if (
-    /traceback|sqlalchemy|psycopg|internal server error|exception:|at 0x|WHISPER_ENABLED|ffmpeg|celery\.|localhost:\d+|port\s*8001|TypeError|ValueError|KeyError/i.test(
+    /traceback|sqlalchemy|psycopg|internal server error|exception:|at 0x|WHISPER_ENABLED|ffmpeg|celery\.|localhost:\d+|port\s*8001|TypeError|ValueError|KeyError|erreur\s*(de\s*)?serveur/i.test(
       t,
     )
   ) {
@@ -350,6 +358,15 @@ async function request<T>(
   }
 
   if (!res.ok) {
+    // Un nouvel essai automatique sur 502/503/504 (redémarrage conteneur / surcharge)
+    if (
+      !retried &&
+      !timeoutRetried &&
+      (res.status === 502 || res.status === 503 || res.status === 504)
+    ) {
+      await new Promise((r) => setTimeout(r, 600));
+      return request<T>(path, options, true, timeoutMs, timeoutRetried, dailyRetried);
+    }
     const body = await res.json().catch(() => ({ detail: apiMsg("serverError") }));
     const parsed = parseApiDetail(body.detail, apiMsg("serverError"));
     const code = parsed.payload && typeof parsed.payload.code === "string" ? parsed.payload.code : "";
@@ -455,13 +472,31 @@ export const api = {
     }),
 
   register: (data: RegisterPayload) =>
-    request<{ message: string }>("/api/auth/register", {
+    request<AuthResponse>("/api/auth/register", {
       method: "POST",
       body: JSON.stringify(data),
     }),
 
   login: (data: LoginPayload) =>
     request<AuthResponse>("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  setPassword: (password: string) =>
+    request<AuthUser>("/api/auth/set-password", {
+      method: "POST",
+      body: JSON.stringify({ password }),
+    }),
+
+  requestPasswordlessOtp: (email: string) =>
+    request<{ message: string }>("/api/auth/request-passwordless-otp", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    }),
+
+  loginPasswordless: (data: { email: string; code: string; captcha_token?: string }) =>
+    request<AuthResponse>("/api/auth/login-passwordless", {
       method: "POST",
       body: JSON.stringify(data),
     }),
@@ -501,6 +536,13 @@ export const api = {
 
   logout: () =>
     request<{ message: string }>("/api/auth/logout", {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+
+  /** Révoque toutes les sessions (tous appareils). */
+  logoutAll: () =>
+    request<{ message: string }>("/api/auth/logout-all", {
       method: "POST",
       body: JSON.stringify({}),
     }),
@@ -557,6 +599,7 @@ export const api = {
   updateCase: (
     id: string,
     data: Partial<{
+      title: string;
       client_name: string;
       case_type: string;
       status: string;
@@ -590,19 +633,6 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
-  listCaseComments: (caseId: string) =>
-    request<CaseCommentItem[]>(`/api/cases/${caseId}/comments`),
-
-  addCaseComment: (caseId: string, body: { body: string }) =>
-    request<CaseCommentItem>(`/api/cases/${caseId}/comments`, {
-      method: "POST",
-      body: JSON.stringify(body),
-    }),
-
-  deleteCaseComment: (caseId: string, commentId: string) =>
-    request<void>(`/api/cases/${caseId}/comments/${commentId}`, {
-      method: "DELETE",
-    }),
 
   deleteCase: (id: string) =>
     request<void>(`/api/cases/${id}`, { method: "DELETE" }),
@@ -612,7 +642,7 @@ export const api = {
       `/api/cases/${id}/analyse?lang=${language || getClientLocale()}`,
       { method: "POST" },
       false,
-      25_000,
+      90_000,
     ),
 
   getDocuments: (caseId?: string) =>
@@ -780,73 +810,25 @@ export const api = {
       90_000,
     ),
 
-  askDocument: (id: string, question: string, language?: AppLocale) =>
+  askDocument: (
+    id: string,
+    question: string,
+    language?: AppLocale,
+    history?: { role: string; content: string }[],
+  ) =>
     request<AIResult>(`/api/documents/${id}/ask`, {
       method: "POST",
       body: JSON.stringify({
         question,
         language: language || getClientLocale(),
+        ...(history && history.length ? { history } : {}),
       }),
     }),
 
-  /** Résumé planning (agenda / tâches / notes) pour le dashboard */
+  /** Résumé planning (agenda) pour le dashboard */
   getWorkspaceSummary: () =>
     request<WorkspaceSummary>("/api/workspace/summary"),
 
-  getNotes: (caseId?: string) => {
-    const qs = caseId ? `?case_id=${encodeURIComponent(caseId)}` : "";
-    return request<CaseNoteItem[]>(`/api/workspace/notes${qs}`);
-  },
-
-  createNote: (data: { title: string; body?: string; case_id?: string }) =>
-    request<CaseNoteItem>("/api/workspace/notes", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-
-  updateNote: (id: string, data: { title?: string; body?: string; case_id?: string | null }) =>
-    request<CaseNoteItem>(`/api/workspace/notes/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify(data),
-    }),
-
-  deleteNote: (id: string) =>
-    request<void>(`/api/workspace/notes/${id}`, { method: "DELETE" }),
-
-  getTasks: (caseId?: string) => {
-    const qs = caseId ? `?case_id=${encodeURIComponent(caseId)}` : "";
-    return request<CaseTaskItem[]>(`/api/workspace/tasks${qs}`);
-  },
-
-  createTask: (data: {
-    title: string;
-    description?: string;
-    case_id?: string;
-    status?: "todo" | "doing" | "done";
-    due_at?: string;
-  }) =>
-    request<CaseTaskItem>("/api/workspace/tasks", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-
-  updateTask: (
-    id: string,
-    data: {
-      title?: string;
-      description?: string;
-      case_id?: string | null;
-      status?: "todo" | "doing" | "done";
-      due_at?: string | null;
-    },
-  ) =>
-    request<CaseTaskItem>(`/api/workspace/tasks/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify(data),
-    }),
-
-  deleteTask: (id: string) =>
-    request<void>(`/api/workspace/tasks/${id}`, { method: "DELETE" }),
 
   getAgenda: (caseId?: string) => {
     const qs = caseId ? `?case_id=${encodeURIComponent(caseId)}` : "";
@@ -923,10 +905,19 @@ export const api = {
     text: string,
     language: "ar" | "fr" = "ar",
     source: "dictation" | "audio" = "audio",
+    caseId?: string | null,
   ) =>
     request<{
       polished: string;
       provider: string;
+      pii_masked?: boolean;
+      pii_summary?: {
+        parties?: number;
+        cin?: number;
+        phone?: number;
+        email?: number;
+        other?: number;
+      };
       contradictions?: {
         kind: string;
         values: string[];
@@ -965,7 +956,12 @@ export const api = {
       message?: string | null;
     }>("/api/dictation/polish", {
       method: "POST",
-      body: JSON.stringify({ text, language, source }),
+      body: JSON.stringify({
+        text,
+        language,
+        source,
+        ...(caseId ? { case_id: caseId } : {}),
+      }),
     }),
 
   transcribeDictation: (
@@ -1062,30 +1058,6 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
-  listCabinetPlaidoirieTemplates: () =>
-    request<CabinetPlaidoirieTemplate[]>("/api/plaidoirie-templates"),
-
-  createCabinetPlaidoirieTemplate: (data: {
-    name: string;
-    body: string;
-    base_type?: string;
-  }) =>
-    request<CabinetPlaidoirieTemplate>("/api/plaidoirie-templates", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-
-  updateCabinetPlaidoirieTemplate: (
-    id: string,
-    data: { name?: string; body?: string; base_type?: string },
-  ) =>
-    request<CabinetPlaidoirieTemplate>(`/api/plaidoirie-templates/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify(data),
-    }),
-
-  deleteCabinetPlaidoirieTemplate: (id: string) =>
-    request<void>(`/api/plaidoirie-templates/${id}`, { method: "DELETE" }),
 
   /** Télécharge un .docx réel (Word) et déclenche l'enregistrement navigateur. */
   fetchPlaidoirieDocx: async (data: PlaidoirieExportPayload): Promise<{ blob: Blob; filename: string }> => {
@@ -1263,19 +1235,6 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
-  getJoinRequests: () => request<MembershipRequestItem[]>("/api/team/requests"),
-
-  approveJoinRequest: (id: string, role: string) =>
-    request<TeamMember>(`/api/team/requests/${id}/approve`, {
-      method: "POST",
-      body: JSON.stringify({ role }),
-    }),
-
-  rejectJoinRequest: (id: string) =>
-    request<{ message: string }>(`/api/team/requests/${id}/reject`, {
-      method: "POST",
-    }),
-
   updateTeamMember: (id: string, data: TeamUpdatePayload) =>
     request<TeamMember>(`/api/team/${id}`, {
       method: "PATCH",
@@ -1443,30 +1402,6 @@ export const api = {
       "/api/billing/payment-methods",
     ),
 
-  submitCommercialLead: (data: {
-    kind: "enterprise_trial" | "custom";
-    full_name: string;
-    email: string;
-    phone?: string;
-    cabinet_name?: string;
-    city?: string;
-    lawyers_count?: number;
-    message?: string;
-  }) =>
-    request<{ ok: boolean; message: string }>("/api/billing/commercial-lead", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-
-  getAdminCommercialLeads: () =>
-    request<CommercialLead[]>("/api/admin/billing/commercial-leads"),
-
-  updateAdminCommercialLead: (id: string, status: CommercialLead["status"]) =>
-    request<{ ok: boolean; id: string; status: string }>(
-      `/api/admin/billing/commercial-leads/${id}`,
-      { method: "PATCH", body: JSON.stringify({ status }) },
-    ),
-
   getCancelReasons: () =>
     request<{ code: string; label: string }[]>("/api/billing/cancel-reasons"),
 
@@ -1593,20 +1528,11 @@ export const api = {
   getPaymentEnv: () =>
     request<PaymentEnv>("/api/billing/payment-env"),
 
-  requestPaymentTransfer: (data: {
-    plan_slug: string;
-    billing_cycle: "monthly" | "yearly";
-    notes?: string;
-  }) =>
-    request<PaymentTransferItem>("/api/billing/transfer-request", {
-      method: "POST",
-      body: JSON.stringify(data),
-    }),
-
-  listPaymentTransfers: () =>
-    request<PaymentTransferItem[]>("/api/billing/transfer-requests"),
-
-  generateCleDeBarre: (case_id: string, extra_instructions?: string) =>
+  generateCleDeBarre: (
+    case_id: string,
+    extra_instructions?: string,
+    language?: AppLocale,
+  ) =>
     request<{
       case_id: string;
       reference: string;
@@ -1615,7 +1541,11 @@ export const api = {
       provider: string;
     }>("/api/billing/cle-de-barre", {
       method: "POST",
-      body: JSON.stringify({ case_id, extra_instructions }),
+      body: JSON.stringify({
+        case_id,
+        extra_instructions,
+        language: language || getClientLocale(),
+      }),
     }),
 
   getAdminBillingPlans: () => request<BillingPlan[]>("/api/admin/billing/plans"),
@@ -1802,12 +1732,23 @@ export const api = {
       summary_fr: string;
       aligned_with?: string;
       ops_coach?: Record<string, unknown>;
+      lifecycle_emails?: Array<{
+        id: string;
+        label: string;
+        when: string;
+        case: string;
+        channel: string;
+      }>;
+      emails_sent_30j?: Record<string, number>;
+      emails_total_30j?: number;
     }>("/api/admin/platform-analysis", { method: "POST", body: JSON.stringify({}) }),
 
   opsCoachDraftEmail: (body: {
     scenario: string;
     cabinet_id: string;
     extra?: Record<string, unknown>;
+    use_ai?: boolean;
+    tip_context?: string;
   }) =>
     request<{
       cabinet_id: string;
@@ -1821,6 +1762,7 @@ export const api = {
         body_text: string;
         body_html?: string;
         cta_url?: string;
+        ai_generated?: string;
       } | null;
       cc_emails?: string[];
     }>("/api/admin/ops-coach/draft-email", {
@@ -1948,8 +1890,8 @@ export const api = {
 
 export interface RegisterPayload {
   email: string;
-  password: string;
   email_otp: string;
+  password?: string;
   cabinet_name?: string;
   city?: string;
   address?: string;
@@ -1992,6 +1934,9 @@ export interface AuthUser {
   totp_enabled?: boolean;
   mfa_required?: boolean;
   has_seen_onboarding_tour?: boolean;
+  must_set_password?: boolean;
+  /** Compte lié Google — pas besoin de mot de passe LexHub. */
+  auth_via_google?: boolean;
 }
 
 export interface AuthResponse {
@@ -2040,6 +1985,7 @@ export interface ClarifyDictationResult {
 export interface CaseListItem {
   id: string;
   reference: string;
+  title?: string | null;
   client_name: string;
   case_type: string;
   status: string;
@@ -2077,6 +2023,7 @@ export interface CaseDetail extends CaseListItem {
 }
 
 export interface CreateCasePayload {
+  title?: string;
   client_name: string;
   case_type: string;
   status: string;
@@ -2129,13 +2076,6 @@ export interface DocumentItem {
   uploaded_by?: string | null;
 }
 
-export interface CaseCommentItem {
-  id: string;
-  case_id: string;
-  body: string;
-  author_name: string;
-  created_at: string;
-}
 
 export interface PaymentEnv {
   bank_rib?: string | null;
@@ -2147,21 +2087,6 @@ export interface PaymentEnv {
   card_status?: string | null;
   note?: string | null;
   note_ar?: string | null;
-}
-
-export interface PaymentTransferItem {
-  id: string;
-  reference: string;
-  amount_mad: number;
-  plan_slug: string;
-  billing_cycle: string;
-  status: string;
-  ice?: string | null;
-  bank_rib?: string | null;
-  bank_name?: string | null;
-  beneficiary?: string | null;
-  instructions: string;
-  created_at: string;
 }
 
 export interface DocumentDetail extends DocumentItem {
@@ -2214,37 +2139,6 @@ export interface CaseAnalysisResult {
   disclaimer: string;
 }
 
-export interface CaseNoteItem {
-  id: string;
-  title: string;
-  body: string;
-  case_id?: string | null;
-  case_reference?: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface CabinetPlaidoirieTemplate {
-  id: string;
-  name: string;
-  body: string;
-  base_type?: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface CaseTaskItem {
-  id: string;
-  title: string;
-  description?: string | null;
-  case_id?: string | null;
-  case_reference?: string | null;
-  status: "todo" | "doing" | "done" | string;
-  due_at?: string | null;
-  created_at: string;
-  updated_at: string;
-}
-
 export interface AgendaEventItem {
   id: string;
   title: string;
@@ -2262,8 +2156,6 @@ export interface AgendaEventItem {
 
 export interface WorkspaceSummary {
   upcoming_events: AgendaEventItem[];
-  open_tasks: CaseTaskItem[];
-  recent_notes: CaseNoteItem[];
 }
 
 export interface TeamMember {
@@ -2291,15 +2183,6 @@ export interface JoinCodeInfo {
   is_expired?: boolean;
   is_exhausted?: boolean;
   is_active?: boolean;
-}
-
-export interface MembershipRequestItem {
-  id: string;
-  full_name: string;
-  email: string;
-  status: string;
-  requested_at: string;
-  resolved_at?: string | null;
 }
 
 export interface CabinetSettings {
@@ -2533,20 +2416,6 @@ export interface BenchmarkSummary {
   by_domain: Record<string, number>;
   kanoun_reference: string;
   results: BenchmarkResultItem[];
-}
-
-export interface CommercialLead {
-  id: string;
-  kind: "enterprise_trial" | "custom" | string;
-  full_name: string;
-  email: string;
-  phone?: string | null;
-  cabinet_name?: string | null;
-  city?: string | null;
-  lawyers_count?: number | null;
-  message?: string | null;
-  status: "new" | "contacted" | "qualified" | "closed" | string;
-  created_at?: string | null;
 }
 
 export interface BillingPlan {

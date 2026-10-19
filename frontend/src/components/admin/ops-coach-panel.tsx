@@ -20,7 +20,13 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export type OpsContact = { email: string; name: string; role: string };
-export type OpsDraft = { subject: string; body_text: string; body_html?: string; cta_url?: string };
+export type OpsDraft = {
+  subject: string;
+  body_text: string;
+  body_html?: string;
+  cta_url?: string;
+  ai_generated?: string;
+};
 export type OpsTarget = {
   cabinet_id: string;
   cabinet_name: string;
@@ -120,7 +126,9 @@ export function OpsCoachSection({ tips }: { tips: OpsTip[] }) {
     [tips],
   );
 
-  function openDraft(tip: OpsTip, target: OpsTarget) {
+  const [draftBusy, setDraftBusy] = useState(false);
+
+  async function openDraft(tip: OpsTip, target: OpsTarget) {
     const d = target.draft;
     setSendMsg("");
     setSendErr("");
@@ -133,15 +141,46 @@ export function OpsCoachSection({ tips }: { tips: OpsTip[] }) {
       body_text: d?.body_text || "",
       body_html: d?.body_html,
     });
+    // Personnalisation IA live dès l’ouverture (template → brouillon ciblé)
+    if (d?.ai_generated === "true") return;
+    setDraftBusy(true);
+    try {
+      const t = await api.opsCoachDraftEmail({
+        scenario: tip.scenario,
+        cabinet_id: target.cabinet_id,
+        use_ai: true,
+        tip_context: tip.en_clair,
+      });
+      setEmailModal((prev) =>
+        prev
+          ? {
+              ...prev,
+              to: t.to_email || prev.to,
+              cc: (t.cc_emails || []).join(", "),
+              subject: t.draft?.subject || prev.subject,
+              body_text: t.draft?.body_text || prev.body_text,
+              body_html: t.draft?.body_html,
+              target: { ...prev.target, ...t },
+            }
+          : prev,
+      );
+    } catch {
+      /* garde le brouillon template */
+    } finally {
+      setDraftBusy(false);
+    }
   }
 
   async function regenerate() {
     if (!emailModal) return;
     setSendErr("");
+    setDraftBusy(true);
     try {
       const t = await api.opsCoachDraftEmail({
         scenario: emailModal.tip.scenario,
         cabinet_id: emailModal.target.cabinet_id,
+        use_ai: true,
+        tip_context: emailModal.tip.en_clair,
       });
       setEmailModal({
         ...emailModal,
@@ -153,7 +192,9 @@ export function OpsCoachSection({ tips }: { tips: OpsTip[] }) {
         target: { ...emailModal.target, ...t },
       });
     } catch (e) {
-      setSendErr(e instanceof ApiError ? e.message : "Erreur brouillon");
+      setSendErr(e instanceof ApiError ? e.message : "Erreur brouillon IA");
+    } finally {
+      setDraftBusy(false);
     }
   }
 
@@ -191,10 +232,12 @@ export function OpsCoachSection({ tips }: { tips: OpsTip[] }) {
   return (
     <div className="space-y-3">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-wide text-amber-900">Ops Coach — Comment gagner plus</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-amber-900">
+          Cartes d’action — détectées live, priorisées avec l’IA
+        </p>
         <p className="mt-1 text-xs text-amber-900/80">
-          Chaque carte explique <strong>pourquoi</strong>, <strong>quoi faire</strong>, et propose une action
-          (souvent un email à prévisualiser, modifier, puis envoyer).
+          Signaux SQL (essai, fin d’essai, impayé, usage IA…) + analyse LLM. Chaque carte propose un
+          brouillon e-mail à relire puis envoyer.
         </p>
       </div>
 
@@ -339,7 +382,9 @@ export function OpsCoachSection({ tips }: { tips: OpsTip[] }) {
                   Aperçu email — {emailModal.target.cabinet_name}
                 </p>
                 <p className="mt-0.5 text-xs text-slate-500">
-                  Brouillon préparé · vous pouvez tout modifier avant envoi
+                  {draftBusy
+                    ? "Personnalisation IA en cours…"
+                    : "Brouillon IA · vous pouvez tout modifier avant envoi"}
                 </p>
               </div>
               <button
@@ -417,8 +462,16 @@ export function OpsCoachSection({ tips }: { tips: OpsTip[] }) {
                 {sendErr ? <p className="font-medium text-red-600">{sendErr}</p> : null}
               </div>
               <div className="flex flex-wrap gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={() => void regenerate()}>
-                  Régénérer le brouillon
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-1"
+                  disabled={draftBusy}
+                  onClick={() => void regenerate()}
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  {draftBusy ? "IA…" : "Régénérer avec l’IA"}
                 </Button>
                 <Button
                   type="button"

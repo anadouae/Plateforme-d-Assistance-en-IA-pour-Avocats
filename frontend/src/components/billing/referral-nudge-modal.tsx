@@ -8,13 +8,10 @@ import { useClientLocale } from "@/store/locale";
 import { LexProductModal } from "@/components/billing/lex-product-modal";
 
 const SEEN_KEY = "lexhub_referral_nudge_at";
-/** Réafficher au plus toutes les ~5 jours (ms). */
-const COOLDOWN_MS = 5 * 24 * 60 * 60 * 1000;
+/** Réafficher au plus toutes les ~7 jours. */
+const COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
 
-/**
- * Popup périodique (avocat / admin cabinet) — rappel parrainage.
- * CTA → Paramètres → Plan & usage → ancre #parrainage.
- */
+/** Popup périodique parrainage — soft, non bloquant au 1er écran. */
 export function ReferralNudgeModal() {
   const ar = useClientLocale() === "ar";
   const router = useRouter();
@@ -32,6 +29,7 @@ export function ReferralNudgeModal() {
       /* ignore */
     }
     let cancelled = false;
+    const delay = window.matchMedia("(max-width: 768px)").matches ? 90_000 : 60_000;
     const timer = window.setTimeout(() => {
       api
         .getReferral()
@@ -41,7 +39,7 @@ export function ReferralNudgeModal() {
           setOpen(true);
         })
         .catch(() => undefined);
-    }, 40000);
+    }, delay);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
@@ -72,12 +70,12 @@ export function ReferralNudgeModal() {
           ? [
               `رمزكم: ${code}`,
               "المدعو: +14 يوماً عند بدء Solo/Cabinet",
-              "أنتم: +1 شهر عند بدء اشتراكه المدفوع بعد التجربة",
+              "أنتم: +1 شهر عند بدء اشتراكه المدفوع",
             ]
           : [
               `Votre code : ${code}`,
-              "Filleul : +14 jours d’essai en démarrant Solo/Cabinet",
-              "Vous : +1 mois quand son abonnement payant commence après l’essai",
+              "Filleul : +14 jours d’essai Solo/Cabinet",
+              "Vous : +1 mois à son abonnement payant",
             ]
       }
       primaryLabel={ar ? "رؤية رمزي" : "Voir mon code"}

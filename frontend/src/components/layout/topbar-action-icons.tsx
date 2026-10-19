@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { Bell, CreditCard, CircleHelp, Search, Settings } from "lucide-react";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { api, type CabinetNotificationItem } from "@/lib/api";
-import { canManageTeam, isAssistant } from "@/lib/roles";
+import { canManageTeam } from "@/lib/roles";
 import { useAuthStore } from "@/store/auth";
 import { useClientLocale, useTranslations } from "@/store/locale";
 import { cn } from "@/lib/utils";
@@ -15,7 +15,7 @@ import { useCabinetEvent } from "@/hooks/use-cabinet-realtime";
 import { useIsMobile } from "@/hooks/use-is-mobile";
 
 /**
- * Recherche ⌘K + Paramètres + cloche (join / notifs plaidoirie).
+ * Recherche ⌘K + Paramètres + cloche (notifs plaidoirie).
  */
 export function TopbarActionIcons() {
   const t = useTranslations().app;
@@ -24,9 +24,7 @@ export function TopbarActionIcons() {
   const isMobile = useIsMobile();
   const role = useAuthStore((s) => s.user?.role);
   const manage = canManageTeam(role);
-  const assistant = isAssistant(role);
   const router = useRouter();
-  const [pendingJoin, setPendingJoin] = useState(0);
   const [unread, setUnread] = useState(0);
   const [items, setItems] = useState<CabinetNotificationItem[]>([]);
   const [open, setOpen] = useState(false);
@@ -44,20 +42,6 @@ export function TopbarActionIcons() {
     window.dispatchEvent(new Event("lexhub-open-cmdk"));
   }
 
-  const refreshJoin = useCallback(async () => {
-    if (!manage) {
-      setPendingJoin(0);
-      return;
-    }
-    try {
-      const reqs = await api.getJoinRequests();
-      const n = reqs.filter((r) => (r.status || "pending").toLowerCase() === "pending").length;
-      setPendingJoin(n);
-    } catch {
-      /* silencieux */
-    }
-  }, [manage]);
-
   const refreshNotifs = useCallback(async () => {
     try {
       const [{ count }, list] = await Promise.all([
@@ -72,15 +56,11 @@ export function TopbarActionIcons() {
   }, []);
 
   useEffect(() => {
-    void refreshJoin();
     void refreshNotifs();
-    // 60s suffit pour le badge ; trop fréquent saturait le pool DB (Équipe en loading).
     const id = window.setInterval(() => {
-      void refreshJoin();
       void refreshNotifs();
     }, 60_000);
     const onFocus = () => {
-      void refreshJoin();
       void refreshNotifs();
     };
     window.addEventListener("focus", onFocus);
@@ -88,13 +68,13 @@ export function TopbarActionIcons() {
       window.clearInterval(id);
       window.removeEventListener("focus", onFocus);
     };
-  }, [refreshJoin, refreshNotifs]);
+  }, [refreshNotifs]);
 
   const cabinetEvtBusy = useRef(false);
   useCabinetEvent(() => {
     if (cabinetEvtBusy.current) return;
     cabinetEvtBusy.current = true;
-    void Promise.all([refreshJoin(), refreshNotifs()]).finally(() => {
+    void refreshNotifs().finally(() => {
       window.setTimeout(() => {
         cabinetEvtBusy.current = false;
       }, 2500);
@@ -119,8 +99,6 @@ export function TopbarActionIcons() {
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, [open, helpOpen]);
-
-  const badgeCount = manage ? pendingJoin + unread : unread;
 
   async function openNotif(n: CabinetNotificationItem) {
     if (!n.read) {
@@ -157,7 +135,7 @@ export function TopbarActionIcons() {
                 })
               }
             >
-              {ar ? "تعليم الكل كمقروء" : "Tout lu"}
+              {ar ? "علم الكل كمقروء" : "Tout lu"}
             </button>
           ) : null}
           {items.length > 0 ? (
@@ -184,7 +162,7 @@ export function TopbarActionIcons() {
                   .filter(([, v]) => v)
                   .map(([id]) => id);
                 void api.deleteNotifications({ ids }).then(() => {
-                  setItems((prev) => prev.filter((x) => !ids.includes(x.id)));
+                  setItems((prev) => prev.filter((x) => !ids.includes(x)));
                   setSelected({});
                   void refreshNotifs();
                 });
@@ -195,19 +173,7 @@ export function TopbarActionIcons() {
           ) : null}
         </div>
       </div>
-      {manage && pendingJoin > 0 ? (
-        <Link
-          href="/team#join-requests"
-          className="topbar-notif-item topbar-notif-item--unread"
-          onClick={() => setOpen(false)}
-        >
-          <strong>
-            {ar ? `${pendingJoin} طلبات انضمام` : `${pendingJoin} demande(s) d’adhésion`}
-          </strong>
-          <span>{ar ? "افتحوا صفحة الفريق" : "Ouvrir l’équipe"}</span>
-        </Link>
-      ) : null}
-      {items.length === 0 && !(manage && pendingJoin > 0) ? (
+      {items.length === 0 ? (
         <p className="topbar-notif-empty">
           {ar ? "لا إشعارات حالياً" : "Aucune notification"}
         </p>
@@ -276,7 +242,7 @@ export function TopbarActionIcons() {
           type="button"
           className={cn(
             "topbar-ico",
-            (manage && !assistant ? badgeCount : unread) > 0 && "topbar-ico--alert",
+            unread > 0 && "topbar-ico--alert",
           )}
           aria-label={ar ? "الإشعارات" : "Notifications"}
           title={ar ? "الإشعارات" : "Notifications"}
@@ -288,13 +254,9 @@ export function TopbarActionIcons() {
           }}
         >
           <Bell className="h-[18px] w-[18px] topbar-ico__glyph" />
-          {(manage && !assistant ? badgeCount : unread) > 0 ? (
+          {unread > 0 ? (
             <span className="topbar-ico__badge" aria-hidden>
-              {(manage && !assistant ? badgeCount : unread) > 9
-                ? "9+"
-                : manage && !assistant
-                  ? badgeCount
-                  : unread}
+              {unread > 9 ? "9+" : unread}
             </span>
           ) : null}
         </button>

@@ -554,7 +554,7 @@ def build_plaidoirie_docx(
         is_closing = bool(re.match(r"^(?:واحسبكم|وذلك\s*مع\s*الاحتفاظ|تحت\s*جميع)", text.strip()))
         _add_body_paragraph(
             doc,
-            text,
+                text,
             heading=is_heading,
             closing=is_closing,
             parties=is_parties and not is_heading,
@@ -565,13 +565,13 @@ def build_plaidoirie_docx(
         for p in body_paragraphs[-2:]:
             _keep_with_next(p)
 
-    sign = doc.add_paragraph()
+        sign = doc.add_paragraph()
     _set_paragraph_rtl(sign, align="right")
     sign.paragraph_format.space_before = Pt(12)
     sign.paragraph_format.space_after = Pt(0)
     _keep_with_next(sign)
     lines: list[str] = []
-    if city:
+        if city:
         city_ar = city.strip()
         if city_ar.lower() in ("casablanca", "casa"):
             city_ar = "الدار البيضاء"
@@ -585,9 +585,9 @@ def build_plaidoirie_docx(
         if lawyer_name:
             lines.append(lawyer_name)
         lines.append("خاتم المحامي")
-    sr = sign.add_run("\n".join(lines))
+        sr = sign.add_run("\n".join(lines))
     sr.font.size = Pt(12)
-    _set_run_rtl(sr)
+        _set_run_rtl(sr)
 
     buf = io.BytesIO()
     doc.save(buf)

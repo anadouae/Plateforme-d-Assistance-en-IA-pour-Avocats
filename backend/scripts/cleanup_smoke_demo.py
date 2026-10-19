@@ -14,8 +14,6 @@ from app.models import (
     AgendaEvent,
     Cabinet,
     Case,
-    CaseNote,
-    CaseTask,
     Document,
     PlaidoirieDraft,
     User,
@@ -92,24 +90,12 @@ def cleanup() -> None:
         print(f"Smoke cases: {len(cases)}")
         deleted_docs = 0
         deleted_drafts = 0
-        deleted_notes = 0
-        deleted_tasks = 0
         deleted_events = 0
         refs: list[str] = []
 
         for case in cases:
             docs = db.query(Document).filter(Document.case_id == case.id).all()
             deleted_docs += _purge_docs(db, docs)
-            deleted_notes += (
-                db.query(CaseNote)
-                .filter(CaseNote.case_id == case.id)
-                .delete(synchronize_session=False)
-            )
-            deleted_tasks += (
-                db.query(CaseTask)
-                .filter(CaseTask.case_id == case.id)
-                .delete(synchronize_session=False)
-            )
             deleted_events += (
                 db.query(AgendaEvent)
                 .filter(AgendaEvent.case_id == case.id)
@@ -138,7 +124,6 @@ def cleanup() -> None:
             print(f"  case: {r}")
         print(f"cases={len(cases)} docs={deleted_docs + orphan_n} (orphan_docs={orphan_n})")
         print(
-            f"notes={deleted_notes} tasks={deleted_tasks} "
             f"agenda={deleted_events} drafts={deleted_drafts}"
         )
 

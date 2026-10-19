@@ -170,6 +170,14 @@ export function UserAccountMenu({
               }}
               onClick={() => {
                 setOpen(false);
+                if (user?.must_set_password && !user?.auth_via_google) {
+                  const ok = window.confirm(
+                    ar
+                      ? "لم تنشئوا كلمة مرور بعد. عند الخروج ستحتاجون رمزاً بالبريد للدخول. إنشاء كلمة المرور الآن؟\n\nموافق = البقاء وإنشاء لاحقاً من الشريط الأصفر\nإلغاء = الخروج الآن"
+                      : "Vous n’avez pas encore de mot de passe. Après déconnexion, un code e-mail sera nécessaire. Créer le mot de passe maintenant ?\n\nOK = rester (utilisez le bandeau jaune)\nAnnuler = se déconnecter quand même",
+                  );
+                  if (ok) return;
+                }
                 logout();
                 router.replace("/login");
               }}

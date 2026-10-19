@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { AppShell } from "@/components/layout/app-shell";
 import { StatusPill } from "@/components/ui/status-pill";
+import { InviteAfterPleaNudge } from "@/components/onboarding/invite-after-plea-nudge";
 import {
   api,
   type AgendaEventItem,
@@ -393,22 +394,10 @@ export default function DashboardPage() {
 
   const actions = [
     {
-      href: "/cases/new",
-      icon: Plus,
-      title: t.newCase,
-      desc: t.actionCasesDesc,
-    },
-    {
       href: "/redaction/new",
       icon: Mic,
       title: t.newPlea,
       desc: t.actionPleaDesc,
-    },
-    {
-      href: "/documents",
-      icon: FileText,
-      title: t.manageDocs,
-      desc: t.actionDocsDesc,
     },
   ];
 
@@ -423,11 +412,17 @@ export default function DashboardPage() {
               {user?.full_name ? `, ${user.full_name}` : ""}
             </div>
           </div>
-          <Link href="/cases/new" className="btn btn-primary inline-flex items-center gap-2">
+          <Link
+            href="/cases/new"
+            className="btn btn-primary inline-flex items-center gap-2"
+            title={ar ? "إنشاء ملف قضائي جديد" : "Créer un nouveau dossier judiciaire"}
+          >
             <Plus className="h-4 w-4" />
             {t.newCase}
           </Link>
         </div>
+
+        <InviteAfterPleaNudge pleaCount={drafts.length} />
 
         <div className="grid gap-3 sm:grid-cols-3">
           {stats.map((s) => {
@@ -463,7 +458,15 @@ export default function DashboardPage() {
             {loading ? (
               <p className="text-sm text-[var(--ink-soft)]">…</p>
             ) : recent.length === 0 ? (
-              <p className="text-sm text-[var(--ink-soft)]">{t.emptyCases}</p>
+              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-6 text-center">
+                <p className="text-sm text-[var(--ink-soft)]">{t.emptyCases}</p>
+                <Link
+                  href="/cases/new"
+                  className="mt-3 inline-flex text-sm font-semibold text-[#0B1A4D] hover:underline"
+                >
+                  {ar ? "إنشاء أول ملف →" : "Créer le premier dossier →"}
+                </Link>
+              </div>
             ) : (
               <ul className="space-y-2">
                 {recent.map((c) => (
@@ -534,7 +537,7 @@ export default function DashboardPage() {
           <h2 className="mb-3 font-serif text-lg font-semibold text-[var(--ink)]">
             {t.quickAccess}
           </h2>
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-1 sm:max-w-sm">
             {actions.map((a) => {
               const Icon = a.icon;
               return (

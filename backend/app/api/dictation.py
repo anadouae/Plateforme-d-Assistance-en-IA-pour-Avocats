@@ -37,6 +37,7 @@ class PolishRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=80000)
     language: str = Field("ar", pattern="^(ar|fr|AR|FR)$")
     source: str = Field("audio", pattern="^(dictation|audio)$")
+    case_id: str | None = Field(None, max_length=64, description="Dossier — masquage PII")
 
 
 class ContradictionOut(BaseModel):
@@ -86,7 +87,8 @@ class PolishResponse(BaseModel):
     variables: list[PleaVariableOut] = []
     structure_hints: list[StructureHintOut] = []
     law_suggestions: list[LawSuggestionOut] = []
-
+    pii_masked: bool = False
+    pii_summary: dict[str, int] = {}
 
 class ComposeRequest(BaseModel):
     text: str = Field(..., min_length=1, max_length=80000)
@@ -274,18 +276,59 @@ def polish_dictation_endpoint(
     user: User = Depends(require_roles(UserRole.AVOCAT, UserRole.ADMIN_CABINET)),
     db: Session = Depends(get_db),
 ):
-    import re
-
     check_rate_limit(request, key="dictation.polish", limit=20, window_sec=60)
     from app.core.config import settings as _settings
+    from app.models import Case
     from app.services.billing import assert_can_use_ai_action, spend_ai_action
+    from app.services.pii_mask import (
+        build_full_mask,
+        collect_all_party_names,
+        inventory_summary,
+        unmask_text,
+    )
+    from app.services.pii_store import (
+        load_case_pii_mapping,
+        parties_from_case,
+        save_case_pii_mapping,
+    )
 
     charge_ai = bool(getattr(_settings, "DICTATION_POLISH_USE_LLM", False))
     if charge_ai:
         assert_can_use_ai_action(db, user.cabinet_id, "polish")
     lang = _norm_lang(data.language)
     source = (data.source or "audio").strip().lower()
-    polished, provider = polish_dictation(data.text, language=lang, source=source)
+
+    # Pseudonymisation avant ChatGPT (noms dossier + CIN/tél/email détectés)
+    case = None
+    parties: list[str] = []
+    base_map: dict[str, str] = {}
+    if (data.case_id or "").strip():
+        case = (
+            db.query(Case)
+            .filter(Case.id == data.case_id, Case.cabinet_id == user.cabinet_id)
+            .first()
+        )
+        if case:
+            parties = collect_all_party_names(
+                known_parties=parties_from_case(case),
+                texts=[data.text],
+            )
+            base_map = load_case_pii_mapping(case)
+    else:
+        parties = collect_all_party_names(known_parties=[], texts=[data.text], max_extra=8)
+
+    masked = build_full_mask(
+        data.text, parties=parties, structured=True, base_mapping=base_map
+    )
+    pii_map = masked.mapping
+    text_for_llm = masked.text
+    if case and pii_map:
+        save_case_pii_mapping(db, case, pii_map)
+
+    polished, provider = polish_dictation(text_for_llm, language=lang, source=source)
+    if pii_map and polished:
+        polished = unmask_text(polished, pii_map)
+
     if provider == "nonsense":
         log_audit(
             db,
@@ -304,56 +347,37 @@ def polish_dictation_endpoint(
             variables=[],
             structure_hints=[],
             law_suggestions=[],
+            pii_masked=bool(pii_map),
+            pii_summary=inventory_summary(pii_map),
         )
     if not polished:
         raise HTTPException(status_code=400, detail="نص فارغ / texte vide")
     alerts = detect_dictation_contradictions(polished, source=data.text)
-    from app.services.dictation import _stt_garbage_heavy
 
-    # Ne jamais écraser ChatGPT sur phrase courte / fautes (approximation) ;
-    # filet anti-résumé seulement sur textes longs « propres ».
-    if (
-        any(a.kind == "missing_fact" for a in alerts)
-        and not _stt_garbage_heavy(data.text or "")
-        and provider not in ("fidelity", "local", "rules", "none")
-        and len((data.text or "").strip()) >= 160
-    ):
-        src_tokens = (data.text or "").split()
-        src_uniq = (len(set(src_tokens)) / max(1, len(src_tokens))) if src_tokens else 1.0
-        if src_uniq >= 0.45:
-            from app.services.arabic_text_fix import (
-                finalize_arabic_polish,
-                light_arabic_fusha_form,
-                light_arabic_punctuation,
-                repair_arabic_stt,
-                repair_stt_garbage,
-                split_legal_phrases,
-            )
-            from app.services.dictation import _collapse_repeats
-
-            base = _collapse_repeats((data.text or "").strip())
-            if lang == "ar":
-                base = repair_stt_garbage(base)
-                base = finalize_arabic_polish(
-                    split_legal_phrases(
-                        light_arabic_fusha_form(
-                            light_arabic_punctuation(
-                                repair_arabic_stt(repair_stt_garbage(base))
-                            )
-                        )
-                    )
-                )
-            polished = base
-            provider = "fidelity"
-            alerts = [
-                a
-                for a in detect_dictation_contradictions(polished, source=data.text)
-                if a.kind != "missing_fact"
-            ]
-        else:
-            alerts = [a for a in alerts if a.kind != "missing_fact"]
-    elif any(a.kind == "missing_fact" for a in alerts):
-        alerts = [a for a in alerts if a.kind != "missing_fact"]
+    # Ne JAMAIS écraser ChatGPT à cause de missing_fact.
+    # Noms : si tous les morceaux du nom sont encore dans le corrigé → pas d'alerte.
+    filtered = []
+    for a in alerts:
+        if a.kind != "missing_fact":
+            filtered.append(a)
+            continue
+        hard_vals = []
+        pol_norm = re.sub(r"[‹›«»\s]+", " ", polished or "")
+        for v in a.values or []:
+            vv = (v or "").strip()
+            if not vv:
+                continue
+            parts = [p for p in re.split(r"\s+", vv) if len(p) >= 2]
+            if parts and all(p in pol_norm for p in parts):
+                continue  # nom encore présent (éventuellement découpé / surligné)
+            if re.search(r"\d", vv) or re.search(
+                r"(درهم|DH|€|\$|ألف|مليون|بن\s|بنت\s|ابن\s)", vv, re.I
+            ):
+                hard_vals.append(vv)
+        if hard_vals:
+            a.values = hard_vals
+            filtered.append(a)
+    alerts = filtered
     contradictions = [
         ContradictionOut(
             kind=a.kind,
@@ -372,7 +396,7 @@ def polish_dictation_endpoint(
         "dictation.polish",
         user=user,
         request=request,
-        details=f"{provider}:{lang}:c{len(contradictions)}:e{len(assist['edits'])}",
+        details=f"{provider}:{lang}:c{len(contradictions)}:e{len(assist['edits'])}:pii{len(pii_map)}",
     )
     if charge_ai and provider not in ("fidelity", "local", "rules", "none", "nonsense"):
         spend_ai_action(db, user.cabinet_id, "polish")
@@ -386,8 +410,9 @@ def polish_dictation_endpoint(
         variables=assist["variables"],
         structure_hints=assist["structure_hints"],
         law_suggestions=assist["law_suggestions"],
+        pii_masked=bool(pii_map),
+        pii_summary=inventory_summary(pii_map),
     )
-
 
 @router.post("/clarify", response_model=ClarifyResponse)
 def clarify_before_compose(
@@ -455,21 +480,21 @@ def compose_dictation_document(
     )
     _ent, slot = begin_ai_action(db, user.cabinet_id, "compose", request=request)
     try:
-        lang = _norm_lang(data.language)
-        source = data.text.strip()
-        polished = None
-        if data.polish_first:
-            polished, _ = polish_dictation(source, language=lang)
-            source = polished or source
+    lang = _norm_lang(data.language)
+    source = data.text.strip()
+    polished = None
+    if data.polish_first:
+        polished, _ = polish_dictation(source, language=lang)
+        source = polished or source
 
-        city = None
-        cabinet_name = None
-        if user.cabinet:
-            cabinet_name = user.cabinet.name
-            city = getattr(user.cabinet, "city", None)
+    city = None
+    cabinet_name = None
+    if user.cabinet:
+        cabinet_name = user.cabinet.name
+        city = getattr(user.cabinet, "city", None)
 
-        ptype = data.plaidoirie_type
-        if data.doc_type == "plaidoirie" and ptype and ptype not in PLAIDOIRIE_TYPES:
+    ptype = data.plaidoirie_type
+    if data.doc_type == "plaidoirie" and ptype and ptype not in PLAIDOIRIE_TYPES:
             ptype = "libre"
 
         if data.doc_type == "plaidoirie" and not (data.case_id or "").strip():
@@ -498,38 +523,38 @@ def compose_dictation_document(
             case_enriched = True
             polished = polished or source
         else:
-            title, body, provider, checks = compose_official_document(
-                source,
-                doc_type=data.doc_type,
-                title=data.title,
-                city=city,
-                cabinet_name=cabinet_name,
-                plaidoirie_type=ptype,
-                language=lang,
-            )
-        if not body:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="خدمة التحرير غير متاحة مؤقتًا — réessayez.",
-            )
-
-        log_audit(
-            db,
-            "dictation.compose",
-            user=user,
-            request=request,
-            details=f"{data.doc_type}:{ptype or '-'}:{lang}",
+    title, body, provider, checks = compose_official_document(
+        source,
+        doc_type=data.doc_type,
+        title=data.title,
+        city=city,
+        cabinet_name=cabinet_name,
+        plaidoirie_type=ptype,
+        language=lang,
+    )
+    if not body:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="خدمة التحرير غير متاحة مؤقتًا — réessayez.",
         )
+
+    log_audit(
+        db,
+        "dictation.compose",
+        user=user,
+        request=request,
+        details=f"{data.doc_type}:{ptype or '-'}:{lang}",
+    )
         finish_ai_action(db, user.cabinet_id, "compose", slot_token=slot, success=True)
-        db.commit()
-        return ComposeResponse(
-            title=title,
-            body=body,
-            polished=polished,
-            provider=provider,
-            checks=checks,
-            plaidoirie_type=ptype,
-            language=lang,
+    db.commit()
+    return ComposeResponse(
+        title=title,
+        body=body,
+        polished=polished,
+        provider=provider,
+        checks=checks,
+        plaidoirie_type=ptype,
+        language=lang,
             pii_masked=pii_masked,
             case_enriched=case_enriched,
         )

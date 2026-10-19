@@ -61,6 +61,7 @@ export default function SettingsPage() {
   const [emailForm, setEmailForm] = useState({ new_email: "", otp: "", password: "" });
   const [emailOtpSent, setEmailOtpSent] = useState(false);
   const [emailBusy, setEmailBusy] = useState(false);
+  const [logoutAllBusy, setLogoutAllBusy] = useState(false);
   const logout = useAuthStore((s) => s.logout);
   const router = useRouter();
   type SettingsSection = "general" | "cabinet" | "plan" | "security" | "danger";
@@ -287,15 +288,40 @@ export default function SettingsPage() {
     }
   }
 
+  const needsPasswordToDelete = Boolean(user) && !user?.must_set_password;
+  const deleteConfirmOk = ["SUPPRIMER", "DELETE", "حذف"].includes(
+    (delForm.confirmation || "").trim().toUpperCase(),
+  );
+  const deleteReady =
+    delForm.email_otp.length === 6 &&
+    deleteConfirmOk &&
+    (!needsPasswordToDelete || Boolean(delForm.password.trim()));
+
   async function onDeleteAccount(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    if (!deleteConfirmOk) {
+      setError(
+        ar
+          ? "اكتبوا حذف للتأكيد."
+          : 'Saisissez exactement SUPPRIMER pour confirmer.',
+      );
+      return;
+    }
+    if (needsPasswordToDelete && !delForm.password.trim()) {
+      setError(ar ? "كلمة المرور مطلوبة." : "Mot de passe requis.");
+      return;
+    }
+    if (delForm.email_otp.length !== 6) {
+      setError(ar ? "أدخلوا الرمز المكوّن من 6 أرقام." : "Entrez le code à 6 chiffres reçu par email.");
+      return;
+    }
     setDelBusy(true);
     try {
       const res = await api.deleteAccount(
-        delForm.password,
+        needsPasswordToDelete ? delForm.password : "",
         delForm.email_otp,
-        delForm.confirmation,
+        delForm.confirmation.trim(),
       );
       setMessage(res.message || t.deleteDone);
       logout();
@@ -695,6 +721,60 @@ export default function SettingsPage() {
         </div>
 
         <div className={section === "security" ? "space-y-6" : "hidden"}>
+            <Card>
+              <CardHeader>
+                <CardTitle>{ar ? "الجلسات" : "Sessions"}</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <p className="text-sm text-slate-600">
+                  {ar
+                    ? "الجلسة النشطة تُجدَّد تلقائياً (~7 أيام مع «تذكرني»). رمز الوصول قصير (~15 دقيقة)."
+                    : "Session active renouvelée automatiquement (~7 jours si « Se souvenir »). Jeton d’accès court (~15 min)."}
+                </p>
+                {user?.auth_via_google ? (
+                  <p className="text-sm text-slate-600">
+                    {ar
+                      ? "دخولكم عبر Google — كلمة مرور LexHub اختيارية."
+                      : "Connexion via Google — mot de passe LexHub optionnel."}
+                  </p>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={logoutAllBusy}
+                  onClick={() => {
+                    if (
+                      !window.confirm(
+                        ar
+                          ? "تسجيل الخروج من جميع الأجهزة؟ ستحتاجون إلى إعادة الدخول."
+                          : "Se déconnecter de tous les appareils ? Vous devrez vous reconnecter.",
+                      )
+                    ) {
+                      return;
+                    }
+                    setLogoutAllBusy(true);
+                    setError("");
+                    void api
+                      .logoutAll()
+                      .then(() => {
+                        logout();
+                        router.replace("/login");
+                      })
+                      .catch((e) => {
+                        setError(e instanceof ApiError ? e.message : "Erreur");
+                        setLogoutAllBusy(false);
+                      });
+                  }}
+                >
+                  {logoutAllBusy
+                    ? "…"
+                    : ar
+                      ? "تسجيل الخروج من كل الأجهزة"
+                      : "Se déconnecter de tous les appareils"}
+                </Button>
+              </CardContent>
+            </Card>
+
             {!assistant ? (
             <Card>
               <CardHeader>
@@ -853,14 +933,22 @@ export default function SettingsPage() {
                     </p>
                   </div>
                   <form onSubmit={onDeleteAccount} className="space-y-3">
-                    <Input
-                      label={t.deletePassword}
-                      type="password"
-                      autoComplete="current-password"
-                      value={delForm.password}
-                      onChange={(e) => setDelForm({ ...delForm, password: e.target.value })}
-                      required
-                    />
+                    {needsPasswordToDelete ? (
+                      <Input
+                        label={t.deletePassword}
+                        type="password"
+                        autoComplete="current-password"
+                        value={delForm.password}
+                        onChange={(e) => setDelForm({ ...delForm, password: e.target.value })}
+                        required
+                      />
+                    ) : (
+                      <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                        {ar
+                          ? "حساب بدون كلمة مرور: يكفي رمز البريد وكتابة حذف."
+                          : "Compte sans mot de passe (OTP / Google) : code email + SUPPRIMER suffisent."}
+                      </p>
+                    )}
                     <div className="flex flex-wrap items-end gap-2">
                       <div className="min-w-[160px] flex-1">
                         <Input
@@ -887,19 +975,21 @@ export default function SettingsPage() {
                       label={t.deleteConfirmLabel}
                       value={delForm.confirmation}
                       onChange={(e) => setDelForm({ ...delForm, confirmation: e.target.value })}
-                      placeholder="SUPPRIMER"
+                      placeholder={ar ? "حذف" : "SUPPRIMER"}
                       required
                     />
+                    {!deleteConfirmOk && delForm.confirmation.trim() ? (
+                      <p className="text-xs text-red-600">
+                        {ar
+                          ? "اكتبوا بالضبط: حذف"
+                          : "Saisissez exactement : SUPPRIMER"}
+                      </p>
+                    ) : null}
                     <Button
                       type="submit"
                       variant="outline"
-                      className="border-red-300 text-red-800 hover:bg-red-50"
-                      disabled={
-                        delBusy ||
-                        delForm.email_otp.length !== 6 ||
-                        !delForm.password ||
-                        !delForm.confirmation
-                      }
+                      className="border-red-300 text-red-800 hover:bg-red-50 disabled:opacity-40"
+                      disabled={delBusy || !deleteReady}
                     >
                       {t.deleteSubmit}
                     </Button>

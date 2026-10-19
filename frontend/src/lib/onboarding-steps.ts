@@ -18,7 +18,8 @@ export type OnboardingStepConfig = {
 };
 
 /**
- * Tour adapté au rôle — assistant ≠ avocat ≠ admin.
+ * Tour court (2–3 étapes) — bienvenue + cœur produit.
+ * Le reste (docs, agenda, équipe…) se découvre dans la nav.
  */
 export const ONBOARDING_STEP_DEFS: OnboardingStepConfig[] = [
   {
@@ -53,37 +54,6 @@ export const ONBOARDING_STEP_DEFS: OnboardingStepConfig[] = [
     target: '[data-tour-id="nav-cases"]',
     titleKey: "casesTitle",
     bodyKey: "casesBody",
-  },
-  {
-    id: "documents",
-    target: '[data-tour-id="nav-documents"]',
-    titleKey: "documentsTitle",
-    bodyKey: "documentsBody",
-  },
-  {
-    id: "agenda",
-    target: '[data-tour-id="nav-agenda"]',
-    titleKey: "agendaTitle",
-    bodyKey: "agendaBody",
-  },
-  {
-    id: "team",
-    target: '[data-tour-id="nav-team"]',
-    adminOnly: true,
-    titleKey: "teamTitle",
-    bodyKey: "teamBody",
-  },
-  {
-    id: "lang",
-    target: '[data-tour-id="lang-toggle"]',
-    titleKey: "langTitle",
-    bodyKey: "langBody",
-  },
-  {
-    id: "settings",
-    target: '[data-tour-id="settings"]',
-    titleKey: "settingsTitle",
-    bodyKey: "settingsBody",
   },
 ];
 

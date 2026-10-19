@@ -54,7 +54,8 @@ export function SmartInsightsStrip() {
   ]);
   const visible = insights
     .filter((i) => !dismissed.includes(i.id) && !skip.has(i.id))
-    .filter((i) => i.tone === "urgent" || i.tone === "warn" || i.id === "first_plea")
+    .filter((i) => i.tone === "urgent" || i.tone === "warn")
+    .filter((i) => i.id !== "first_plea")
     .slice(0, 1)
     .map((i) => localizeInsight(i, ar) as Insight);
   if (!visible.length) return null;

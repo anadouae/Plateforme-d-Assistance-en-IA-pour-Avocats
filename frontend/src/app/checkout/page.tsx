@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api, ApiError, type BillingPlan, type CabinetSettings } from "@/lib/api";
 import { FALLBACK_BILLING_PLANS } from "@/lib/billing-plans-fallback";
-import { clearBillingIntent, saveBillingIntent, commercialHref, needsCommercialQualification } from "@/lib/billing-intent";
+import { clearBillingIntent, saveBillingIntent } from "@/lib/billing-intent";
 import {
   clearCheckoutDraft,
   readCheckoutDraft,
@@ -61,12 +61,6 @@ function CheckoutInner() {
   const hydrated = useAuthStore((s) => s._hasHydrated);
   const planSlug = (search.get("plan") || "pro").trim();
   const cycle = search.get("cycle") === "yearly" ? "yearly" : "monthly";
-
-  useEffect(() => {
-    if (needsCommercialQualification(planSlug)) {
-      router.replace(commercialHref("enterprise"));
-    }
-  }, [planSlug, router]);
 
   const [plans, setPlans] = useState<BillingPlan[]>(FALLBACK_BILLING_PLANS);
   const [cabinet, setCabinet] = useState<CabinetSettings | null>(null);

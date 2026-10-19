@@ -18,6 +18,11 @@ _TEH_MARBUTA_WORDS = {
     "هيئه": "هيئة",
     "مذكره": "مذكرة",
     "مسطره": "مسطرة",
+    "مسطرى": "مسطرة",
+    "مراديه": "مرضية",
+    "مرادية": "مرضية",
+    "الجسديم": "الجسيم",
+    "جسديم": "جسيم",
     "ابتدائيه": "ابتدائية",
     "استئنافيه": "استئنافية",
     "تجاريه": "تجارية",
@@ -175,20 +180,29 @@ def _fix_one_word(word: str) -> str:
 
 
 def repair_arabic_stt(text: str) -> str:
-    """Nettoyage léger — corrige ه→ة (artefact Chrome) sans changer le sens."""
+    """Nettoyage léger — corrige ه→ة (artefact Chrome) sans changer le sens.
+
+    Préserve les sauts de ligne (sinon un DOCX entier devient une seule ligne
+    et la réparation BIDI inverse tout le document — même pied de page partout).
+    """
     t = (text or "").strip()
     if not t:
         return ""
-    t = re.sub(r"\s+", " ", t)
+    # Espaces horizontaux seulement — garder \n
+    t = re.sub(r"[^\S\n]+", " ", t)
+    t = re.sub(r" *\n *", "\n", t)
+    t = re.sub(r"\n{3,}", "\n\n", t)
     # Artefact fréquent si ة forcée à tort sur هذه
     t = t.replace("هذة", "هذه").replace("لهذة", "لهذه")
     # Lexique exact d'abord
     for wrong, right in _TEH_MARBUTA_WORDS.items():
         t = re.sub(rf"(?<!\w){re.escape(wrong)}(?!\w)", right, t)
-    # Puis heuristique mot à mot
-    parts = t.split(" ")
-    t = " ".join(_fix_one_word(p) for p in parts)
-    return t.strip()
+    # Puis heuristique mot à mot (par ligne pour ne pas mélanger)
+    fixed_lines: list[str] = []
+    for line in t.split("\n"):
+        parts = line.split(" ")
+        fixed_lines.append(" ".join(_fix_one_word(p) for p in parts))
+    return "\n".join(fixed_lines).strip()
 
 
 def audio_transcript_quality(text: str) -> str:
@@ -285,6 +299,17 @@ def repair_stt_garbage(text: str) -> str:
         (r"(?<!\S)يوليو\b(?=\s|\d|$)", "يوليوز"),
         (r"(?<!\S)شتنبر\b", "شتنبر"),
         (r"(?<!\S)غشت\b", "غشت"),
+        # Travail / licenciement — erreurs STT fréquentes (Whisper/Chrome)
+        (r"الخط\s*الجسديم", "الخطأ الجسيم"),
+        (r"خط\s*الجسديم", "خطأ جسيم"),
+        (r"(?<!\S)الجسديم\b", "الجسيم"),
+        (r"عطلة\s*مرادية", "عطلة مرضية"),
+        (r"(?<!\S)مرادية\b", "مرضية"),
+        (r"(?<!\S)مسطرى\b", "مسطرة"),
+        (r"أي\s*مسطرى", "أي مسطرة"),
+        (r"تم\s*فصلة\b", "تم فصله"),
+        (r"(?<!\S)فصلة\b", "فصله"),
+        (r"مغادرة\s*الشغل", "مغادرة الشغل"),
     ]
     for pat, repl in stt_lex:
         t = re.sub(pat, repl, t, flags=re.IGNORECASE)

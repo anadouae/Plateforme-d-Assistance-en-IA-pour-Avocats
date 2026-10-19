@@ -7,15 +7,15 @@ from app.core.password_policy import validate_password_strength
 
 
 class RegisterRequest(BaseModel):
-    """Inscription minimale : e-mail + mot de passe (+ OTP).
+    """Inscription frictionless : e-mail + OTP (mot de passe optionnel / plus tard).
 
     Les infos cabinet (ville, barreau, adresse, ICE…) sont optionnelles
     et se complètent ensuite dans Paramètres → Cabinet.
     """
 
     email: EmailStr
-    password: str = Field(..., min_length=12, max_length=72)
     email_otp: str = Field(..., min_length=6, max_length=6)
+    password: Optional[str] = Field(None, min_length=12, max_length=72)
     # Optionnels — complétés après accès à l'espace
     cabinet_name: Optional[str] = Field(None, max_length=255)
     city: Optional[str] = Field(None, max_length=100)
@@ -33,7 +33,9 @@ class RegisterRequest(BaseModel):
 
     @field_validator("password")
     @classmethod
-    def strong_password(cls, v: str) -> str:
+    def strong_password(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or not str(v).strip():
+            return None
         return validate_password_strength(v)
 
     @field_validator("phone")
@@ -46,6 +48,28 @@ class RegisterRequest(BaseModel):
         if digits and len(digits) < 8:
             raise ValueError("Numéro de téléphone invalide.")
         return cleaned.strip() or None
+
+
+class SetPasswordRequest(BaseModel):
+    """Définir le mot de passe (compte déjà connecté, ou après OTP login)."""
+
+    password: str = Field(..., min_length=12, max_length=72)
+
+    @field_validator("password")
+    @classmethod
+    def strong_password(cls, v: str) -> str:
+        return validate_password_strength(v)
+
+
+class PasswordlessLoginRequest(BaseModel):
+    email: EmailStr
+    code: Optional[str] = Field(None, min_length=6, max_length=6)
+    captcha_token: Optional[str] = Field(None, max_length=2048)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, v: str) -> str:
+        return v.strip().lower()
 
 
 class LoginRequest(BaseModel):
@@ -110,6 +134,8 @@ class UserResponse(BaseModel):
     totp_enabled: bool = False
     mfa_required: bool = False
     has_seen_onboarding_tour: bool = False
+    must_set_password: bool = False
+    auth_via_google: bool = False
 
     class Config:
         from_attributes = True
@@ -134,6 +160,11 @@ class MessageResponse(BaseModel):
 
 
 class CaseCreate(BaseModel):
+    title: Optional[str] = Field(
+        None,
+        max_length=255,
+        description="Intitulé métier du dossier (ex. Bennani c/ Alami — loyers)",
+    )
     client_name: str = Field(..., min_length=2, max_length=255)
     case_type: str = Field(..., min_length=2, max_length=100)
     status: str = "En cours"
@@ -169,6 +200,7 @@ class CaseCreate(BaseModel):
 
 
 class CaseUpdate(BaseModel):
+    title: Optional[str] = None
     client_name: Optional[str] = None
     case_type: Optional[str] = None
     status: Optional[str] = None
@@ -200,6 +232,7 @@ class CaseUpdate(BaseModel):
 class CaseResponse(BaseModel):
     id: str
     reference: str
+    title: Optional[str] = None
     client_name: str
     case_type: str
     status: str
@@ -267,6 +300,8 @@ class DocumentDetailResponse(DocumentResponse):
 class DocumentAskRequest(BaseModel):
     question: str = Field(..., min_length=3, max_length=2000)
     language: Optional[str] = Field(None, pattern="^(fr|ar|en)$")
+    # Historique court du chat (tournes) pour un vrai dialogue multi-tours
+    history: Optional[list[dict[str, str]]] = Field(None, max_length=12)
 
 
 class Citation(BaseModel):
@@ -315,66 +350,6 @@ class CaseAnalysisResponse(BaseModel):
     disclaimer: str = "Ceci ne constitue pas un avis juridique."
 
 
-class CaseNoteCreate(BaseModel):
-    title: str = Field(..., min_length=1, max_length=255)
-    body: str = ""
-    case_id: Optional[str] = None
-
-
-class CaseNoteUpdate(BaseModel):
-    title: Optional[str] = Field(None, min_length=1, max_length=255)
-    body: Optional[str] = None
-    case_id: Optional[str] = None
-
-
-class CaseNoteResponse(BaseModel):
-    id: str
-    title: str
-    body: str
-    case_id: Optional[str] = None
-    case_reference: Optional[str] = None
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
-class CaseTaskCreate(BaseModel):
-    title: str = Field(..., min_length=1, max_length=255)
-    description: Optional[str] = None
-    case_id: Optional[str] = None
-    status: str = Field("todo", pattern="^(todo|doing|done)$")
-    due_at: Optional[datetime] = None
-    assignee_id: Optional[str] = Field(None, max_length=36)
-
-
-class CaseTaskUpdate(BaseModel):
-    title: Optional[str] = Field(None, min_length=1, max_length=255)
-    description: Optional[str] = None
-    case_id: Optional[str] = None
-    status: Optional[str] = Field(None, pattern="^(todo|doing|done)$")
-    due_at: Optional[datetime] = None
-    assignee_id: Optional[str] = Field(None, max_length=36)
-
-
-class CaseTaskResponse(BaseModel):
-    id: str
-    title: str
-    description: Optional[str] = None
-    case_id: Optional[str] = None
-    case_reference: Optional[str] = None
-    status: str
-    due_at: Optional[datetime] = None
-    assignee_id: Optional[str] = None
-    assignee_name: Optional[str] = None
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
 class AgendaEventCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
@@ -419,8 +394,6 @@ class AgendaEventResponse(BaseModel):
 
 class WorkspaceSummaryResponse(BaseModel):
     upcoming_events: list[AgendaEventResponse]
-    open_tasks: list[CaseTaskResponse]
-    recent_notes: list[CaseNoteResponse]
 
 
 class TeamMemberResponse(BaseModel):
@@ -501,22 +474,6 @@ class JoinRequestCreate(BaseModel):
     @classmethod
     def normalize_email(cls, v: str) -> str:
         return v.strip().lower()
-
-
-class MembershipRequestResponse(BaseModel):
-    id: str
-    full_name: str
-    email: str
-    status: str
-    requested_at: datetime
-    resolved_at: Optional[datetime] = None
-
-    class Config:
-        from_attributes = True
-
-
-class MembershipApproveRequest(BaseModel):
-    role: str = Field(..., pattern="^(avocat|assistant_juridique|admin_cabinet)$")
 
 
 class CabinetSettingsResponse(BaseModel):
@@ -683,9 +640,9 @@ class PasswordChangeRequest(BaseModel):
 class AccountDeleteRequest(BaseModel):
     """Suppression de compte — confirmation forte (grandes apps)."""
 
-    password: str = Field(..., min_length=1, max_length=128)
+    password: str = Field(default="", max_length=128)
     email_otp: str = Field(..., min_length=6, max_length=6)
-    confirmation: str = Field(..., min_length=8, max_length=32)
+    confirmation: str = Field(..., min_length=4, max_length=32)
 
 
 class EmailOnlyRequest(BaseModel):
@@ -835,29 +792,6 @@ class RefreshTokenRequest(BaseModel):
     refresh_token: Optional[str] = None
 
 
-class CabinetPlaidoirieTemplateCreate(BaseModel):
-    name: str = Field(..., min_length=1, max_length=255)
-    body: str = Field(..., min_length=1, max_length=100_000)
-    base_type: Optional[str] = Field(None, max_length=64)
-
-
-class CabinetPlaidoirieTemplateUpdate(BaseModel):
-    name: Optional[str] = Field(None, min_length=1, max_length=255)
-    body: Optional[str] = Field(None, min_length=1, max_length=100_000)
-    base_type: Optional[str] = Field(None, max_length=64)
-
-
-class CabinetPlaidoirieTemplateResponse(BaseModel):
-    id: str
-    name: str
-    body: str
-    base_type: Optional[str] = None
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        from_attributes = True
-
 
 class PlaidoirieDocxRequest(BaseModel):
     title: str = Field(..., min_length=1, max_length=255)
@@ -879,37 +813,4 @@ class DocumentMetaUpdate(BaseModel):
     cited_in_plea: Optional[str] = Field(None, max_length=255)
 
 
-class CaseCommentCreate(BaseModel):
-    body: str = Field(..., min_length=1, max_length=4000)
 
-
-class CaseCommentResponse(BaseModel):
-    id: str
-    case_id: str
-    body: str
-    author_name: str
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
-class PaymentTransferCreate(BaseModel):
-    plan_slug: str = Field(..., min_length=2, max_length=64)
-    billing_cycle: str = Field("monthly", pattern="^(monthly|yearly)$")
-    notes: Optional[str] = Field(None, max_length=1000)
-
-
-class PaymentTransferResponse(BaseModel):
-    id: str
-    reference: str
-    amount_mad: int
-    plan_slug: str
-    billing_cycle: str
-    status: str
-    ice: Optional[str] = None
-    bank_rib: Optional[str] = None
-    bank_name: Optional[str] = None
-    beneficiary: Optional[str] = None
-    instructions: str
-    created_at: datetime

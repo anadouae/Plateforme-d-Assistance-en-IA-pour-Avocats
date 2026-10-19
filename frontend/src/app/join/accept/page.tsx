@@ -120,8 +120,8 @@ function AcceptInviteForm() {
           </h1>
           <p className="mt-3 text-sm text-slate-600">
             {ar
-              ? "اطلب من مسؤول المكتب إرسال دعوة جديدة."
-              : "Demandez à l’administrateur du cabinet de vous renvoyer une invitation."}
+              ? "الدعوة غير صالحة أو منتهية. استخدموا آخر رابط وصل بالبريد، أو سجّلوا الدخول."
+              : "Invitation invalide ou expirée. Utilisez le dernier lien reçu par e-mail, ou reconnectez-vous."}
           </p>
           <Link href="/login" className="mt-6 inline-block text-sm font-semibold text-[#0B1A4D] underline">
             {ar ? "العودة للدخول" : "Retour à la connexion"}

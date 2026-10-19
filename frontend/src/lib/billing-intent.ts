@@ -46,9 +46,6 @@ export function clearBillingIntent() {
 export function postAuthPath(role?: string | null): string {
   if (role === "admin_webvoice") return "/admin";
   const intent = readBillingIntent();
-  if (intent?.plan && needsCommercialQualification(intent.plan)) {
-    return commercialHref("enterprise");
-  }
   if (intent?.plan && intent.plan !== "free") {
     return `/checkout?plan=${encodeURIComponent(intent.plan)}&cycle=${intent.cycle}`;
   }
@@ -59,18 +56,17 @@ export function postAuthPath(role?: string | null): string {
   return "/dashboard";
 }
 
-export function commercialHref(intent: "enterprise" | "custom" = "enterprise") {
-  return `/commercial?intent=${intent}`;
+/** @deprecated — plus de qualification commerciale ; conservé pour anciens liens. */
+export function commercialHref(_intent: "enterprise" | "custom" = "enterprise") {
+  return "/tarifs";
 }
 
-export function needsCommercialQualification(slug: string) {
-  return slug === "enterprise";
+/** Plus aucun plan ne passe par un formulaire avant essai. */
+export function needsCommercialQualification(_slug: string) {
+  return false;
 }
 
 export function checkoutHref(plan: string, cycle: "monthly" | "yearly" = "monthly") {
-  if (needsCommercialQualification(plan)) {
-    return commercialHref("enterprise");
-  }
   return `/checkout?plan=${encodeURIComponent(plan)}&cycle=${cycle}`;
 }
 

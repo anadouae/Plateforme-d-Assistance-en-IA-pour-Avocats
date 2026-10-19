@@ -23,8 +23,6 @@ import {
 
   Lock,
 
-  Phone,
-
   Scale,
 
   Server,
@@ -54,7 +52,7 @@ import {
   FALLBACK_BILLING_PLANS,
 
 } from "@/lib/billing-plans-fallback";
-import { saveBillingIntent, checkoutHref, commercialHref, needsCommercialQualification } from "@/lib/billing-intent";
+import { saveBillingIntent, checkoutHref } from "@/lib/billing-intent";
 import { planCtaLabel, planCtaSub, planTrialBadge } from "@/lib/plan-cta";
 
 import { canManageTeam } from "@/lib/roles";
@@ -160,18 +158,10 @@ function TarifsPageInner() {
       setAskAdmin(true);
       return;
     }
-    if (match.slug === "enterprise") {
-      window.location.assign(commercialHref("enterprise"));
-      return;
-    }
     setPitchPlan(match);
   }, [searchParams, plans]);
 
   function choosePlan(plan: BillingPlan) {
-    if (needsCommercialQualification(plan.slug)) {
-      window.location.assign(commercialHref("enterprise"));
-      return;
-    }
     saveBillingIntent({ plan: plan.slug, cycle, intent: plan.slug === "free" ? "free" : "trial" });
     const authed = loggedIn || useAuthStore.getState().isAuthenticated();
     const role = useAuthStore.getState().user?.role;
@@ -546,51 +536,6 @@ function TarifsPageInner() {
               );
 
             })}
-
-            <div className="relative flex flex-col rounded-2xl border border-dashed border-[#0A1228]/30 bg-white p-6 shadow-[0_12px_32px_-24px_rgba(10,18,40,0.35)]">
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-[#0A1228]/5 text-[#0A1228]">
-                <Phone className="h-7 w-7" strokeWidth={1.6} />
-              </div>
-              <h2 className="text-lg font-semibold uppercase tracking-wide text-[#0A1228]">
-                {ar ? "حسب الطلب" : "Sur mesure"}
-              </h2>
-              <p className="mt-2 min-h-[3rem] text-sm leading-relaxed text-slate-600">
-                {ar
-                  ? "مكاتب كبيرة (أكثر من 15 محامياً، عدة مدن، عقد خاص). بدون سعر علني وبدون دفع فوري."
-                  : "Très gros cabinets (plus de 15 avocats, plusieurs villes, contrat spécial). Pas de prix public, pas de paiement immédiat — devis à la main."}
-              </p>
-              <p className="mt-5 flex items-baseline gap-1">
-                <span className="text-2xl font-semibold tracking-tight text-[#0A1228]">
-                  {ar ? "اتصلوا بنا" : "Appelez-nous"}
-                </span>
-              </p>
-              <ul className="mt-5 flex-1 space-y-2.5">
-                {(ar
-                  ? ["عقد وحصص حسب الحجم", "عدة مواقع / مدن", "مرافقة مخصّصة"]
-                  : ["Contrat et quotas selon le volume", "Multi-sites / plusieurs villes", "Accompagnement dédié"]
-                ).map((h) => (
-                  <li key={h} className="flex items-start gap-2 text-sm text-slate-700">
-                    <Check className="mt-0.5 h-4 w-4 shrink-0 text-[#0A1228]" />
-                    <span>{h}</span>
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-6">
-                <Button
-                  type="button"
-                  className="w-full rounded-xl border-[#0A1228]/20 font-semibold text-[#0A1228]"
-                  variant="outline"
-                  onClick={() => {
-                    window.location.assign(commercialHref("custom"));
-                  }}
-                >
-                  {ar ? "طلب عرض سعر" : "Demander un devis"}
-                </Button>
-                <p className="mt-2 text-center text-[11px] text-slate-500">
-                  {ar ? "بدون تفعيل فوري" : "Sans checkout en ligne"}
-                </p>
-              </div>
-            </div>
 
           </div>
 

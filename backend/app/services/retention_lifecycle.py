@@ -25,11 +25,14 @@ from app.models import (
 from app.services import billing as billing_svc
 from app.services.email import (
     send_changelog_soft_email,
+    send_first_plea_nudge_email,
     send_inactivity_winback_email,
+    send_invite_loop_email,
     send_onboarding_tip_email,
     send_payment_failed_email,
     send_renewal_reminder_email,
     send_seats_almost_full_email,
+    send_set_password_reminder_email,
     send_twofa_nudge_email,
     send_upgrade_checklist_email,
     send_weekly_cabinet_digest_email,
@@ -366,6 +369,82 @@ def process_onboarding_tips(db: Session) -> dict:
     return {"onboarding_tips": sent}
 
 
+def process_first_plea_nudges(db: Session) -> dict:
+    """J+3 à J+10 : nudge 1ʳᵉ plaidoirie si aucune encore."""
+    sent = 0
+    for cab in db.query(Cabinet).all():
+        age = _cabinet_age_days(cab)
+        if age < 3 or age > 10:
+            continue
+        if _plea_count(db, cab.id) > 0:
+            continue
+        admin = _admin_of_cabinet(db, cab.id)
+        if not admin:
+            continue
+        ev = "email_first_plea_nudge"
+        if _already_sent(db, cab.id, ev):
+            continue
+        ok = send_first_plea_nudge_email(
+            admin.email,
+            full_name=admin.full_name,
+            cabinet_name=cab.name,
+        )
+        _log(db, cab.id, ev, detail="sent" if ok else "fail")
+        if ok:
+            sent += 1
+    db.commit()
+    return {"first_plea_nudges": sent}
+
+
+def process_past_due_dunning(db: Session) -> dict:
+    """Rappels auto impayé à J+2 et J+5 après le 1er échec de paiement."""
+    sent = 0
+    subs = (
+        db.query(CabinetSubscription)
+        .filter(CabinetSubscription.status == SubscriptionStatus.PAST_DUE)
+        .all()
+    )
+    for sub in subs:
+        fail_ev = (
+            db.query(SubscriptionEvent)
+            .filter(
+                SubscriptionEvent.cabinet_id == sub.cabinet_id,
+                SubscriptionEvent.event_type == "payment_failed",
+            )
+            .order_by(SubscriptionEvent.created_at.desc())
+            .first()
+        )
+        if not fail_ev or not fail_ev.created_at:
+            continue
+        since = _aware(fail_ev.created_at)
+        if not since:
+            continue
+        days = max(0, (_now() - since).days)
+        plan = db.query(SubscriptionPlan).filter(SubscriptionPlan.id == sub.plan_id).first()
+        admin = _admin_of_cabinet(db, sub.cabinet_id)
+        cab = db.query(Cabinet).filter(Cabinet.id == sub.cabinet_id).first()
+        if not admin or not cab or not plan:
+            continue
+        for threshold in (2, 5):
+            if days < threshold:
+                continue
+            ev = f"email_past_due_d{threshold}"
+            if _already_sent(db, sub.cabinet_id, ev):
+                continue
+            ok = send_payment_failed_email(
+                admin.email,
+                full_name=admin.full_name,
+                cabinet_name=cab.name,
+                plan_name=plan.name,
+            )
+            _log(db, sub.cabinet_id, ev, detail="sent" if ok else "fail", plan_slug=plan.slug)
+            if ok:
+                sent += 1
+            break
+    db.commit()
+    return {"past_due_dunning": sent}
+
+
 def process_inactivity_winback(db: Session) -> dict:
     sent = 0
     cutoff = _now() - timedelta(days=14)
@@ -579,7 +658,7 @@ def send_upgrade_checklist_for_cabinet(
 
 
 def process_retention_daily(db: Session) -> dict:
-    """Job quotidien 9h : renouvellement + tips + inactivité + 2FA + changelog mensuel."""
+    """Job quotidien 9h : renouvellement + tips + 1ʳᵉ plaidoirie + impayés + inactivité + 2FA."""
     out: dict = {}
     try:
         out.update(process_renewal_reminders(db))
@@ -591,6 +670,16 @@ def process_retention_daily(db: Session) -> dict:
     except Exception:
         logger.exception("onboarding tips failed")
         out["tips_error"] = True
+    try:
+        out.update(process_first_plea_nudges(db))
+    except Exception:
+        logger.exception("first plea nudges failed")
+        out["first_plea_error"] = True
+    try:
+        out.update(process_past_due_dunning(db))
+    except Exception:
+        logger.exception("past_due dunning failed")
+        out["past_due_error"] = True
     try:
         out.update(process_inactivity_winback(db))
     except Exception:

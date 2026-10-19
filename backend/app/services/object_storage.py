@@ -9,10 +9,33 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 _minio_client = None
+_minio_bucket: str | None = None
 
 
 class TransientStorageError(Exception):
     """Erreur réseau / MinIO temporaire — Celery peut retry."""
+
+
+def _active_bucket() -> str:
+    """Bucket réellement utilisable (celui avec lequel le client s'est connecté)."""
+    return (_minio_bucket or settings.MINIO_BUCKET or "lexhub-documents").strip()
+
+
+def _ensure_bucket(client, bucket: str) -> None:
+    if not bucket:
+        raise TransientStorageError("MINIO_BUCKET vide")
+    try:
+        if not client.bucket_exists(bucket):
+            client.make_bucket(bucket)
+            logger.info("MinIO bucket créé: %s", bucket)
+    except Exception as exc:
+        # Course possible si créé en parallèle — re-vérifier
+        try:
+            if client.bucket_exists(bucket):
+                return
+        except Exception:
+            pass
+        raise TransientStorageError(f"Impossible de préparer le bucket MinIO « {bucket} »: {exc}") from exc
 
 
 def _get_fernet() -> Fernet | None:
@@ -88,19 +111,23 @@ def _build_minio_client(access_key: str, secret_key: str, bucket: str):
         secure=settings.MINIO_SECURE,
         http_client=http_client,
     )
-    if not client.bucket_exists(bucket):
-        client.make_bucket(bucket)
+    # Valider les credentials (list_buckets) avant make_bucket
+    client.list_buckets()
+    _ensure_bucket(client, bucket)
     return client
 
 
 def _get_minio():
-    global _minio_client
+    global _minio_client, _minio_bucket
     if not settings.USE_MINIO:
         return None
     if _minio_client is None:
+        preferred = (settings.MINIO_BUCKET or "lexhub-documents").strip()
         creds_to_try = [
-            (settings.MINIO_ACCESS_KEY, settings.MINIO_SECRET_KEY, settings.MINIO_BUCKET),
+            (settings.MINIO_ACCESS_KEY, settings.MINIO_SECRET_KEY, preferred),
+            ("sanad_minio", "sanad_minio_secret", preferred),
             ("sanad_minio", "sanad_minio_secret", "sanad-documents"),
+            ("lexhub_minio", "lexhub_minio_secret", preferred),
             ("lexhub_minio", "lexhub_minio_secret", "lexhub-documents"),
         ]
         # Remove duplicate tuples while preserving order
@@ -115,15 +142,26 @@ def _get_minio():
         for ak, sk, bkt in unique_creds:
             try:
                 _minio_client = _build_minio_client(ak, sk, bkt)
+                _minio_bucket = bkt
                 logger.info("MinIO connected successfully (key: %s, bucket: %s)", ak, bkt)
                 break
             except Exception as exc:
                 last_exc = exc
+                logger.warning("MinIO creds failed for key=%s bucket=%s: %s", ak, bkt, exc)
                 continue
 
         if _minio_client is None:
             logger.warning("MinIO unavailable (%s), using local storage", last_exc)
             return None
+    else:
+        # Client déjà en cache : garantir le bucket actif avant write
+        try:
+            _ensure_bucket(_minio_client, _active_bucket())
+        except Exception as exc:
+            logger.warning("MinIO ensure bucket failed, reset client: %s", exc)
+            _minio_client = None
+            _minio_bucket = None
+            return _get_minio()
     return _minio_client
 
 
@@ -144,17 +182,39 @@ def save_file(content: bytes, cabinet_id: str, case_id: str, extension: str) -> 
 
     if client:
         key = _object_key(cabinet_id, case_id, filename)
+        bucket = _active_bucket()
         try:
+            _ensure_bucket(client, bucket)
             client.put_object(
-                settings.MINIO_BUCKET,
+                bucket,
                 key,
                 io.BytesIO(encrypted),
                 length=len(encrypted),
             )
+        except TransientStorageError:
+            raise
         except Exception as exc:
-            logger.error("MinIO put_object failed: %s", exc)
-            raise TransientStorageError(str(exc)) from exc
-        return f"minio://{settings.MINIO_BUCKET}/{key}"
+            # Credentials/bucket drift — reset client and retry once
+            global _minio_client, _minio_bucket
+            logger.error("MinIO put_object failed: %s — retry with fresh client", exc)
+            _minio_client = None
+            _minio_bucket = None
+            client = _get_minio()
+            if not client:
+                raise TransientStorageError(str(exc)) from exc
+            bucket = _active_bucket()
+            try:
+                _ensure_bucket(client, bucket)
+                client.put_object(
+                    bucket,
+                    key,
+                    io.BytesIO(encrypted),
+                    length=len(encrypted),
+                )
+            except Exception as exc2:
+                logger.error("MinIO put_object retry failed: %s", exc2)
+                raise TransientStorageError(str(exc2)) from exc2
+        return f"minio://{bucket}/{key}"
 
     directory = ensure_upload_dir(cabinet_id, case_id)
     filepath = directory / filename

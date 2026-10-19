@@ -59,22 +59,29 @@ services:
     restart: unless-stopped
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        NEXT_PUBLIC_API_URL: https://lexhub.space
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+    image: sanad-frontend
     ports: !override
       - "127.0.0.1:3000:3000"
     environment:
       NEXT_PUBLIC_API_URL: https://lexhub.space
       NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-      NODE_OPTIONS: --max-old-space-size=1024
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
+      NODE_ENV: production
+      NODE_OPTIONS: --max-old-space-size=768
+    # Image figée (Dockerfile.prod) — pas de bind-mount / pas de npm run dev
+    volumes: !override []
     depends_on:
       - backend
-    command: ["npm", "run", "dev", "--", "--hostname", "0.0.0.0", "--port", "3000"]
+    # CMD du Dockerfile.prod = node server.js (standalone)
     restart: unless-stopped
 
   celery-worker:
+    image: sanad-backend
     depends_on: !override
       - postgres
       - redis
@@ -92,12 +99,14 @@ services:
       SMTP_FROM: ${SMTP_FROM:-LexHub <noreply@lexhub.space>}
       SMTP_TLS: ${SMTP_TLS:-true}
     volumes: !override
+      - ./backend:/app
       - chroma_data:/app/data/chromadb
       - hf_cache:/root/.cache/huggingface
     command: celery -A app.services.celery_app worker --loglevel=info --concurrency=1
     restart: unless-stopped
 
   celery-beat:
+    image: sanad-backend
     depends_on: !override
       - postgres
       - redis

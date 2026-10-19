@@ -3,10 +3,70 @@ import type { Citation } from "@/lib/api";
 import { renderAnswerWithLinks } from "@/components/ai/source-links";
 import { cn } from "@/lib/utils";
 
-function renderInline(text: string, sources: Citation[], keyPrefix: string): ReactNode[] {
-  return renderAnswerWithLinks(text, sources).map((part, i) =>
-    typeof part === "string" ? <span key={`${keyPrefix}-${i}`}>{part}</span> : part,
-  );
+/** Inline: **gras**, *italique*, `code`, puis liens [n]. */
+function renderInlineMarkdown(
+  text: string,
+  sources: Citation[],
+  keyPrefix: string,
+): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  // Split on **bold**, *italic*, `code` (ordre: bold avant italic)
+  const re = /(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g;
+  let last = 0;
+  let i = 0;
+  for (const m of text.matchAll(re)) {
+    const idx = m.index ?? 0;
+    if (idx > last) {
+      nodes.push(
+        ...renderAnswerWithLinks(text.slice(last, idx), sources).map((p, j) =>
+          typeof p === "string" ? (
+            <span key={`${keyPrefix}-t-${i}-${j}`}>{p}</span>
+          ) : (
+            p
+          ),
+        ),
+      );
+    }
+    const token = m[0];
+    if (token.startsWith("**") && token.endsWith("**")) {
+      nodes.push(
+        <strong
+          key={`${keyPrefix}-b-${i++}`}
+          className="font-semibold text-sanad-navy"
+        >
+          {token.slice(2, -2)}
+        </strong>,
+      );
+    } else if (token.startsWith("*") && token.endsWith("*")) {
+      nodes.push(
+        <em key={`${keyPrefix}-i-${i++}`} className="italic text-slate-700">
+          {token.slice(1, -1)}
+        </em>,
+      );
+    } else if (token.startsWith("`") && token.endsWith("`")) {
+      nodes.push(
+        <code
+          key={`${keyPrefix}-c-${i++}`}
+          className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[0.85em] text-sky-800"
+        >
+          {token.slice(1, -1)}
+        </code>,
+      );
+    }
+    last = idx + token.length;
+  }
+  if (last < text.length) {
+    nodes.push(
+      ...renderAnswerWithLinks(text.slice(last), sources).map((p, j) =>
+        typeof p === "string" ? (
+          <span key={`${keyPrefix}-e-${j}`}>{p}</span>
+        ) : (
+          p
+        ),
+      ),
+    );
+  }
+  return nodes.length ? nodes : [<span key={`${keyPrefix}-empty`}>{text}</span>];
 }
 
 function flushParagraph(
@@ -18,8 +78,8 @@ function flushParagraph(
   const text = lines.join("\n").trim();
   if (!text) return;
   out.push(
-    <p key={key} className="my-2 leading-relaxed">
-      {renderInline(text, sources, key)}
+    <p key={key} className="my-2 leading-relaxed text-slate-700">
+      {renderInlineMarkdown(text, sources, key)}
     </p>,
   );
 }
@@ -36,18 +96,21 @@ function flushList(
   out.push(
     <Tag
       key={key}
-      className={cn("my-2 space-y-1 pl-5", ordered ? "list-decimal" : "list-disc")}
+      className={cn(
+        "my-2 list-outside space-y-1.5 ps-5 text-slate-700",
+        ordered ? "list-decimal marker:font-semibold marker:text-sanad-navy" : "list-disc marker:text-sanad-blue",
+      )}
     >
       {items.map((item, i) => (
-        <li key={`${key}-li-${i}`} className="leading-relaxed">
-          {renderInline(item, sources, `${key}-${i}`)}
+        <li key={`${key}-li-${i}`} className="leading-relaxed ps-1">
+          {renderInlineMarkdown(item, sources, `${key}-${i}`)}
         </li>
       ))}
     </Tag>,
   );
 }
 
-/** Line-aware Markdown: headings, bullet/numbered lists, paragraphs. */
+/** Line-aware Markdown: headings, bullet/numbered lists, paragraphs, bold. */
 function renderBlock(
   block: string,
   sources: Citation[],
@@ -83,8 +146,11 @@ function renderBlock(
     if (t.startsWith("### ")) {
       flushAll();
       nodes.push(
-        <h4 key={`${key}-h3-${part++}`} className="mb-1 mt-3 text-sm font-semibold text-sanad-slate">
-          {renderInline(t.slice(4), sources, `${key}-h3`)}
+        <h4
+          key={`${key}-h3-${part++}`}
+          className="mb-1 mt-3 text-sm font-semibold text-sky-900"
+        >
+          {renderInlineMarkdown(t.slice(4), sources, `${key}-h3`)}
         </h4>,
       );
       continue;
@@ -94,9 +160,9 @@ function renderBlock(
       nodes.push(
         <h3
           key={`${key}-h2-${part++}`}
-          className="mb-2 mt-4 text-base font-semibold text-sanad-slate first:mt-0"
+          className="mb-2 mt-4 border-b border-sanad-border/60 pb-1 text-base font-semibold text-sanad-navy first:mt-0"
         >
-          {renderInline(t.slice(3), sources, `${key}-h2`)}
+          {renderInlineMarkdown(t.slice(3), sources, `${key}-h2`)}
         </h3>,
       );
       continue;
@@ -106,9 +172,9 @@ function renderBlock(
       nodes.push(
         <h2
           key={`${key}-h1-${part++}`}
-          className="mb-2 mt-4 text-lg font-bold text-sanad-slate first:mt-0"
+          className="mb-2 mt-4 text-lg font-bold text-sanad-navy first:mt-0"
         >
-          {renderInline(t.slice(2), sources, `${key}-h1`)}
+          {renderInlineMarkdown(t.slice(2), sources, `${key}-h1`)}
         </h2>,
       );
       continue;
@@ -156,7 +222,11 @@ export function MarkdownAnswer({
   sources?: Citation[];
   className?: string;
 }) {
-  const blocks = text.split(/\n{2,}/);
+  const cleaned = (text || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/```[\w]*\n?/g, "")
+    .trim();
+  const blocks = cleaned.split(/\n{2,}/);
   return (
     <div className={cn("text-sm text-sanad-slate", className)}>
       {blocks.map((block, i) => renderBlock(block, sources, `block-${i}`))}

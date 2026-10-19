@@ -1,7 +1,10 @@
-"""Ops Coach LexHub — recommandations gains + brouillons email (admin)."""
+"""Ops Coach LexHub — signaux live + analyse IA + brouillons email (admin)."""
 
 from __future__ import annotations
 
+import json
+import logging
+import re
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -9,6 +12,16 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models import Cabinet, User, UserRole
 from app.services.email import _btn, _email_shell, _send_email, email_configured
+
+logger = logging.getLogger(__name__)
+
+OPS_AI_SYSTEM = (
+    "Tu es l’Ops Coach LexHub : coach d’exploitation pour l’admin plateforme "
+    "(pas pour l’avocat client). Tu analyses des métriques SaaS réelles "
+    "(essais, impayés, usage IA, plaidoiries) et tu priorises qui contacter "
+    "maintenant. Français pro, concret, actionnable. Pas de jargon inutile. "
+    "Ne fabrique jamais de chiffres absents des données fournies."
+)
 
 
 PRIORITY_ORDER = {"high": 0, "medium": 1, "low": 2}
@@ -328,3 +341,277 @@ def send_ops_email(
 
 def sort_tips(tips: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(tips, key=lambda t: (PRIORITY_ORDER.get(t.get("priority", "low"), 9), t.get("titre", "")))
+
+
+def _strip_json_fence(raw: str) -> str:
+    text = (raw or "").strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"\s*```$", "", text)
+    return text.strip()
+
+
+def _parse_json_object(raw: str) -> dict[str, Any] | None:
+    text = _strip_json_fence(raw)
+    try:
+        data = json.loads(text)
+        if isinstance(data, dict):
+            return data
+    except json.JSONDecodeError:
+        pass
+    m = re.search(r"\{[\s\S]*\}", text)
+    if m:
+        try:
+            data = json.loads(m.group(0))
+            if isinstance(data, dict):
+                return data
+        except json.JSONDecodeError:
+            pass
+    return None
+
+
+def _compact_tips_for_ai(tips: list[dict[str, Any]], *, limit: int = 8) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for t in tips[:limit]:
+        targets = t.get("targets") or []
+        names = [x.get("cabinet_name") for x in targets[:4] if x.get("cabinet_name")]
+        out.append(
+            {
+                "id": t.get("id"),
+                "scenario": t.get("scenario"),
+                "priority": t.get("priority"),
+                "titre": t.get("titre"),
+                "en_clair": t.get("en_clair"),
+                "action": t.get("action"),
+                "n_cibles": len(targets),
+                "exemples_cabinets": names,
+            }
+        )
+    return out
+
+
+def enrich_ops_with_ai(
+    *,
+    metrics: dict[str, Any],
+    facts: list[str],
+    tips: list[dict[str, Any]],
+    summary_fr: str,
+) -> dict[str, Any]:
+    """Analyse IA live sur les signaux détectés (fallback gracieux si LLM down)."""
+    from app.services.local_llm import generate_with_prompt
+
+    payload = {
+        "fenetre": "rolling_30j + mois en cours usage",
+        "resume_regles": summary_fr,
+        "metriques": metrics,
+        "faits": facts[:12],
+        "cartes_action": _compact_tips_for_ai(tips),
+    }
+    prompt = (
+        "Analyse LIVE des cabinets LexHub (données ci-dessous). "
+        "Réponds UNIQUEMENT en JSON valide (pas de markdown) avec exactement :\n"
+        "{\n"
+        '  "brief_fr": "3-5 phrases : diagnostic opérationnel maintenant",\n'
+        '  "priorites": ["1. action la plus urgente", "2. …", "3. …"],\n'
+        '  "prochaine_heure": "ce que l’admin doit faire dans l’heure",\n'
+        '  "risque_principal": "une phrase",\n'
+        '  "opportunite": "une phrase"\n'
+        "}\n\n"
+        f"DONNÉES:\n{json.dumps(payload, ensure_ascii=False, default=str)[:6000]}"
+    )
+    try:
+        raw = generate_with_prompt(prompt, system=OPS_AI_SYSTEM)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Ops Coach AI brief failed: %s", exc)
+        raw = None
+
+    parsed = _parse_json_object(raw or "") if raw else None
+    if not parsed:
+        return {
+            "enabled": bool(raw),
+            "status": "fallback" if not raw else "parse_error",
+            "brief_fr": summary_fr,
+            "priorites": [t.get("titre") for t in tips[:3] if t.get("titre")],
+            "prochaine_heure": (
+                tips[0].get("action") if tips else "Relancer Ops Coach après nouvelles connexions."
+            ),
+            "risque_principal": "",
+            "opportunite": "",
+            "method": "signals_sql + llm_brief",
+        }
+
+    priorites = parsed.get("priorites") or []
+    if not isinstance(priorites, list):
+        priorites = [str(priorites)]
+    priorites = [str(p).strip() for p in priorites if str(p).strip()][:5]
+
+    return {
+        "enabled": True,
+        "status": "ok",
+        "brief_fr": str(parsed.get("brief_fr") or summary_fr).strip(),
+        "priorites": priorites,
+        "prochaine_heure": str(parsed.get("prochaine_heure") or "").strip(),
+        "risque_principal": str(parsed.get("risque_principal") or "").strip(),
+        "opportunite": str(parsed.get("opportunite") or "").strip(),
+        "method": "signals_sql + llm_brief",
+    }
+
+
+def polish_tips_with_ai(tips: list[dict[str, Any]], *, ai_brief: dict[str, Any]) -> list[dict[str, Any]]:
+    """Réécrit en_clair / action des 3 cartes les plus prioritaires via LLM."""
+    if not tips or ai_brief.get("status") != "ok":
+        return tips
+    from app.services.local_llm import generate_with_prompt
+
+    top = tips[:3]
+    compact = _compact_tips_for_ai(top, limit=3)
+    prompt = (
+        "Réécris les cartes Ops Coach pour l’admin (plus percutant, toujours factuel). "
+        "JSON uniquement :\n"
+        '{"cartes":[{"id":"...","en_clair":"...","action":"..."}]}\n\n'
+        f"BRIEF IA:\n{ai_brief.get('brief_fr','')}\n\n"
+        f"CARTES:\n{json.dumps(compact, ensure_ascii=False)}"
+    )
+    try:
+        raw = generate_with_prompt(prompt, system=OPS_AI_SYSTEM)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Ops Coach tip polish failed: %s", exc)
+        return tips
+    parsed = _parse_json_object(raw or "") if raw else None
+    if not parsed:
+        return tips
+    cartes = parsed.get("cartes") or []
+    if not isinstance(cartes, list):
+        return tips
+    by_id = {
+        str(c.get("id")): c
+        for c in cartes
+        if isinstance(c, dict) and c.get("id")
+    }
+    out: list[dict[str, Any]] = []
+    for t in tips:
+        tid = str(t.get("id") or "")
+        c = by_id.get(tid)
+        if c:
+            nt = dict(t)
+            if c.get("en_clair"):
+                nt["en_clair"] = str(c["en_clair"]).strip()
+            if c.get("action"):
+                nt["action"] = str(c["action"]).strip()
+            nt["ai_polished"] = True
+            out.append(nt)
+        else:
+            out.append(t)
+    return out
+
+
+def build_email_draft_ai(
+    *,
+    scenario: str,
+    cabinet_name: str,
+    contact_name: str,
+    extra: dict[str, Any] | None = None,
+    tip_context: str | None = None,
+) -> dict[str, str]:
+    """Brouillon email personnalisé par IA ; fallback templates figés."""
+    base = build_email_draft(
+        scenario=scenario,
+        cabinet_name=cabinet_name,
+        contact_name=contact_name,
+        extra=extra,
+    )
+    from app.services.local_llm import generate_with_prompt
+
+    extra = extra or {}
+    prompt = (
+        "Rédige un brouillon d’e-mail LexHub (admin plateforme → contact cabinet). "
+        "Ton pro, court, humain. L’admin relira avant un envoi SMTP. "
+        "JSON uniquement :\n"
+        '{"subject":"...","body_text":"..."}\n\n'
+        f"scénario={scenario}\n"
+        f"cabinet={cabinet_name}\n"
+        f"contact={contact_name}\n"
+        f"extra={json.dumps(extra, ensure_ascii=False, default=str)}\n"
+        f"contexte_carte={tip_context or ''}\n"
+        f"modele_de_base_sujet={base['subject']}\n"
+        f"modele_de_base_corps=\n{base['body_text']}\n"
+        "Garde une signature « L’équipe LexHub ». "
+        "Ne promets pas de réduction non demandée."
+    )
+    try:
+        raw = generate_with_prompt(prompt, system=OPS_AI_SYSTEM)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Ops Coach AI draft failed: %s", exc)
+        return {**base, "ai_generated": "false"}
+
+    parsed = _parse_json_object(raw or "") if raw else None
+    if not parsed or not parsed.get("subject") or not parsed.get("body_text"):
+        return {**base, "ai_generated": "false"}
+
+    subject = str(parsed["subject"]).strip()[:180]
+    body = str(parsed["body_text"]).strip()
+    if len(body) < 40:
+        return {**base, "ai_generated": "false"}
+
+    cta = base.get("cta_url") or f"{settings.FRONTEND_URL.rstrip('/')}/login"
+    title = subject.split("—")[-1].strip() if "—" in subject else subject
+    html = _html_from_text(title, body, cta_url=cta, cta_label="Ouvrir LexHub")
+    return {
+        "subject": subject,
+        "body_text": body,
+        "body_html": html,
+        "cta_url": cta,
+        "ai_generated": "true",
+    }
+
+
+def attach_targets_with_ai_drafts(
+    db: Session,
+    *,
+    scenario: str,
+    cabinet_ids: list[str],
+    extra_by_cab: dict[str, dict[str, Any]] | None = None,
+    tip_context: str | None = None,
+    max_ai: int = 5,
+) -> list[dict[str, Any]]:
+    """Comme attach_targets_with_drafts mais brouillons IA (plafond pour latence)."""
+    extra_by_cab = extra_by_cab or {}
+    targets: list[dict[str, Any]] = []
+    ai_left = max_ai
+    for cid in cabinet_ids:
+        cab = db.query(Cabinet).filter(Cabinet.id == cid).first()
+        if not cab:
+            continue
+        contacts = _contacts_for_cabinet(db, cid)
+        primary = contacts[0] if contacts else None
+        draft = None
+        if primary:
+            if ai_left > 0:
+                draft = build_email_draft_ai(
+                    scenario=scenario,
+                    cabinet_name=cab.name,
+                    contact_name=primary["name"],
+                    extra=extra_by_cab.get(cid, {}),
+                    tip_context=tip_context,
+                )
+                ai_left -= 1
+            else:
+                draft = build_email_draft(
+                    scenario=scenario,
+                    cabinet_name=cab.name,
+                    contact_name=primary["name"],
+                    extra=extra_by_cab.get(cid, {}),
+                )
+        targets.append(
+            {
+                "cabinet_id": cab.id,
+                "cabinet_name": cab.name,
+                "city": cab.city or "",
+                "contacts": contacts,
+                "to_email": primary["email"] if primary else None,
+                "to_name": primary["name"] if primary else None,
+                "draft": draft,
+                "cc_emails": [c["email"] for c in contacts[1:2]],
+            }
+        )
+    return targets

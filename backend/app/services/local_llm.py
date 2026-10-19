@@ -469,67 +469,71 @@ async def generate_from_sources(
     return generate_from_sources_sync(question, sources_text, language=language)
 
 
-def generate_synthesis_text(
-    document_name: str,
-    document_text: str,
-    language: str | None = None,
-) -> str | None:
-    """Secours prose intelligente (sans JSON) — cloud-first."""
-    locale = normalize_locale(language)
-    body = _sample_document_text(document_text or "", max_chars=16000)
-    prose_system = {
-        "fr": (
-            "Tu es LexHub-Legal (niveau Claude). "
-            "Rédige une synthèse intelligente Markdown pour un avocat : "
-            "adapte les titres au type réel du document (contrat, jugement, lettre…). "
-            "280–500 mots. N'invente rien. Français uniquement. "
-            "Termine par une section « Suite utile »."
-        ),
-        "ar": (
-            "أنت LexHub-Legal بمستوى Claude. "
-            "اكتب تلخيصاً ذكياً Markdown للمحامي مكيّفاً مع نوع الوثيقة. "
-            "280–500 كلمة. لا تختلق. بالعربية. اختم بـ «ما يُستحسن فعله»."
-        ),
-    }.get(locale, get_synthesis_prompt(locale))
-    prompt = (
-        f"DOCUMENT : {document_name}\n\n"
-        f"TEXTE :\n{body}\n\n"
-        "Rédige la synthèse intelligente (Markdown libre, pas de JSON)."
+def _llm_synthesis_chat(prompt: str, system: str) -> str | None:
+    """Cloud-first — OpenAI (ChatGPT) prioritaire, comme le reste LexHub."""
+    from app.services.free_llm_router import chat_free_tier
+
+    raw, used = chat_free_tier(
+        prompt,
+        system,
+        preferred="openai",
+        strict_preferred=True,
+        allow_ollama=False,
+        max_tokens=4000,
+        temperature=0.4,
     )
-    return _llm_synthesis_chat(prompt, prose_system)
+    if raw:
+        logger.info("Synthesis via %s (%s chars)", used, len(raw))
+        return raw.strip()
 
-
-def generate_document_answer_sync(
-    question: str,
-    document_name: str,
-    document_text: str,
-    language: str | None = None,
-    llm_provider: str | None = None,
-) -> str | None:
-    """Réponse IA basée uniquement sur le texte du document."""
-    from app.services.extraction import get_document_context_excerpt
-    from app.services.language import get_document_qa_prompt, normalize_locale
-
-    locale = normalize_locale(language)
-    context = get_document_context_excerpt(document_text, question, max_len=14000)
-    if not context.strip():
-        return None
-    prompt = (
-        f"DOCUMENT : {document_name}\n\n"
-        f"TEXTE (extrait pertinent) :\n{context}\n\n"
-        f"QUESTION : {question}\n\n"
-        "Réponds en t'appuyant UNIQUEMENT sur ce texte."
-    )
-    system = get_document_qa_prompt(locale)
-    prov = (llm_provider or _provider()).strip().lower()
-    raw = _call_chat_cloud(prompt, system, provider_override=prov if prov in ("kimi", "groq") else None)
+    # Secours cloud secondaires
+    provider = _normalize_chat_provider(_provider())
+    raw = _call_chat_cloud(prompt, system, provider_override=provider)
     if not raw and settings.GROQ_API_KEY:
         raw = _call_groq(prompt, system)
     if not raw and settings.KIMI_API_KEY:
         raw = _call_kimi(prompt, system)
     if not raw:
-        raw = _call_ollama(prompt, system)
+        logger.warning("Synthesis: all cloud providers failed")
     return raw.strip() if raw else None
+
+
+def generate_synthesis_text(
+    document_name: str,
+    document_text: str,
+    language: str | None = None,
+) -> str | None:
+    """Secours prose intelligente (sans JSON) — OpenAI d'abord."""
+    locale = normalize_locale(language)
+    body = _sample_document_text(document_text or "", max_chars=16000)
+    prose_system = {
+        "fr": (
+            "Tu es LexHub-Legal (ChatGPT pour cabinet d'avocat). "
+            "Rédige une VRAIE synthèse intelligente en Markdown — "
+            "INTERDIT de recopier le document tel quel.\n"
+            "Structure obligatoire :\n"
+            "## Type de document\n"
+            "## Parties\n"
+            "## Faits essentiels (listes numérotées)\n"
+            "## Montants / dates (**en gras**)\n"
+            "## Points d'attention\n"
+            "## Suite utile\n"
+            "280–450 mots. Français. N'invente rien."
+        ),
+        "ar": (
+            "أنت LexHub-Legal. اكتب تلخيصاً ذكياً Markdown — ممنوع نسخ الوثيقة كما هي.\n"
+            "## نوع الوثيقة\n## الأطراف\n## الوقائع\n## المبالغ / التواريخ\n"
+            "## نقاط الانتباه\n## ما يُستحسن فعله\n"
+            "280–450 كلمة. لا تختلق."
+        ),
+    }.get(locale, get_synthesis_prompt(locale))
+    prompt = (
+        f"DOCUMENT : {document_name}\n\n"
+        f"TEXTE :\n{body}\n\n"
+        "Rédige la synthèse intelligente structurée (Markdown). "
+        "Ne recopie PAS le texte brut."
+    )
+    return _llm_synthesis_chat(prompt, prose_system)
 
 
 def _sample_document_text(text: str, max_chars: int = 28000) -> str:
@@ -551,16 +555,68 @@ def _sample_document_text(text: str, max_chars: int = 28000) -> str:
     )
 
 
-def _llm_synthesis_chat(prompt: str, system: str) -> str | None:
-    """Cloud-first (routeur) pour une synthèse digne d'un cabinet."""
-    provider = _normalize_chat_provider(_provider())
-    raw = _call_chat_cloud(prompt, system, provider_override=provider)
+def generate_document_answer_sync(
+    question: str,
+    document_name: str,
+    document_text: str,
+    language: str | None = None,
+    llm_provider: str | None = None,
+    history: list[dict[str, str]] | None = None,
+) -> str | None:
+    """Réponse IA basée uniquement sur le texte du document (Markdown structuré)."""
+    from app.services.extraction import get_document_context_excerpt
+    from app.services.language import get_document_qa_prompt, normalize_locale
+    from app.services.free_llm_router import chat_free_tier
+
+    locale = normalize_locale(language)
+    context = get_document_context_excerpt(document_text, question, max_len=14000)
+    if not context.strip():
+        return None
+
+    hist_block = ""
+    if history:
+        lines: list[str] = []
+        for turn in history[-8:]:
+            role = (turn.get("role") or "").strip().lower()
+            content = (turn.get("content") or "").strip()
+            if not content:
+                continue
+            label = "Avocat" if role in ("user", "avocat", "human") else "Assistant"
+            lines.append(f"{label}: {content[:900]}")
+        if lines:
+            hist_block = "HISTORIQUE DU CHAT :\n" + "\n".join(lines) + "\n\n"
+
+    prompt = (
+        f"DOCUMENT : {document_name}\n\n"
+        f"{hist_block}"
+        f"TEXTE (extrait pertinent) :\n{context}\n\n"
+        f"QUESTION : {question}\n\n"
+        "Réponds UNIQUEMENT à partir de ce texte, en Markdown clair "
+        "(titres ##, listes numérotées, **gras** pour noms/montants/dates). "
+        "Pas de mur de texte. Si l'info manque, dis-le."
+    )
+    system = get_document_qa_prompt(locale)
+
+    raw, _used = chat_free_tier(
+        prompt,
+        system,
+        preferred="openai",
+        strict_preferred=True,
+        allow_ollama=False,
+        max_tokens=2500,
+        temperature=0.35,
+    )
+    if not raw:
+        prov = (llm_provider or _provider()).strip().lower()
+        raw = _call_chat_cloud(
+            prompt,
+            system,
+            provider_override=prov if prov in ("kimi", "groq", "openai", "auto") else None,
+        )
     if not raw and settings.GROQ_API_KEY:
         raw = _call_groq(prompt, system)
     if not raw and settings.KIMI_API_KEY:
         raw = _call_kimi(prompt, system)
-    if not raw:
-        logger.info("Synthesis: cloud unavailable — skip Ollama CPU fallback")
     return raw.strip() if raw else None
 
 
@@ -711,28 +767,57 @@ def generate_case_analysis_text(
     sources_text: str,
     language: str | None = None,
 ) -> str | None:
-    """
-    Analyse dossier via LLM — timeout HTTP court (ne pas utiliser OLLAMA_CHAT_TIMEOUT=600).
-    En échec / lenteur → None (l'appelant fournit un résumé extractif).
-    """
+    """Analyse dossier via ChatGPT — Markdown structuré, pas de collage OCR."""
+    from app.services.free_llm_router import chat_free_tier
+
     locale = normalize_locale(language)
-    prompt = (
-        f"DOSSIER : {case_reference}\n\n"
-        f"PIÈCES / EXTRAITS :\n{(sources_text or '')[:5000]}\n\n"
-        "Analyse concise du dossier (faits, enjeux, points d'attention). "
-        "400 mots max. N'invente rien."
-    )
+    body = (sources_text or "")[:22000]
+    if locale == "ar":
+        prompt = (
+            f"الملف : {case_reference}\n\n"
+            f"الوثائق / المقتطفات (كل القطع المتاحة) :\n{body}\n\n"
+            "اكتب تحليلاً كاملاً ومنظماً للملف بصيغة Markdown. "
+            "غطِ الوقائع والأطراف والتسلسل الزمني وكل قطعة مهمة والمسائل "
+            "والمبالغ والآجال والمخاطر وما يُستحسن فعله. "
+            "لا تختلق شيئاً. ممنوع جدار نص. "
+            "أجب بالعربية فقط حتى لو كانت الوثائق بالفرنسية."
+        )
+    else:
+        prompt = (
+            f"DOSSIER : {case_reference}\n\n"
+            f"PIÈCES / EXTRAITS (toutes les pièces disponibles) :\n{body}\n\n"
+            "Rédige une analyse COMPLÈTE et structurée du dossier en Markdown. "
+            "Couvre faits, parties, chronologie, chaque pièce importante, enjeux, "
+            "montants, délais, risques et suite utile. "
+            "N'invente rien. Pas de mur de texte. "
+            "Réponds UNIQUEMENT en français."
+        )
     system = get_case_analysis_prompt(locale)
 
-    # Cloud uniquement. Ollama CPU bloque l'UI plusieurs minutes.
+    try:
+        raw, used = chat_free_tier(
+            prompt,
+            system,
+            preferred="openai",
+            strict_preferred=True,
+            allow_ollama=False,
+            max_tokens=4000,
+            temperature=0.35,
+        )
+        if raw and len(raw.strip()) > 80:
+            logger.info("Case analysis via %s (%s chars)", used, len(raw))
+            return raw.strip()
+    except Exception as exc:
+        logger.warning("Case analysis OpenAI failed: %s", exc)
+
     try:
         if settings.MISTRAL_API_KEY or settings.GROQ_API_KEY or settings.KIMI_API_KEY:
             raw = _call_chat_cloud(prompt, system)
-            if raw and len(raw.strip()) > 40:
+            if raw and len(raw.strip()) > 80:
                 return raw.strip()
     except Exception as exc:
-        logger.warning("Case analysis cloud failed: %s", exc)
-    logger.info("Case analysis: skip Ollama — extractive fallback")
+        logger.warning("Case analysis cloud fallback failed: %s", exc)
+    logger.warning("Case analysis: no LLM response")
     return None
 
 

@@ -13,12 +13,14 @@ import {
 } from "@/lib/api";
 import { ASSIGNABLE_ROLES, roleLabel } from "@/lib/roles";
 import { useClientLocale, useTranslations } from "@/store/locale";
+import { useAuthStore } from "@/store/auth";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 
 export function TeamPanel() {
   const locale = useClientLocale();
   const ar = locale === "ar";
   const t = useTranslations().app.team;
+  const user = useAuthStore((s) => s.user);
   const confirm = useConfirm();
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -172,6 +174,14 @@ export function TeamPanel() {
             type="button"
             disabled={inviteBusy || !inviteEmail.trim()}
             onClick={() => {
+              if (user?.must_set_password && !user?.auth_via_google) {
+                setError(
+                  ar
+                    ? "أنشئوا كلمة مرور أولاً (الشريط الأصفر) قبل دعوة الفريق."
+                    : "Créez d’abord un mot de passe (bandeau jaune) avant d’inviter l’équipe.",
+                );
+                return;
+              }
               setInviteBusy(true);
               setError("");
               void api

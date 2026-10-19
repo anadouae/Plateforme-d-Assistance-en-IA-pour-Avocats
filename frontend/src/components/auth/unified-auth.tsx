@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
@@ -8,6 +8,7 @@ import { Check, KeyRound } from "lucide-react";
 import { LexHubLogo } from "@/components/brand/lexhub-logo";
 import { LanguageSwitch } from "@/components/layout/language-switch";
 import { PasswordInput } from "@/components/auth/password-input";
+import { GoogleSignInButton } from "@/components/auth/google-sign-in-button";
 import { AuthSuccessModal } from "@/components/auth/auth-success-modal";
 import { LexHubTurnstile } from "@/components/auth/lexhub-turnstile";
 import { LegalDocLink } from "@/components/auth/legal-doc-link";
@@ -16,9 +17,9 @@ import { AuthProductDemo } from "@/components/auth/auth-product-demo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api, ApiError } from "@/lib/api";
-import { isPasswordStrong, normalizeEmail, passwordRules, passwordStrength } from "@/lib/password";
-import { useAuthStore } from "@/store/auth";
+import { normalizeEmail } from "@/lib/password";
 import { useClientLocale, useTranslations } from "@/store/locale";
+import { useAuthStore } from "@/store/auth";
 import {
   clearRegisterDraft,
   emptyRegisterForm,
@@ -27,7 +28,6 @@ import {
 } from "@/lib/register-draft";
 import { postAuthPath, readBillingIntent, saveBillingIntent } from "@/lib/billing-intent";
 import { cn } from "@/lib/utils";
-import "@/styles/auth-glass.css";
 
 export type AuthTab = "login" | "register";
 
@@ -199,6 +199,9 @@ function LoginPanel({ onGo }: { onGo: (t: AuthTab) => void }) {
   const [sessionLive, setSessionLive] = useState(false);
   const [sessionCheckDone, setSessionCheckDone] = useState(false);
   const [wantsOtherLogin, setWantsOtherLogin] = useState(false);
+  const [passwordlessMode, setPasswordlessMode] = useState(false);
+  const [pwdlessOtp, setPwdlessOtp] = useState("");
+  const [pwdlessInfo, setPwdlessInfo] = useState("");
 
   const showCaptcha =
     captchaEnabled && !captchaBypass && (forceCaptcha || failCount >= captchaAfter);
@@ -266,7 +269,31 @@ function LoginPanel({ onGo }: { onGo: (t: AuthTab) => void }) {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    setPwdlessInfo("");
     const cleaned = normalizeEmail(email);
+
+    if (passwordlessMode) {
+      if (!cleaned || pwdlessOtp.length !== 6) {
+        setError(auth.otpRequired || auth.loginError);
+        return;
+      }
+      setLoading(true);
+      try {
+        await completeLogin(
+          await api.loginPasswordless({
+            email: cleaned,
+            code: pwdlessOtp,
+            captcha_token: captchaToken || undefined,
+          }),
+        );
+      } catch (err) {
+        setError(err instanceof ApiError ? err.message : auth.loginError);
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
     if (!cleaned || !password) {
       setError(auth.loginError);
       return;
@@ -286,7 +313,26 @@ function LoginPanel({ onGo }: { onGo: (t: AuthTab) => void }) {
         }),
       );
     } catch (err) {
-      if (err instanceof ApiError && err.message === "2FA_REQUIRED") {
+      if (err instanceof ApiError && err.message === "PASSWORDLESS_ACCOUNT") {
+        setPasswordlessMode(true);
+        setPwdlessOtp("");
+        try {
+          const res = await api.requestPasswordlessOtp(cleaned);
+          setPwdlessInfo(
+            res.message ||
+              (ar
+                ? "أُرسل رمز إلى بريدكم لإنشاء كلمة المرور / الدخول."
+                : "Un code a été envoyé pour vous reconnecter / créer un mot de passe."),
+          );
+        } catch {
+          setPwdlessInfo(
+            ar
+              ? "اطلبوا رمزاً بالبريد للدخول بدون كلمة مرور."
+              : "Demandez un code e-mail pour entrer sans mot de passe.",
+          );
+        }
+        setError("");
+      } else if (err instanceof ApiError && err.message === "2FA_REQUIRED") {
         setNeeds2fa(true);
         setError(auth.totpRequired);
       } else if (err instanceof ApiError && err.message === "CAPTCHA_REQUIRED") {
@@ -376,14 +422,66 @@ function LoginPanel({ onGo }: { onGo: (t: AuthTab) => void }) {
           className="h-11 rounded-xl bg-white"
           disabled={loading}
         />
-        <PasswordInput
-          label={auth.password}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-          autoComplete="current-password"
-          disabled={loading}
-        />
+        {passwordlessMode ? (
+          <>
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-950">
+              {ar
+                ? "هذا الحساب بلا كلمة مرور بعد. أدخلوا الرمز المرسل إلى بريدكم، ثم أنشئوا كلمة مرور داخل التطبيق."
+                : "Ce compte n’a pas encore de mot de passe. Entrez le code reçu par e-mail, puis créez un mot de passe dans l’app."}
+            </div>
+            {pwdlessInfo ? (
+              <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+                {pwdlessInfo}
+              </p>
+            ) : null}
+            <Input
+              label={auth.otpLabel}
+              inputMode="numeric"
+              maxLength={6}
+              value={pwdlessOtp}
+              onChange={(e) => setPwdlessOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              placeholder="000000"
+              className="h-11 rounded-xl tracking-[0.35em] bg-white"
+              required
+            />
+            <button
+              type="button"
+              className="text-sm text-[#0B1A4D] hover:underline"
+              onClick={() => {
+                void (async () => {
+                  try {
+                    const res = await api.requestPasswordlessOtp(normalizeEmail(email));
+                    setPwdlessInfo(res.message);
+                  } catch (err) {
+                    setError(err instanceof ApiError ? err.message : auth.loginError);
+                  }
+                })();
+              }}
+            >
+              {ar ? "إعادة إرسال الرمز" : "Renvoyer le code"}
+            </button>
+            <button
+              type="button"
+              className="block text-xs text-slate-500 hover:underline"
+              onClick={() => {
+                setPasswordlessMode(false);
+                setPwdlessOtp("");
+                setPwdlessInfo("");
+              }}
+            >
+              {ar ? "العودة لتسجيل الدخول بكلمة المرور" : "Retour à la connexion par mot de passe"}
+            </button>
+          </>
+        ) : (
+          <PasswordInput
+            label={auth.password}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+            autoComplete="current-password"
+            disabled={loading}
+          />
+        )}
         {needs2fa && (
           <Input
             label={auth.totpCode}
@@ -427,10 +525,18 @@ function LoginPanel({ onGo }: { onGo: (t: AuthTab) => void }) {
           className="h-11 w-full rounded-xl bg-[#0B1A4D] font-serif text-white hover:bg-[#12307A]"
           disabled={loading || (showCaptcha && !captchaToken)}
         >
-          {loading ? auth.loginLoading : auth.loginSubmit}
+          {loading
+            ? auth.loginLoading
+            : passwordlessMode
+              ? ar
+                ? "الدخول بالرمز"
+                : "Entrer avec le code"
+              : auth.loginSubmit}
         </Button>
         <p className="text-center text-[11px] text-[#2C3B5C]/70">{auth.secureSession}</p>
       </form>
+
+      <GoogleSignInButton onError={setError} />
 
       <div className="mt-6 space-y-2 text-center text-sm text-[#2C3B5C]">
         <p>
@@ -442,11 +548,6 @@ function LoginPanel({ onGo }: { onGo: (t: AuthTab) => void }) {
           >
             {auth.createFirm}
           </button>
-        </p>
-        <p className="text-xs text-slate-500">
-          {ar
-            ? "للانضمام إلى مكتب موجود، اطلبوا دعوة بالبريد من مسؤول المكتب."
-            : "Pour rejoindre un cabinet existant, demandez une invitation par email à l’administrateur."}
         </p>
       </div>
     </div>
@@ -513,14 +614,6 @@ function RegisterStepper({ onGo }: { onGo: (t: AuthTab) => void }) {
     }
   }
 
-  const strength = passwordStrength(form.password);
-  const rules = passwordRules(form.password);
-  const strengthColors = ["bg-red-500", "bg-orange-400", "bg-amber-400", "bg-emerald-500"];
-  const passwordsMatch = useMemo(
-    () => !form.confirm_password || form.password === form.confirm_password,
-    [form.password, form.confirm_password],
-  );
-
   async function sendEmailCode() {
     setError("");
     setInfo("");
@@ -579,19 +672,15 @@ function RegisterStepper({ onGo }: { onGo: (t: AuthTab) => void }) {
   async function submit() {
     setError("");
     if (!emailVerified) return setError(auth.verifyEmailFirst);
-    if (!isPasswordStrong(form.password)) return setError(auth.pwdWeak);
-    if (form.password !== form.confirm_password) return setError(auth.pwdMismatch);
     if (!form.accept_terms) return setError(auth.termsRequired);
     setLoading(true);
     try {
       const email = normalizeEmail(form.email);
-      await api.register({
+      const loginData = await api.register({
         email,
-        password: form.password,
         email_otp: emailOtp,
         referral_code: form.referral_code.trim() || undefined,
       });
-      const loginData = await api.login({ email, password: form.password });
       clearRegisterDraft();
       setAuth(loginData, { remember: true });
       window.location.assign(postAuthPath(loginData.user.role));
@@ -609,17 +698,23 @@ function RegisterStepper({ onGo }: { onGo: (t: AuthTab) => void }) {
         : otpSent
           ? auth.confirmOtp
           : auth.sendOtp
-      : auth.registerSubmit;
+      : ar
+        ? "الدخول إلى مكتبي"
+        : "Entrer dans mon cabinet";
 
   const regSteps = [
     { key: 1, label: auth.stepEmail },
-    { key: 2, label: auth.stepSecurity },
+    { key: 2, label: ar ? "الدخول" : "Accès" },
   ];
 
   return (
     <div>
       <h2 className="text-center font-serif text-2xl text-[#0B1A4D]">{auth.registerTitle}</h2>
-      <p className="mt-1 text-center text-sm text-slate-500">{auth.registerSubtitle}</p>
+      <p className="mt-1 text-center text-sm text-slate-500">
+        {ar
+          ? "بريد + رمز — دخول فوري. كلمة المرور لاحقاً داخل التطبيق."
+          : "E-mail + code — entrée immédiate. Mot de passe plus tard dans l’app."}
+      </p>
 
       <div className="auth-stepper auth-stepper--2 mt-5">
         {regSteps.map((s) => (
@@ -668,58 +763,11 @@ function RegisterStepper({ onGo }: { onGo: (t: AuthTab) => void }) {
 
         {step === 2 && (
           <>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <PasswordInput
-                  label={auth.password}
-                  value={form.password}
-                  onChange={(e) => update("password", e.target.value)}
-                />
-                {form.password && (
-                  <div className="mt-2 space-y-2">
-                    <div className="flex gap-1">
-                      {[0, 1, 2, 3].map((i) => (
-                        <div
-                          key={i}
-                          className={cn(
-                            "h-1 flex-1 rounded",
-                            i < strength
-                              ? strengthColors[Math.max(0, strength - 1)]
-                              : "bg-slate-200",
-                          )}
-                        />
-                      ))}
-                    </div>
-                    <ul className="grid gap-1 text-[11px] text-[#2C3B5C]">
-                      {(
-                        [
-                          ["length", auth.pwdRuleLength, rules.length],
-                          ["upperLower", auth.pwdRuleCase, rules.upperLower],
-                          ["digit", auth.pwdRuleDigit, rules.digit],
-                          ["symbol", auth.pwdRuleSymbol, rules.symbol],
-                        ] as const
-                      ).map(([key, label, ok]) => (
-                        <li key={key} className="flex items-center gap-1.5">
-                          <Check
-                            className={cn(
-                              "h-3.5 w-3.5",
-                              ok ? "text-emerald-600" : "text-slate-300",
-                            )}
-                          />
-                          <span className={ok ? "text-emerald-800" : undefined}>{label}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-              <PasswordInput
-                label={auth.confirmPassword}
-                value={form.confirm_password}
-                onChange={(e) => update("confirm_password", e.target.value)}
-                error={!passwordsMatch ? auth.pwdMismatch : undefined}
-              />
-            </div>
+            <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-sm text-emerald-900">
+              {ar
+                ? "حسابكم جاهز. لا حاجة لكلمة مرور الآن — يمكن تأمين الحساب لاحقاً من التطبيق."
+                : "Votre e-mail est vérifié. Pas de mot de passe maintenant — vous pourrez le créer dans l’app (rappel soft)."}
+            </p>
             <Input
               label={ar ? "رمز الإحالة (اختياري)" : "Code de parrainage (optionnel)"}
               hint={
@@ -759,11 +807,6 @@ function RegisterStepper({ onGo }: { onGo: (t: AuthTab) => void }) {
                 .
               </span>
             </label>
-            <p className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs leading-relaxed text-slate-600">
-              {ar
-                ? "بعد الدخول، يمكنكم إكمال بيانات المكتب (الاسم، المدينة، الهيئة، العنوان) من الإعدادات."
-                : "Après connexion, complétez les infos du cabinet (nom, ville, barreau, adresse) dans Paramètres."}
-            </p>
           </>
         )}
 

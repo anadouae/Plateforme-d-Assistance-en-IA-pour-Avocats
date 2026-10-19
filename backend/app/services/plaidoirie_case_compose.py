@@ -18,11 +18,13 @@ from app.models import Case
 from app.services.cle_de_barre import _collect_case_text
 from app.services.free_llm_router import chat_free_tier
 from app.services.pii_mask import (
+    build_full_mask,
     build_mask_from_parties,
     collect_all_party_names,
     party_tokens_legend,
     unmask_text,
 )
+from app.services.pii_store import load_case_pii_mapping, save_case_pii_mapping
 from app.services.plaidoirie_postprocess import postprocess_plaidoirie_body
 from app.services.plaidoirie_prompt import PLAIDOIRIE_AGENT_SYSTEM, PLAIDOIRIE_TYPES
 
@@ -177,18 +179,24 @@ def compose_plaidoirie_from_case(
         texts=[raw_docs, dictation_text or ""],
     )
 
-    # Confidentialité cabinet : TOUJOURS masquer dès qu'il y a des noms (fiche + auto)
-    use_pii = bool(parties)
+    # Confidentialité produit : toujours pseudonymiser avant IA cloud
+    base_map = load_case_pii_mapping(case)
     mapping: dict[str, str] = {}
     dossier_block = raw_docs
     dictation_block = (dictation_text or "").strip()
+    use_pii = True
 
-    if use_pii:
-        masked_docs = build_mask_from_parties(dossier_block, parties=parties)
-        masked_dict = build_mask_from_parties(dictation_block, parties=parties)
-        dossier_block = masked_docs.text
-        dictation_block = masked_dict.text
-        mapping = {**masked_docs.mapping, **masked_dict.mapping}
+    masked_docs = build_full_mask(
+        dossier_block, parties=parties, structured=True, base_mapping=base_map
+    )
+    masked_dict = build_full_mask(
+        dictation_block, parties=parties, structured=True, base_mapping=masked_docs.mapping
+    )
+    dossier_block = masked_docs.text
+    dictation_block = masked_dict.text
+    mapping = masked_dict.mapping
+    if mapping:
+        save_case_pii_mapping(db, case, mapping)
         logger.info(
             "PII mask case=%s tokens=%s parties=%d",
             case.reference,
@@ -206,7 +214,8 @@ def compose_plaidoirie_from_case(
     system += (
         "\n\n=== Confidentialité ===\n"
         "Les parties apparaissent comme PARTIE_A, PARTIE_B… "
-        "Conserve ces jetons tels quels dans BODY. N'invente aucun nom propre.\n"
+        "CIN_* = carte nationale, TEL_* = téléphone, EMAIL_* = e-mail. "
+        "Conserve ces jetons tels quels dans BODY. N'invente aucun nom propre ni numéro réel.\n"
         "Utilise l'identité juridique (degré, tribunal, N° RG, greffe, chambre, rôles, "
         "nature personne physique/morale) pour cadrer l'acte — sans inventer de faits "
         "absents de la dictée ou des pièces.\n"

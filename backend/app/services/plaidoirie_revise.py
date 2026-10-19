@@ -13,47 +13,100 @@ from app.models import Case
 from app.services.billing import assert_can_use_ai_action
 from app.services.free_llm_router import chat_free_tier
 from app.services.pii_mask import (
+    build_full_mask,
     build_mask_from_parties,
     collect_all_party_names,
     unmask_text,
 )
+from app.services.pii_store import load_case_pii_mapping, save_case_pii_mapping
 
 logger = logging.getLogger(__name__)
 
-_SYSTEM = """Tu es un avocat plaidant marocain. Tu révises une plaidoirie déjà rédigée ET tu peux répondre à l'avocat.
+_SYSTEM = """Tu es l'assistant ChatGPT d'un avocat marocain sur une plaidoirie.
 
-COMPRÉHENSION INTELLIGENTE (priorité absolue)
-- L'avocat écrit souvent vite, avec fautes, sans accents, ou en mélange FR/AR.
-  Tu DOIS comprendre l'intention comme un collègue humain.
-  Exemples :
-  • « pourquoi pour ces raisons mais tu ecris pas les raisons » / « explique خامساً / لهذه الأسباب »
-    = Expliquer ET rédiger le corps sous ces titres (الملتمسات concrets).
-  • « developpe eplsu » = Allonge le passage.
-  • « ajoute une introduction » = Intro pro en tête.
-- Si « INTENTION INTERPRÉTÉE » est fournie, suis-la.
+TU DOIS D'ABORD CLASSER LA CONSIGNE :
 
-MISSION
-- Modifications VISIBLES dans le BODY. Interdit de renvoyer le texte quasi identique.
-- Sections vides (خامساً، لهذه الأسباب، الملتمسات) : RÉDIGER un vrai corps (3–6 phrases/points)
-  à partir des faits déjà présents. Interdit de laisser le titre seul.
-- Ne pas inventer de faits absents. Conserver PARTIE_A, PARTIE_B…
-- BODY en arabe fusḥā.
+A) SALUTATION / BRUIT / INCOMPLET (hola, salut, hi, « Comment », « ok », test, un mot vague)
+   → NE MODIFIE PAS le document. BODY = texte actuel IDENTIQUE.
+   → ASSISTANT_REPLY : réponds poliment et demande clairement ce qu'il faut modifier
+     (ex. « Que voulez-vous changer dans la plaidoirie ? Ex. allonge رابعاً »).
 
-RÉPONSE À L'AVOCAT (si question / pourquoi / explique / comprends / d'où vient / formulaire)
-- Ajoute aussi une ligne claire :
-ASSISTANT_REPLY: <2 à 8 phrases en français, pédagogiques, pas à pas>
-- Si on demande d'où vient le formulaire de questions : expliquer que LexHub lit d'abord
-  le dossier anonymisé + la dictée, puis ChatGPT prépare 0–5 QCM avant rédaction ;
-  l'avocat confirme ; ensuite la rédaction utilise ces réponses.
-- Si on demande pourquoi « لهذه الأسباب » : c'est le titre de clôture ; les الملتمسات
-  (demandes concrètes) doivent être écrits SOUS ce titre — puis les écrire dans le BODY.
+B) QUESTION SEULE (pourquoi / comment / explique / c'est quoi…) SANS demande d'édition
+   → NE MODIFIE PAS le document. BODY identique.
+   → ASSISTANT_REPLY : réponds utilement en français (2–8 phrases).
+
+C) VRAIE MODIFICATION (allonge, rends plus longue, ajoute, supprime, corrige, change les noms,
+   remplis خامساً, reformule, etc.)
+   → Applique EXACTEMENT la demande dans le BODY (fautes OK, FR/AR mélangés).
+   → Si un titre est cité (أولاً…خامساً / لهذه الأسباب), modifie surtout ce passage.
+   → « plus longue / developpe / allonge » = enrichir nettement (≈ double sous le titre).
+   → Ne détourne pas vers d'autres sections non demandées.
+   → Ne pas inventer de faits. Conserver PARTIE_A/B sauf si on demande les noms en clair/arabe.
+   → BODY en arabe fusḥā. ASSISTANT_REPLY : confirme brièvement ce qui a changé.
+
+INTERDIT
+- Prétendre avoir « appliqué » hola / Comment en réécrivant la plaidoirie.
+- Ajouter des « commentaires » dans le BODY si on n'a pas demandé d'éditer.
+- Menu d'actions préprogrammées : suis la consigne libre comme ChatGPT.
 
 SORTIE OBLIGATOIRE (sans markdown)
-ASSISTANT_REPLY: … (recommandé dès qu'il y a une question)
+ASSISTANT_REPLY: …
 TITLE: …
 BODY:
-…texte complet révisé…
+…texte complet (identique si A/B, révisé si C)…
 """
+
+
+def _is_chat_noise(s: str) -> bool:
+    """Salutation / bruit / consigne trop vague → ne pas toucher au document."""
+    t = (s or "").strip()
+    if len(t) < 2:
+        return True
+    low = t.lower().strip(" !.?;،؟\t\n")
+    if re.fullmatch(
+        r"hola|hi|hello|hey|salut|bonjour|bonsoir|yo|coucou|"
+        r"ok|oui|non|merci|thanks|thx|lol|test|wtf|ah|euh|hmm|hein|"
+        r"comment|pourquoi|quoi|yes|no|bonne?|d['’]?accord|"
+        r"سلام|مرحبا|أهلا|شكرا|تمام|واخا|لا|نعم",
+        low,
+    ):
+        return True
+    # Un seul mot très court sans consigne d'édition
+    if len(low.split()) <= 2 and len(low) <= 12 and not re.search(
+        r"allong|plus|ajoute|change|ecris|écrit|dévelop|modif|corrige|"
+        r"رابعا|ثالثا|ثانيا|أولا|خامسا|ملتمس|مقدمة",
+        low,
+    ):
+        if not re.search(r"[\u0600-\u06FF]{4,}", t):
+            return True
+    return False
+
+
+def _is_question_only(s: str) -> bool:
+    """Question sans verbe d'édition → répondre sans toucher au BODY."""
+    if _is_chat_noise(s):
+        return False
+    t = (s or "").lower()
+    has_edit = bool(
+        re.search(
+            r"allong|plus\s+long|rends?\b|ajoute|supprime|efface|enl[eè]ve|"
+            r"change|remplace|modifie|corrige|reformul|d[ée]velop|enrich|"
+            r"remplir|compl[eè]te|[eé]cri[rs]|mets?\b|mettre|passe\b|"
+            r"introduc|noms?\s+.*arabe|en\s+arabe|"
+            r"وسّع|وسع|أضف|احذف|غيّر|غير|استبدل|صحّح|طوّل|اكتب",
+            t,
+        )
+    )
+    if has_edit:
+        return False
+    return bool(
+        re.search(
+            r"\?|comment\b|pourquoi|expliq|c['’]?est\s+quoi|que\s+veut|"
+            r"d['’]?\s*o[uù]\s+vient|clarif|peux[- ]tu|peux\s+tu|"
+            r"اشرح|وضح|لماذا|شنو|ما\s*معنى|من\s+أين",
+            t,
+        )
+    )
 
 
 _SECTION_MARKERS = (
@@ -81,11 +134,17 @@ def _wants_expand(s: str) -> bool:
     t = (s or "").lower()
     return bool(
         re.search(
-            r"d[ée]vel+o*p|eplsu|plus\s+(cette|ce|la|le)|"
+            r"d[ée]vel+o*p|eplsu|"
+            r"plus\s+(cette|ce|la|le|long|longue|grande|d[ée]taill)|"
+            r"rends?\s+.+\s+plus|"
+            r"faire\s+plus\s+long|plus\s+long|"
             r"élargir|enrichir|d[ée]taill|allong|"
-            r"وسّع|وسع|طور|أطل|فصل|طوّل|المزيد",
+            r"وسّع|وسع|طور|أطل|فصل|طوّل|المزيد|أطلها|طول",
             t,
         )
+    ) or bool(
+        re.search(r"رابعاً?|ثالثاً?|ثانياً?|أولاً?|خامساً?", s or "")
+        and re.search(r"plus\s+long|allong|d[ée]velop|rends?|enrich|طول|وسع", t)
     )
 
 
@@ -152,8 +211,92 @@ def _wants_meta_pipeline(s: str) -> bool:
     )
 
 
+def _wants_arabic_party_names(s: str) -> bool:
+    """Écrire / afficher les noms des parties en alphabet arabe (fautes OK)."""
+    t = (s or "").lower()
+    fr = bool(
+        re.search(
+            r"(noms?|parties?|pr[eé]noms?).{0,48}arabe|"
+            r"arabe.{0,48}(noms?|parties?)|"
+            r"[eé]cri[rs].{0,40}(noms?|parties?).{0,28}arabe|"
+            r"(mets?|mettre|passe[rz]?|change[rz]?).{0,24}(noms?|parties?).{0,24}arabe|"
+            r"noms?\s+des?\s+parties?|"
+            r"parties?\s+en\s+arabe|"
+            r"en\s+arabe\s+(les?\s+)?(noms?|parties?)",
+            t,
+        )
+    )
+    ar = bool(
+        re.search(
+            r"أسماء.{0,20}(أطراف|طرف)|أطراف.{0,20}(عربي|عربية)|"
+            r"بالعربية.{0,20}(أسماء|أطراف)|"
+            r"اكتب.{0,30}(الأسماء|أسماء|الأطراف).{0,20}عربي|"
+            r"أسماء\s*الأطراف",
+            s or "",
+        )
+    )
+    return fr or ar
+
+
+def _wants_targeted_light_edit(s: str) -> bool:
+    """Petites edits (noms, dates, montants, orthographe) — ne pas exiger +40 chars."""
+    if _wants_arabic_party_names(s):
+        return True
+    t = (s or "").lower()
+    return bool(
+        re.search(
+            r"\bnoms?\b|\bparties?\b|pr[eé]nom|orthographe|corrige\s+le\s+nom|"
+            r"remplace|en\s+arabe|en\s+fran[cç]ais|latin|"
+            r"date|montant|cin\b|t[eé]l[eé]phone|email|"
+            r"غيّر|غير|استبدل|بالعربية|الاسم",
+            t,
+        )
+    )
+
+
+def _arabic_char_ratio(s: str) -> float:
+    letters = [c for c in (s or "") if c.isalpha()]
+    if not letters:
+        return 0.0
+    ar = sum(1 for c in letters if "\u0600" <= c <= "\u06FF")
+    return ar / max(len(letters), 1)
+
+
+def _party_glossary_lines(mapping: dict[str, str], parties: list[str]) -> list[str]:
+    """Lignes glossaire PARTIE_* → nom réel (pour forcer l'arabe)."""
+    lines: list[str] = []
+    seen_tok: set[str] = set()
+    # mapping côté mask : souvent {original: token} — normaliser
+    tok_to_name: dict[str, str] = {}
+    for k, v in (mapping or {}).items():
+        ks, vs = (k or "").strip(), (v or "").strip()
+        if not ks or not vs:
+            continue
+        if ks.startswith("PARTIE_") and not vs.startswith("PARTIE_"):
+            tok_to_name[ks] = vs
+        elif vs.startswith("PARTIE_") and not ks.startswith("PARTIE_"):
+            tok_to_name[vs] = ks
+    for tok in sorted(tok_to_name.keys()):
+        if tok in seen_tok:
+            continue
+        seen_tok.add(tok)
+        lines.append(f"{tok} → « {tok_to_name[tok]} »")
+    # Parties fiche sans jeton encore listé
+    for i, name in enumerate(parties or []):
+        n = (name or "").strip()
+        if not n or len(n) < 2:
+            continue
+        if any(n == x or n in x for x in tok_to_name.values()):
+            continue
+        letter = chr(ord("A") + i) if i < 26 else str(i + 1)
+        lines.append(f"(partie {letter}) → « {n} »")
+    return lines
+
+
 def _wants_fill_gaps(s: str) -> bool:
     """Intention « remplir / il n'y a rien » — fautes et formulations orales OK."""
+    if _wants_arabic_party_names(s):
+        return False
     if _wants_intro(s) and not re.search(
         r"خامساً?|لهذه\s*الأسباب|فارغ|vide|rien\s+[eé]crit|املأ|أكمل|raison|ملتمسات",
         s or "",
@@ -161,6 +304,10 @@ def _wants_fill_gaps(s: str) -> bool:
     ):
         return False
     t = (s or "").lower()
+    # « ecris les noms… » ≠ remplir une section vide
+    if re.search(r"[eé]cri[rs].{0,40}(noms?|parties?|pr[eé]nom)", t):
+        if not re.search(r"vide|فارغ|خامسا|لهذه|ملتمسات|sous\s+(ce|le)\s+titre|ici\b", t):
+            return False
     fr = bool(
         re.search(
             r"rien\s+[eé]crit|n['’ ]?a\s*s?\s+rien|pas\s+[eé]crit|y\s*a\s*rien|"
@@ -286,14 +433,26 @@ def _parse_title_body(raw: str, fallback_title: str, fallback_body: str) -> tupl
     return title_out or fallback_title, body_out or fallback_body, reply
 
 
-def _changed_enough(before: str, after: str) -> bool:
+def _changed_enough(before: str, after: str, *, min_diffs: int | None = None) -> bool:
     a, b = _norm_cmp(before), _norm_cmp(after)
-    if not b or len(b) < 40:
+    if not b or len(b) < 20:
         return False
     if a == b:
         return False
-    # Au moins ~2 % de divergence ou 40 caractères différents (approx)
-    if abs(len(a) - len(b)) >= 40:
+    floor = 12 if min_diffs is None else max(4, int(min_diffs))
+    # Longueur qui bouge nettement
+    if abs(len(a) - len(b)) >= floor:
+        return True
+    # Jetons PARTIE_* remplacés par du texte (ex. noms en arabe)
+    tok_b = len(re.findall(r"PARTIE_[A-Z0-9]+", before or "", flags=re.I))
+    tok_a = len(re.findall(r"PARTIE_[A-Z0-9]+", after or "", flags=re.I))
+    if tok_b > 0 and tok_a < tok_b:
+        return True
+    # Plus d'arabe = souvent translittération des noms
+    if _arabic_char_ratio(after) >= _arabic_char_ratio(before) + 0.02 and abs(
+        len(re.findall(r"[\u0600-\u06FF]", after or ""))
+        - len(re.findall(r"[\u0600-\u06FF]", before or ""))
+    ) >= 4:
         return True
     # distance grossière : préfixe commun
     common = 0
@@ -305,10 +464,11 @@ def _changed_enough(before: str, after: str) -> bool:
     # Si le début change (souvent la مقدمة), OK
     if common < min(120, len(a) // 3):
         return True
-    # Sinon exiger une différence globale
+    # Sinon exiger une différence globale (seuil assoupli pour petites edits)
     shorter = min(len(a), len(b))
     diffs = sum(1 for i in range(shorter) if a[i] != b[i]) + abs(len(a) - len(b))
-    return diffs >= max(40, int(0.02 * max(len(a), 1)))
+    need = max(floor, int(0.008 * max(len(a), 1)))
+    return diffs >= need
 
 
 def revise_plaidoirie_body(
@@ -336,6 +496,7 @@ def revise_plaidoirie_body(
         raise HTTPException(status_code=400, detail="Plaidoirie trop courte à réviser.")
 
     parties: list[str] = []
+    case = None
     if case_id:
         case = db.query(Case).filter(Case.id == case_id, Case.cabinet_id == cabinet_id).first()
         if case:
@@ -348,146 +509,121 @@ def revise_plaidoirie_body(
     body_in = text
     instr_in = instr
     title_in = (title or "").strip()
-    if parties:
-        m_body = build_mask_from_parties(body_in, parties=parties)
-        m_instr = build_mask_from_parties(instr_in, parties=parties)
-        m_title = build_mask_from_parties(title_in, parties=parties)
-        body_in, instr_in, title_in = m_body.text, m_instr.text, m_title.text
-        mapping = {**m_body.mapping, **m_instr.mapping, **m_title.mapping}
+    base_map = load_case_pii_mapping(case) if case else {}
+    m_body = build_full_mask(body_in, parties=parties, structured=True, base_mapping=base_map)
+    m_instr = build_full_mask(instr_in, parties=parties, structured=True, base_mapping=m_body.mapping)
+    m_title = build_full_mask(title_in, parties=parties, structured=True, base_mapping=m_instr.mapping)
+    body_in, instr_in, title_in = m_body.text, m_instr.text, m_title.text
+    mapping = m_title.mapping
+    if case and mapping:
+        save_case_pii_mapping(db, case, mapping)
 
     lang_label = "arabe fusḥā" if language == "ar" else "français juridique"
+    chat_noise = _is_chat_noise(instr)
+    question_only = _is_question_only(instr)
+    preserve_body = chat_noise or question_only
+
+    # Salutation / bruit : répondre sans appeler OpenAI ni toucher au texte
+    if chat_noise:
+        reply_local = (
+            "Bonjour. Que voulez-vous modifier dans la plaidoirie ? "
+            "Exemples : « rends رابعاً plus longue », « ajoute une introduction », "
+            "« ecris les noms des parties en arabe », « remplis لهذه الأسباب »."
+        )
+        logger.info("revise chat_noise skip-llm case=%s instr=%r", case_id or "-", instr[:40])
+        return (title or "").strip() or "مرافعة", text, "local", reply_local
+
     focus = _longest_arabic_span(instr)
-    expand = _wants_expand(instr)
-    wants_intro = _wants_intro(instr)
-    wants_explain = _wants_explain(instr)
+    expand = _wants_expand(instr) and not preserve_body
+    wants_intro = _wants_intro(instr) and not preserve_body
+    wants_explain = _wants_explain(instr) or question_only
     wants_meta = _wants_meta_pipeline(instr)
+    wants_ar_names = _wants_arabic_party_names(instr) and not preserve_body
     if wants_meta:
         wants_explain = True
-    fill_gaps = _wants_fill_gaps(instr) or (
-        wants_explain and bool(_thin_sections_in(body_in, _CLOSING_MARKERS))
-    )
     mentioned = _markers_mentioned(instr)
+    cited_sections = [
+        mk
+        for mk in ("أولاً", "ثانياً", "ثالثاً", "رابعاً", "خامساً", "سادساً", "لهذه الأسباب", "الملتمسات")
+        if re.search(rf"{re.escape(mk.rstrip('ً'))}ً?", instr or "")
+    ]
+    if preserve_body:
+        cited_sections = []
     thin_before = _thin_sections_in(body_in)
     thin_closing = [m for m in thin_before if m in _CLOSING_MARKERS]
-    # Compréhension intelligente : on regarde AUSSI le document (titres vides),
-    # pas seulement une phrase « parfaite » de l'avocat.
-    # Ne pas détourner une demande d'introduction vers « remplir خامساً ».
+
+    fill_gaps = (
+        (not preserve_body)
+        and (not wants_ar_names)
+        and (not expand)
+        and (not cited_sections)
+        and _wants_fill_gaps(instr)
+    )
     smart_fill = bool(
-        (not wants_intro)
-        and (
-            fill_gaps
-            or mentioned
-            or (_looks_like_complaint_or_point(instr) and thin_closing)
-            or (len((instr or "").strip()) <= 160 and thin_closing and _looks_like_complaint_or_point(instr))
-        )
+        fill_gaps
+        and (not wants_intro)
+        and (thin_closing or thin_before or mentioned)
     )
     targets = [m for m in mentioned if m in thin_before or _is_section_thin(body_in, m)]
     if smart_fill and not targets:
         targets = list(thin_closing) or list(thin_before) or list(mentioned)
-    for m in mentioned:
-        if m not in targets and _is_section_thin(body_in, m):
-            targets.append(m)
-    # Si l'avocat cite des titres et le doc a d'autres clôtures vides → les remplir aussi
-    if mentioned and thin_closing and not wants_intro:
-        for m in thin_closing:
-            if m not in targets:
-                targets.append(m)
 
     extra_intent = ""
-    intent_human = ""
-    if wants_intro and not (targets and fill_gaps):
-        intent_human = "Ajouter une introduction professionnelle en tête de plaidoirie."
+    if question_only or preserve_body:
         extra_intent = (
-            "\n=== INTENTION INTERPRÉTÉE (obligatoire) ===\n"
-            f"{intent_human}\n"
-            "La consigne peut contenir des fautes ; cette intention fait foi.\n"
-            "\n=== INTRODUCTION À AJOUTER (OBLIGATOIRE) ===\n"
-            "Place en TOUTE PREMIÈRE partie du BODY (avant أولاً / ثانياً) une introduction "
-            "d'au moins 4–8 phrases : adresse au tribunal (سيدي الرئيس / حضرة المحكمة الموقرة), "
-            "présentation brève des parties et de l'objet, puis transition vers les moyens. "
-            "Conserve TOUT le reste de la plaidoirie inchangé (sauf transition). "
-            "Ne te plains pas des sections vides non demandées — ne les remplis que si la consigne le demande.\n"
+            "\n=== MODE QUESTION (obligatoire) ===\n"
+            "NE MODIFIE PAS le BODY : recopie le texte actuel à l'identique.\n"
+            "Réponds seulement dans ASSISTANT_REPLY (français, clair, utile).\n"
+            "Si la question est incomplète, demande ce qu'il faut changer concrètement.\n"
         )
-    elif targets or (smart_fill and thin_before):
-        labels = " · ".join(targets or thin_closing or thin_before)
-        intent_human = (
-            f"Remplir / rédiger le corps sous les titres encore vides : {labels}."
-        )
-        if wants_explain:
-            intent_human += (
-                " Expliquer aussi à l'avocat (ASSISTANT_REPLY) pourquoi le titre « لهذه الأسباب » "
-                "existe et quelles demandes concrètes (ملتمسات) doivent y figurer."
-            )
-            if wants_meta:
-                intent_human += (
-                    " Expliquer PAS À PAS d'où vient le formulaire de questions : "
-                    "1) lecture anonymisée du dossier + dictée, 2) ChatGPT prépare 0–5 QCM, "
-                    "3) l'avocat répond, 4) rédaction avec ces clarifications, "
-                    "5) les titres أولاً…خامساً / لهذه الأسباب viennent du modèle de plaidoirie."
-                )
+    elif wants_ar_names:
+        gloss = _party_glossary_lines(mapping, parties)
+        gloss_block = "\n".join(f"- {g}" for g in gloss) if gloss else "- (noms déjà présents → alphabet arabe)"
         extra_intent = (
-            "\n=== INTENTION INTERPRÉTÉE (obligatoire — ne pas demander de reformulation) ===\n"
-            f"{intent_human}\n"
-            "La consigne brute peut être fautive ; cette intention fait foi.\n"
-            "\n=== SECTIONS VIDES À RÉDIGER (OBLIGATOIRE) ===\n"
-            f"Titres concernés : {labels}\n"
-            "Sous CHAQUE titre ci-dessus, écris un corps réel (au moins 3–6 phrases ou points numérotés) "
-            "en arabe juridique, à partir des faits DÉJÀ présents dans la plaidoirie "
-            "(نفقة، حضانة، تواريخ، أطراف، طلبات). "
-            "Interdit de laisser « خامساً : » ou « لهذه الأسباب: » sans texte après. "
-            "Pour « لهذه الأسباب » : formuler les الملتمسات concrets. "
-            "Garde le reste de la plaidoirie et sors TITLE/BODY complets.\n"
-            + (
-                "Ajoute aussi ASSISTANT_REPLY: explication claire en français (2–8 phrases).\n"
-                if wants_explain
-                else ""
-            )
+            "\n=== MODE ÉDITION — NOMS EN ARABE ===\n"
+            f"{gloss_block}\n"
+            "Remplace PARTIE_* et formes latines par ces noms en alphabet arabe partout.\n"
         )
-    elif wants_explain or wants_meta:
-        intent_human = (
-            "Répondre clairement à la question de l'avocat (ASSISTANT_REPLY), "
-            "et appliquer toute modification utile au document."
-        )
-        if wants_meta:
-            intent_human += (
-                " Expliquer PAS À PAS : formulaire QCM (dossier anonymisé → ChatGPT → 0–5 questions → "
-                "réponses avocat → rédaction) + structure أولاً…خامساً / لهذه الأسباب / الملتمسات."
-            )
+    elif expand or cited_sections:
+        label = " · ".join(cited_sections) if cited_sections else (focus[:120] if focus else "le passage cité")
         extra_intent = (
-            "\n=== INTENTION INTERPRÉTÉE (obligatoire) ===\n"
-            f"{intent_human}\n"
-            "La consigne peut contenir des fautes ; cette intention fait foi.\n"
-            "ASSISTANT_REPLY obligatoire (français, pédagogique, 3–8 phrases).\n"
-            "Si des sections de clôture sont vides, remplis-les aussi dans le BODY.\n"
+            "\n=== MODE ÉDITION — ALLONGER / MODIFIER ===\n"
+            f"Cible : {label}\n"
+            + (f"Passage cité : « {focus} »\n" if focus else "")
+            + "Enrichis nettement sous ce(s) titre(s) (≈ double si « plus longue »). "
+            "Garde le reste. Ne touche pas aux autres sections sans demande.\n"
         )
-    elif expand and focus:
-        intent_human = f"Développer / allonger nettement le passage : « {focus[:120]} »."
+    elif wants_intro:
         extra_intent = (
-            "\n=== INTENTION INTERPRÉTÉE (obligatoire) ===\n"
-            f"{intent_human}\n"
-            "\n=== PASSAGE À DÉVELOPPER (OBLIGATOIRE) ===\n"
-            f"« {focus} »\n"
-            "Réécris CE paragraphe pour qu'il fasse AU MOINS le double de longueur : "
-            "motifs juridiques (مدونة الأسرة, مصلحة المحضون, نفقة), en restant sur les faits déjà présents. "
-            "Ne te contente pas de paraphraser une phrase. "
-            "Garde le reste de la plaidoirie (أولاً / ثانياً / …) et TITLE/BODY complets.\n"
+            "\n=== MODE ÉDITION — INTRODUCTION ===\n"
+            "Ajoute en tête (avant أولاً) une intro pro 4–8 phrases ; garde le reste.\n"
         )
-    elif expand:
-        intent_human = "Allonger / enrichir le passage visé par l'avocat."
+    elif smart_fill and targets:
+        labels = " · ".join(targets)
         extra_intent = (
-            "\n=== INTENTION INTERPRÉTÉE ===\n"
-            f"{intent_human}\n"
-            "Ajoute des développements juridiques concrets (au moins +120 caractères nets).\n"
+            f"\n=== MODE ÉDITION — SECTIONS VIDES ===\nRemplir : {labels}\n"
+            "Corps réel 3–6 phrases (ملتمسات sous لهذه الأسباب).\n"
         )
+    else:
+        extra_intent = (
+            "\n=== MODE ÉDITION LIBRE (comme ChatGPT) ===\n"
+            "Applique la consigne telle quelle (fautes OK). "
+            "Si ce n'est PAS une demande d'édition, garde le BODY identique "
+            "et réponds seulement en ASSISTANT_REPLY.\n"
+        )
+
     base_prompt = (
         f"Langue du document : {lang_label}\n"
         f"Titre actuel : {title_in or '—'}\n\n"
-        "=== Consigne brute de l'avocat (fautes possibles — comprends l'intention) ===\n"
+        "=== Consigne de l'avocat ===\n"
         f"{instr_in}\n"
         f"{extra_intent}"
-        "Comprends intelligemment, puis APPLIQUE dans BODY des changements visibles "
-        "(surtout sections vides ou passage cité). Ne dis jamais que c'est fait sans écrire le texte.\n"
-        f"=== Plaidoirie actuelle ===\n{body_in[:28000]}\n"
+        + (
+            "BODY = texte actuel inchangé. ASSISTANT_REPLY obligatoire.\n"
+            if preserve_body
+            else "Si édition : modifications VISIBLES dans BODY. Si question : BODY inchangé.\n"
+        )
+        + f"=== Plaidoirie actuelle ===\n{body_in[:28000]}\n"
     )
 
     from app.services.billing import openai_model_for_plan, get_entitlements
@@ -498,10 +634,7 @@ def revise_plaidoirie_body(
     except Exception:
         pass
     model = openai_model_for_plan(plan_slug, "revise")
-    need_fill = bool(
-        (not wants_intro)
-        and (targets or (smart_fill and (thin_closing or thin_before)))
-    )
+    need_fill = bool(smart_fill and targets)
 
     raw, provider = chat_free_tier(
         base_prompt,
@@ -510,8 +643,8 @@ def revise_plaidoirie_body(
         strict_preferred=True,
         allow_ollama=False,
         model_override=model,
-        max_tokens=8000,
-        temperature=0.62 if (expand or need_fill or wants_intro) else 0.5,
+        max_tokens=8000 if not preserve_body else 1200,
+        temperature=0.35 if preserve_body else (0.7 if (expand or cited_sections or wants_intro or wants_ar_names) else 0.55),
     )
     if not raw:
         raise HTTPException(
@@ -523,64 +656,61 @@ def revise_plaidoirie_body(
         raw, title_in or (title or "مرافعة"), body_in
     )
 
-    def _still_thin(after: str) -> bool:
-        if not need_fill:
-            return False
-        check = targets or thin_before
-        return any(_is_section_thin(after, mk) for mk in check)
-
-    def _intro_ok(after: str) -> bool:
-        if not wants_intro:
-            return True
-        a, b = _norm_cmp(body_in), _norm_cmp(after)
-        if len(b) >= len(a) + 60:
-            return True
-        common = 0
-        for x, y in zip(a, b):
-            if x == y:
-                common += 1
-            else:
-                break
-        return common < min(80, max(20, len(a) // 5)) or _changed_enough(body_in, after)
-
-    too_shy = (
-        not _changed_enough(body_in, body_out)
-        or (expand and len(_norm_cmp(body_out)) < len(_norm_cmp(body_in)) + 80)
-        or _still_thin(body_out)
-        or (wants_intro and not _intro_ok(body_out))
-    )
-    if wants_intro and _intro_ok(body_out) and not need_fill:
-        too_shy = False
-    if need_fill and not _still_thin(body_out):
-        too_shy = False
-    if wants_explain and reply_out and _changed_enough(body_in, body_out):
-        too_shy = False
-    if wants_explain and reply_out and len(reply_out) >= 40 and not need_fill:
-        too_shy = False
-    if too_shy:
-        logger.warning(
-            "revise no-op detected — retry harder case=%s fill=%s intro=%s",
-            case_id or "-",
-            need_fill,
-            wants_intro,
-        )
-        retry_hint = (
-            "Tu DOIS ajouter une INTRODUCTION réelle en tête du BODY (4–8 phrases), "
-            "puis garder le reste. N'exige pas de remplir خامساً sauf si demandé.\n"
-            if wants_intro
-            else (
-                "Tu DOIS remplir concrètement les sections visées "
-                "(corps sous خامساً / لهذه الأسباب si demandés).\n"
-                "Si DÉVELOPPER : allonge nettement le passage.\n"
-                "Si QUESTION : ajoute aussi ASSISTANT_REPLY en français.\n"
+    # Garde-fou : question / bruit → document intouché
+    if preserve_body:
+        body_out = body_in
+        title_out = title_in or title_out
+        if not reply_out or len(reply_out) < 8:
+            reply_out = (
+                "Précisez ce que vous voulez modifier dans la plaidoirie "
+                "(ex. « allonge رابعاً », « ajoute une intro »)."
             )
+        if mapping:
+            title_out = unmask_text(title_out, mapping)
+            body_out = unmask_text(body_out, mapping)
+            reply_out = unmask_text(reply_out, mapping)
+        logger.info("revise Q&A preserve_body case=%s", case_id or "-")
+        return title_out, body_out, provider, reply_out
+
+    def _ok_change(after: str) -> bool:
+        return _changed_enough(body_in, after, min_diffs=6)
+
+    def _section_grew(after: str) -> bool:
+        for mk in cited_sections or ([] if not expand else list(mentioned)):
+            before_p = _section_payload(body_in, mk)
+            after_p = _section_payload(after, mk)
+            if len(re.sub(r"\s+", "", after_p)) >= len(re.sub(r"\s+", "", before_p)) + 40:
+                return True
+        if expand and len(_norm_cmp(after)) >= len(_norm_cmp(body_in)) + 40:
+            return True
+        return False
+
+    identical = _norm_cmp(body_in) == _norm_cmp(body_out)
+    weak = identical or (not _ok_change(body_out) and not _section_grew(body_out))
+    if wants_explain and reply_out and len(reply_out) >= 30 and not (expand or cited_sections or need_fill or wants_ar_names or wants_intro):
+        # Question + éventuelle micro-édition : on accepte
+        weak = False
+        body_out = body_in  # pas de réécriture fantôme
+    if wants_ar_names:
+        tok_b = len(re.findall(r"PARTIE_[A-Z0-9]+", body_in or "", flags=re.I))
+        tok_a = len(re.findall(r"PARTIE_[A-Z0-9]+", body_out or "", flags=re.I))
+        if tok_b > tok_a or _ok_change(body_out):
+            weak = False
+
+    if weak and (expand or cited_sections or need_fill or wants_intro or wants_ar_names):
+        logger.warning(
+            "revise weak edit — one free retry case=%s expand=%s cited=%s",
+            case_id or "-",
+            expand,
+            cited_sections,
         )
         retry_prompt = (
             base_prompt
             + "\n\n=== ALERTE ===\n"
-            "Ta réponse précédente était trop proche de l'original — INTERDIT.\n"
-            + retry_hint
-            + "Sortie ASSISTANT_REPLY (si question) + TITLE / BODY uniquement.\n"
+            "Ta réponse précédente était trop proche de l'original.\n"
+            "Réécris le BODY avec la modification DEMANDÉE clairement visible.\n"
+            "Si « plus longue » / section citée : double au minimum le corps sous ce titre.\n"
+            "Sortie ASSISTANT_REPLY + TITLE + BODY uniquement.\n"
         )
         raw2, provider2 = chat_free_tier(
             retry_prompt,
@@ -590,47 +720,53 @@ def revise_plaidoirie_body(
             allow_ollama=False,
             model_override=model,
             max_tokens=8000,
-            temperature=0.65,
+            temperature=0.75,
         )
         if raw2:
-            title_out, body_out, reply2 = _parse_title_body(
+            t2, b2, r2 = _parse_title_body(
                 raw2, title_out or title_in or (title or "مرافعة"), body_in
             )
-            if reply2:
-                reply_out = reply2
+            if _ok_change(b2) or _section_grew(b2) or len(b2) > len(body_out):
+                title_out, body_out = t2, b2
+            if r2:
+                reply_out = r2
             provider = provider2 or provider
-        still_shy = (
-            not _changed_enough(body_in, body_out)
-            or (expand and len(_norm_cmp(body_out)) < len(_norm_cmp(body_in)) + 80)
-            or _still_thin(body_out)
-            or (wants_intro and not _intro_ok(body_out))
-        )
-        if wants_intro and _intro_ok(body_out) and not need_fill:
-            still_shy = False
-        if need_fill and not _still_thin(body_out):
-            still_shy = False
-        if wants_explain and reply_out and len(reply_out) >= 40:
-            if (
-                not need_fill
-                or _changed_enough(body_in, body_out)
-                or abs(len(body_out) - len(body_in)) >= 30
-            ):
-                still_shy = False
-        if still_shy and wants_explain and reply_out and len(reply_out) >= 60:
-            # Question pédagogique : on accepte la réponse même si le corps a peu bougé
-            still_shy = False
-        if still_shy:
-            detail = (
-                "L'IA n'a pas encore ajouté l'introduction demandée. "
-                "Renvoyez simplement « ajoute une introduction » — les fautes sont acceptées."
-                if wants_intro
-                else (
-                    "L'IA n'a pas réussi à appliquer la modification (sections encore vides "
-                    "ou texte trop peu changé). Renvoyez la même demande une fois — "
-                    "le langage naturel / avec fautes est accepté."
-                )
+
+        if wants_ar_names and not _ok_change(body_out):
+            local = body_out or body_in
+            for tok, original in (mapping or {}).items():
+                if not tok.startswith("PARTIE_"):
+                    continue
+                name = (original or "").strip()
+                if not name:
+                    continue
+                for alt in (tok, tok.replace("_", "-"), tok.replace("_", " ")):
+                    if alt in local:
+                        local = local.replace(alt, name)
+            body_out = local
+            if not reply_out:
+                reply_out = "Noms des parties remis en clair (formes du dossier)."
+
+        if _norm_cmp(body_in) == _norm_cmp(body_out) and not (reply_out and len(reply_out) >= 20):
+            reply_out = (
+                reply_out
+                or "J’ai relu la demande. Reformulez en une phrase simple "
+                "(ex. « allonge رابعاً » ou « ajoute une intro ») et renvoyez."
             )
-            raise HTTPException(status_code=502, detail=detail)
+        elif not reply_out:
+            reply_out = "Modification appliquée selon votre consigne."
+    elif weak and reply_out and len(reply_out) >= 20:
+        # Réponse utile sans édition réelle → ne pas écraser le document
+        body_out = body_in
+    elif weak:
+        body_out = body_in
+        reply_out = (
+            reply_out
+            or "Je n’ai pas modifié le document. Précisez la modification voulue "
+            "(ex. « allonge رابعاً »)."
+        )
+    elif not reply_out:
+        reply_out = "Modification appliquée selon votre consigne."
 
     if mapping:
         title_out = unmask_text(title_out, mapping)
@@ -638,24 +774,27 @@ def revise_plaidoirie_body(
         if reply_out:
             reply_out = unmask_text(reply_out, mapping)
 
+    if wants_ar_names and not reply_out:
+        reply_out = "Les noms des parties sont écrits en arabe dans la plaidoirie."
+
     if wants_explain and not reply_out:
         if wants_meta:
             reply_out = (
-                "Pas à pas — d’où viennent les questions et les titres : "
-                "1) LexHub lit votre dossier et votre dictée en les anonymisant (PARTIE_A…). "
-                "2) ChatGPT prépare 0 à 5 questions à choix (formulaire QCM) pour lever les ambiguïtés. "
-                "3) Vous répondez ; 4) la rédaction utilise ces réponses. "
-                "5) Les titres أولاً…خامساً puis « لهذه الأسباب » viennent du modèle de plaidoirie : "
-                "sous « لهذه الأسباب » il faut écrire les الملتمسات (demandes concrètes). "
-                "J’ai aussi mis à jour le document si des passages étaient vides."
+                "Pas à pas : 1) dossier + dictée anonymisés, 2) ChatGPT prépare 0–5 QCM, "
+                "3) vous répondez, 4) rédaction, 5) titres أولاً…خامساً / لهذه الأسباب (ملتمسات)."
             )
         else:
             reply_out = (
-                "« لهذه الأسباب » (pour ces motifs) est le titre de clôture de la plaidoirie : "
-                "sous ce titre, l’avocat doit écrire les الملتمسات — les demandes concrètes "
-                "(ex. النفقة، الحضانة، التعويض) déduites des faits déjà exposés. "
-                "J’ai complété / mis à jour le corps sous ce titre dans le document."
+                "« لهذه الأسباب » est la clôture : les الملتمسات (demandes concrètes) "
+                "se rédigent sous ce titre."
             )
 
-    logger.info("revise via %s case=%s changed=1 fill=%s", provider, case_id or "-", need_fill)
+    logger.info(
+        "revise via %s case=%s expand=%s cited=%s preserve=%s",
+        provider,
+        case_id or "-",
+        expand,
+        cited_sections or "-",
+        preserve_body,
+    )
     return title_out, body_out, provider, reply_out or ""
