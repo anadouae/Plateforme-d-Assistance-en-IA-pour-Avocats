@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import log_audit, require_roles
+from app.api.deps import log_audit, require_password_set, require_roles
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.rate_limit import check_named_rate_limit, check_rate_limit
@@ -14,8 +14,6 @@ from app.models import (
     Cabinet,
     CabinetInvite,
     CabinetStatus,
-    MembershipRequest,
-    MembershipRequestStatus,
     User,
     UserRole,
 )
@@ -27,8 +25,6 @@ from app.schemas import (
     JoinCodeValidateRequest,
     JoinCodeValidateResponse,
     JoinRequestCreate,
-    MembershipApproveRequest,
-    MembershipRequestResponse,
     MessageResponse,
     TeamInviteEmailRequest,
     TeamMemberResponse,
@@ -41,7 +37,6 @@ from app.services.join_code import (
     is_join_code_accepting,
     join_code_status,
     normalize_join_code,
-    record_join_approval,
 )
 
 router = APIRouter(prefix="/api/team", tags=["team"])
@@ -185,6 +180,7 @@ def send_team_invite_email(
     data: TeamInviteEmailRequest,
     request: Request,
     user: User = Depends(require_roles(UserRole.ADMIN_CABINET)),
+    _pwd: User = Depends(require_password_set),
     db: Session = Depends(get_db),
 ):
     """Crée un code one-time pour l’email et l’envoie (invitation personnelle)."""
@@ -506,160 +502,6 @@ async def submit_join_request(
         status_code=status.HTTP_403_FORBIDDEN,
         detail="JOIN_ADMIN_ONLY",
     )
-
-
-@router.get("/requests", response_model=list[MembershipRequestResponse])
-def list_join_requests(
-    user: User = Depends(require_roles(UserRole.ADMIN_CABINET)),
-    db: Session = Depends(get_db),
-):
-    rows = (
-        db.query(MembershipRequest)
-        .filter(
-            MembershipRequest.cabinet_id == user.cabinet_id,
-            MembershipRequest.status == MembershipRequestStatus.PENDING.value,
-        )
-        .order_by(MembershipRequest.requested_at.desc())
-        .all()
-    )
-    return [
-        MembershipRequestResponse(
-            id=r.id,
-            full_name=r.full_name,
-            email=r.email,
-            status=r.status.value,
-            requested_at=r.requested_at,
-            resolved_at=r.resolved_at,
-        )
-        for r in rows
-    ]
-
-
-@router.post("/requests/{request_id}/approve", response_model=TeamMemberResponse)
-def approve_join_request(
-    request_id: str,
-    data: MembershipApproveRequest,
-    request: Request,
-    user: User = Depends(require_roles(UserRole.ADMIN_CABINET)),
-    db: Session = Depends(get_db),
-):
-    req = (
-        db.query(MembershipRequest)
-        .filter(
-            MembershipRequest.id == request_id,
-            MembershipRequest.cabinet_id == user.cabinet_id,
-            MembershipRequest.status == MembershipRequestStatus.PENDING.value,
-        )
-        .first()
-    )
-    if not req:
-        raise HTTPException(status_code=404, detail="الطلب غير موجود")
-
-    if db.query(User).filter(User.email == req.email).first():
-        req.status = MembershipRequestStatus.REJECTED
-        req.resolved_at = datetime.now(timezone.utc)
-        req.resolved_by = user.id
-        db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="هذا البريد مستخدم بالفعل.",
-        )
-
-    role = ROLE_MAP[data.role]
-    new_user = User(
-        email=req.email,
-        hashed_password=req.hashed_password,
-        full_name=req.full_name,
-        role=role,
-        is_active=True,
-        is_verified=True,
-        cabinet_id=user.cabinet_id,
-    )
-    db.add(new_user)
-    req.status = MembershipRequestStatus.APPROVED
-    req.resolved_at = datetime.now(timezone.utc)
-    req.resolved_by = user.id
-    cabinet = db.query(Cabinet).filter(Cabinet.id == user.cabinet_id).first()
-    if cabinet:
-        record_join_approval(db, cabinet)
-    log_audit(
-        db,
-        "team.join_approve",
-        user=user,
-        request=request,
-        details=f"{req.email} → {data.role}",
-    )
-    db.commit()
-    db.refresh(new_user)
-    try:
-        from app.services.realtime import publish_cabinet_event
-
-        publish_cabinet_event(
-            user.cabinet_id,
-            "team.member_joined",
-            {"email": req.email, "role": data.role},
-        )
-    except Exception:
-        pass
-    try:
-        from app.services.email import send_join_approved_email
-
-        send_join_approved_email(
-            req.email,
-            cabinet_name=(cabinet.name if cabinet else "cabinet"),
-            applicant_name=req.full_name or req.email,
-        )
-    except Exception:
-        pass
-    return _member_response(new_user)
-
-
-
-@router.post("/requests/{request_id}/reject", response_model=MessageResponse)
-def reject_join_request(
-    request_id: str,
-    request: Request,
-    user: User = Depends(require_roles(UserRole.ADMIN_CABINET)),
-    db: Session = Depends(get_db),
-):
-    req = (
-        db.query(MembershipRequest)
-        .filter(
-            MembershipRequest.id == request_id,
-            MembershipRequest.cabinet_id == user.cabinet_id,
-            MembershipRequest.status == MembershipRequestStatus.PENDING.value,
-        )
-        .first()
-    )
-    if not req:
-        raise HTTPException(status_code=404, detail="الطلب غير موجود")
-
-    req.status = MembershipRequestStatus.REJECTED
-    req.resolved_at = datetime.now(timezone.utc)
-    req.resolved_by = user.id
-    cabinet = db.query(Cabinet).filter(Cabinet.id == user.cabinet_id).first()
-    applicant_email = req.email
-    applicant_name = req.full_name or req.email
-    cabinet_name = cabinet.name if cabinet else "cabinet"
-    log_audit(
-        db,
-        "team.join_reject",
-        user=user,
-        request=request,
-        details=req.email,
-    )
-    db.commit()
-    try:
-        from app.services.email import send_join_rejected_email
-
-        send_join_rejected_email(
-            applicant_email,
-            cabinet_name=cabinet_name,
-            applicant_name=applicant_name,
-        )
-    except Exception:
-        pass
-    return MessageResponse(message="تم رفض الطلب")
 
 
 @router.patch("/{member_id}", response_model=TeamMemberResponse)

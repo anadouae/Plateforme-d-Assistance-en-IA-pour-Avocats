@@ -67,17 +67,25 @@ export const useAuthStore = create<AuthState>()(
         set({ user: data.user, token: data.access_token });
       },
       logout: () => {
-        clearTokenStorages();
-        for (const k of REMEMBER_KEYS) localStorage.removeItem(k);
-        try {
-          localStorage.removeItem("lexhub-auth");
-          localStorage.removeItem("sanad-auth");
-        } catch {
-          /* ignore */
-        }
-        set({ user: null, token: null });
+        // Appeler l’API AVANT de vider le token (rappel e-mail set-password)
+        const doClear = () => {
+          clearTokenStorages();
+          for (const k of REMEMBER_KEYS) localStorage.removeItem(k);
+          try {
+            localStorage.removeItem("lexhub-auth");
+            localStorage.removeItem("sanad-auth");
+          } catch {
+            /* ignore */
+          }
+          set({ user: null, token: null });
+        };
         if (typeof window !== "undefined") {
-          void import("@/lib/api").then(({ api }) => api.logout().catch(() => undefined));
+          void import("@/lib/api")
+            .then(({ api }) => api.logout())
+            .catch(() => undefined)
+            .finally(doClear);
+        } else {
+          doClear();
         }
       },
       isAuthenticated: () => {

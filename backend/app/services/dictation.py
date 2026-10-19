@@ -176,16 +176,16 @@ def _collapse_repeats(text: str) -> str:
     # Doublons de phrases séparées par ponctuation
     parts = re.split(r"(?<=[.。؟!?،,;؛])\s+", t)
     if len(parts) >= 2:
-        out: list[str] = []
-        for p in parts:
-            p = p.strip()
-            if not p:
-                continue
+    out: list[str] = []
+    for p in parts:
+        p = p.strip()
+        if not p:
+            continue
             # Uniquement égalité quasi exacte (pas Jaccard large)
             if out and (p == out[-1] or (len(p) > 20 and p in out[-1])):
-                continue
-            out.append(p)
-        t = " ".join(out)
+            continue
+        out.append(p)
+    t = " ".join(out)
     # Répétition littérale d'un long segment collé deux fois d'affilée
     for _ in range(3):
         nxt = re.sub(r"(.{24,}?)(?:\s+\1){1,}", r"\1", t)
@@ -753,8 +753,8 @@ def compose_official_document(
         )
 
     # Autres types (non-plaidoirie) : LLM encore possible, avec filet fidélité
-    system = compose_fallback_system()
-    type_line = f"نوع الوثيقة: {kind}\n"
+        system = compose_fallback_system()
+        type_line = f"نوع الوثيقة: {kind}\n"
     role_block = ""
 
     prompt = (

@@ -40,8 +40,9 @@ const COMPLIANCE = [
     statusAr: "مفعّل",
     tone: "ok" as const,
     descFr:
-      "Noms des parties masqués avant envoi à l’IA. Vos pièces n’entraînent pas de modèles tiers.",
-    descAr: "إخفاء أسماء الأطراف قبل الذكاء الاصطناعي. القطع لا تُدرّب نماذج خارجية.",
+      "Pseudonymisation avant IA : noms (PARTIE_*), CIN/CNIE (CIN_*), téléphones (TEL_*), e-mails (EMAIL_*). Mapping secret par dossier. Restauration locale pour le Word d’audience. Vos pièces n’entraînent pas de modèles tiers.",
+    descAr:
+      "إخفاء قبل الذكاء: أسماء (PARTIE_*) وCIN (CIN_*) وهواتف (TEL_*) وبريد (EMAIL_*). ربط سري لكل ملف. إعادة الهويات محلياً في Word الجلسة. القطع لا تُدرّب نماذج خارجية.",
   },
   {
     titleFr: "Protection des données (Maroc)",
@@ -80,7 +81,7 @@ const SEC_FAQ_FR = [
   },
   {
     q: "Comment parler sécurité à mon barreau / mon client ?",
-    a: "LexHub : outil de rédaction et de dossier, pas un avis juridique automatisé. Badge « à relire » sur l’IA, masquage des noms, acte exporté au nom du cabinet — pas de logo LexHub sur la pièce d’audience.",
+    a: "LexHub : outil de rédaction et de dossier, pas un avis juridique automatisé. Badge « à relire » sur l’IA, pseudonymisation (noms, CIN, tél., e-mails) avant tout envoi cloud, acte exporté au nom du cabinet — pas de logo LexHub sur la pièce d’audience.",
   },
 ];
 
@@ -99,7 +100,7 @@ const SEC_FAQ_AR = [
   },
   {
     q: "كيف أشرح الأمان لهيئة المحامين / للموكل؟",
-    a: "LexHub أداة صياغة وملف، ليس رأياً قانونياً آلياً. شارة «للمراجعة»، إخفاء الأسماء، وثيقة باسم المكتب — بلا شعار LexHub على وثيقة الجلسة.",
+    a: "LexHub أداة صياغة وملف، ليس رأياً قانونياً آلياً. شارة «للمراجعة»، إخفاء الأسماء وCIN والهاتف قبل السحابة، وثيقة باسم المكتب — بلا شعار LexHub على وثيقة الجلسة.",
   },
 ];
 

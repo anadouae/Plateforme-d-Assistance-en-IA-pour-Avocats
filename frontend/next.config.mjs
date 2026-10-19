@@ -11,7 +11,8 @@ const securityHeaders = [
       "camera=(), geolocation=(), payment=(), usb=(), interest-cohort=(), microphone=(self)",
   },
   { key: "X-XSS-Protection", value: "1; mode=block" },
-  { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+  // same-origin-allow-popups: requis pour le popup Google Sign-In (sinon écran blanc gsi/transform)
+  { key: "Cross-Origin-Opener-Policy", value: "same-origin-allow-popups" },
   { key: "Cross-Origin-Resource-Policy", value: "same-site" },
   { key: "X-DNS-Prefetch-Control", value: "on" },
   {
@@ -19,7 +20,7 @@ const securityHeaders = [
     value: [
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://accounts.google.com",
-      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://accounts.google.com",
       "font-src 'self' https://fonts.gstatic.com data:",
       "img-src 'self' data: blob: https:",
       "connect-src 'self' http://localhost:8001 http://127.0.0.1:8001 https:",
@@ -43,6 +44,7 @@ if (isProd) {
 }
 
 const nextConfig = {
+  output: "standalone",
   poweredByHeader: false,
   compress: true,
   reactStrictMode: true,

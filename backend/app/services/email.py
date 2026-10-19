@@ -1125,3 +1125,86 @@ def send_twofa_nudge_email(
         preheader="2 minutes pour sécuriser le cabinet.",
     )
     return _send_email(to, subject, html, text)
+
+
+def send_set_password_reminder_email(
+    to: str,
+    *,
+    full_name: str,
+    reason: str = "soft",
+) -> bool:
+    """Rappel créer un mot de passe (logout / J+1)."""
+    base = settings.FRONTEND_URL.rstrip("/")
+    login = f"{base}/login"
+    if reason == "logout":
+        subject = f"{_BRAND} — Finalisez la sécurité de votre compte"
+        headline = "Créez votre mot de passe LexHub"
+        body = (
+            "Vous venez de quitter LexHub sans mot de passe. "
+            "Pour la prochaine connexion : entrez votre e-mail — un code vous sera proposé, "
+            "puis créez un mot de passe en 30 secondes dans l’app."
+        )
+    else:
+        subject = f"{_BRAND} — 30 secondes pour sécuriser votre compte"
+        headline = "Protégez l’accès à votre cabinet"
+        body = (
+            "Votre compte LexHub fonctionne déjà (plan Découverte). "
+            "Il reste à créer un mot de passe : bandeau jaune dans l’app, ou reconnectez-vous "
+            "avec un code e-mail puis définissez le mot de passe."
+        )
+    text = f"Bonjour {full_name}. {body} {login}"
+    html = _email_shell(
+        headline,
+        f"""<p>Bonjour <strong>{full_name}</strong>,</p>
+        <p>{body}</p>
+        {_btn(login, "Ouvrir LexHub")}
+        <p style="font-size:13px;color:#8A96AB">Sans mot de passe, abonnement et invitations d’équipe restent bloqués (sécurité progressive).</p>""",
+        preheader="Sécurité progressive — 30 secondes",
+    )
+    return _send_email(to, subject, html, text)
+
+
+def send_first_plea_nudge_email(
+    to: str,
+    *,
+    full_name: str,
+    cabinet_name: str,
+) -> bool:
+    url = f"{settings.FRONTEND_URL.rstrip('/')}/plaidoirie"
+    subject = f"{_BRAND} — Votre 1ʳᵉ plaidoirie Word en 10 minutes"
+    text = (
+        f"Bonjour {full_name} ({cabinet_name}). "
+        f"Dictez → structure → export Word : {url}"
+    )
+    html = _email_shell(
+        "Atteignez votre « aha » LexHub",
+        f"""<p>Bonjour <strong>{full_name}</strong>,</p>
+        <p>Cabinet <strong>{cabinet_name}</strong> — encore aucune plaidoirie exportée.</p>
+        <p>Le moment clé : <strong>dicter → Word</strong>. Même une dictée courte suffit ;
+        LexHub structure et exporte au nom du cabinet.</p>
+        {_btn(url, "Lancer l’atelier plaidoirie")}""",
+        preheader="Time-to-value : 1 Word exporté",
+    )
+    return _send_email(to, subject, html, text)
+
+
+def send_invite_loop_email(
+    to: str,
+    *,
+    full_name: str,
+    cabinet_name: str,
+) -> bool:
+    url = f"{settings.FRONTEND_URL.rstrip('/')}/team"
+    subject = f"{_BRAND} — Invitez un assistant après votre 1ʳᵉ plaidoirie"
+    text = (
+        f"Bonjour {full_name}. Vous avez une plaidoirie : invitez un collègue → {url}"
+    )
+    html = _email_shell(
+        "Faites grandir le cabinet",
+        f"""<p>Bonjour <strong>{full_name}</strong>,</p>
+        <p><strong>{cabinet_name}</strong> a déjà une plaidoirie. L’étape suivante :
+        inviter un assistant pour relecture / export — la valeur LexHub monte avec l’équipe.</p>
+        {_btn(url, "Inviter un collaborateur")}""",
+        preheader="Collaboration loop — sièges équipe",
+    )
+    return _send_email(to, subject, html, text)

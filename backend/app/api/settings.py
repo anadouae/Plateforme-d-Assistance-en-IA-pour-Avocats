@@ -184,7 +184,6 @@ def request_email_change_otp(
 ):
     """Envoie un code à la NOUVELLE adresse avant de changer l'email du compte."""
     from app.core.rate_limit import check_rate_limit
-    from app.models import MembershipRequest, MembershipRequestStatus
     from app.services.email import send_otp_email
     from app.services.email_otp import PURPOSE_EMAIL_CHANGE, create_otp
 
@@ -193,15 +192,7 @@ def request_email_change_otp(
     if new_email == (user.email or "").strip().lower():
         raise HTTPException(status_code=400, detail="C'est déjà votre adresse email.")
     taken = db.query(User).filter(User.email == new_email, User.id != user.id).first()
-    pending = (
-        db.query(MembershipRequest)
-        .filter(
-            MembershipRequest.email == new_email,
-            MembershipRequest.status == MembershipRequestStatus.PENDING,
-        )
-        .first()
-    )
-    if taken or pending:
+    if taken:
         raise HTTPException(status_code=400, detail="Cette adresse email est déjà utilisée.")
     code = create_otp(db, email=new_email, purpose=PURPOSE_EMAIL_CHANGE, minutes=15, digits=True)
     db.commit()
@@ -222,7 +213,6 @@ def confirm_email_change(
 ):
     from app.api.auth import _user_response
     from app.core.security import verify_password
-    from app.models import MembershipRequest, MembershipRequestStatus
     from app.services.email import send_email_changed_notice
     from app.services.email_otp import PURPOSE_EMAIL_CHANGE, consume_otp
 
@@ -234,15 +224,7 @@ def confirm_email_change(
     if not consume_otp(db, email=new_email, purpose=PURPOSE_EMAIL_CHANGE, code=data.email_otp):
         raise HTTPException(status_code=400, detail="Code email invalide ou expiré.")
     taken = db.query(User).filter(User.email == new_email, User.id != user.id).first()
-    pending = (
-        db.query(MembershipRequest)
-        .filter(
-            MembershipRequest.email == new_email,
-            MembershipRequest.status == MembershipRequestStatus.PENDING,
-        )
-        .first()
-    )
-    if taken or pending:
+    if taken:
         raise HTTPException(status_code=400, detail="Cette adresse email est déjà utilisée.")
 
     old_email = user.email
@@ -391,11 +373,18 @@ def delete_account(
             detail='Saisissez SUPPRIMER pour confirmer (ou DELETE / حذف).',
         )
 
-    if not verify_password(data.password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Mot de passe incorrect.",
-        )
+    # Compte OTP / Google sans mot de passe : OTP + phrase suffisent
+    if user.hashed_password:
+        if not (data.password or "").strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Mot de passe requis.",
+            )
+        if not verify_password(data.password, user.hashed_password):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Mot de passe incorrect.",
+            )
 
     if not consume_otp(
         db, email=user.email, purpose=PURPOSE_ACCOUNT_DELETE, code=data.email_otp

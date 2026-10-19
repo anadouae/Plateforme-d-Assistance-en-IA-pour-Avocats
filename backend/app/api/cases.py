@@ -8,11 +8,7 @@ from app.api.deps import get_current_user, log_audit, require_not_assistant
 from app.core.database import get_db
 from app.models import (
     AgendaEvent,
-    CabinetNotification,
     Case,
-    CaseComment,
-    CaseNote,
-    CaseTask,
     Document,
     PlaidoirieDraft,
     PlaidoirieRevision,
@@ -21,8 +17,6 @@ from app.models import (
 )
 from app.schemas import (
     CaseAnalysisResponse,
-    CaseCommentCreate,
-    CaseCommentResponse,
     CaseCreate,
     CaseResponse,
     CaseUpdate,
@@ -41,6 +35,7 @@ def _case_to_response(case: Case) -> CaseResponse:
     return CaseResponse(
         id=case.id,
         reference=case.reference,
+        title=getattr(case, "title", None) or None,
         client_name=case.client_name,
         case_type=case.case_type,
         status=case.status,
@@ -150,8 +145,15 @@ def create_case(
 
     assert_can_create_case(db, user.cabinet_id)
 
+    title = (data.title or "").strip() or None
+    if not title:
+        # Fallback marché : intitulé = client (+ adverse si connu)
+        opp = (data.opposing_name or "").strip()
+        title = f"{data.client_name.strip()} c/ {opp}" if opp else data.client_name.strip()
+
     case = Case(
         reference=_generate_reference(db),
+        title=title[:255],
         client_name=data.client_name,
         case_type=data.case_type,
         status=data.status,
@@ -240,6 +242,21 @@ def analyse_case(
         {"name": d.original_name, "text": d.extracted_text or "", "id": d.id}
         for d in docs
     ]
+    # Enrichissement fiche dossier (parties connues même si regex rate)
+    meta_bits = []
+    if case.client_name:
+        meta_bits.append(f"Client / PARTIE_A : {case.client_name}")
+    if getattr(case, "opposing_name", None):
+        meta_bits.append(f"Adverse / PARTIE_B : {case.opposing_name}")
+    if getattr(case, "title", None):
+        meta_bits.append(f"Titre : {case.title}")
+    if getattr(case, "court_file_number", None):
+        meta_bits.append(f"N° greffe : {case.court_file_number}")
+    if meta_bits:
+        payload.insert(
+            0,
+            {"name": "_fiche_dossier", "text": "\n".join(meta_bits), "id": "meta"},
+        )
 
     from app.services.agent import generate_case_analysis
 
@@ -296,6 +313,8 @@ def update_case(
     for field, value in data.model_dump(exclude_unset=True).items():
         if field == "tags" and value is not None:
             setattr(case, field, ",".join(value))
+        elif field == "title":
+            setattr(case, field, (str(value).strip() if value is not None else "") or None)
         elif value is not None:
             setattr(case, field, value)
 
@@ -329,8 +348,6 @@ def _purge_case_dependencies(db: Session, case: Case) -> None:
             logger.warning("Storage delete skipped for %s", doc.id)
         db.delete(doc)
 
-    db.query(CaseNote).filter(CaseNote.case_id == case.id).delete(synchronize_session=False)
-    db.query(CaseTask).filter(CaseTask.case_id == case.id).delete(synchronize_session=False)
     db.query(AgendaEvent).filter(AgendaEvent.case_id == case.id).delete(synchronize_session=False)
 
     # Révisions AVANT brouillons (FK draft_id) — sinon IntegrityError et le dossier « revient »
@@ -343,9 +360,6 @@ def _purge_case_dependencies(db: Session, case: Case) -> None:
             synchronize_session=False
         )
     db.query(PlaidoirieDraft).filter(PlaidoirieDraft.case_id == case.id).delete(
-        synchronize_session=False
-    )
-    db.query(CaseComment).filter(CaseComment.case_id == case.id).delete(
         synchronize_session=False
     )
 
@@ -377,123 +391,5 @@ def delete_case(
     log_audit(db, "case.delete", user=user, request=request, details=case.reference)
     _purge_case_dependencies(db, case)
     db.delete(case)
-    db.commit()
-
-
-def _get_case_or_404(db: Session, case_id: str, cabinet_id: str) -> Case:
-    case = (
-        db.query(Case)
-        .filter(Case.id == case_id, Case.cabinet_id == cabinet_id)
-        .first()
-    )
-    if not case:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Dossier introuvable")
-    return case
-
-
-@router.get("/{case_id}/comments", response_model=list[CaseCommentResponse])
-def list_case_comments(
-    case_id: str,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _get_case_or_404(db, case_id, user.cabinet_id)
-    rows = (
-        db.query(CaseComment)
-        .filter(CaseComment.case_id == case_id, CaseComment.cabinet_id == user.cabinet_id)
-        .order_by(CaseComment.created_at.asc())
-        .limit(200)
-        .all()
-    )
-    out = []
-    for row in rows:
-        author = db.query(User).filter(User.id == row.user_id).first()
-        out.append(
-            CaseCommentResponse(
-                id=row.id,
-                case_id=row.case_id,
-                body=row.body,
-                author_name=author.full_name if author else "",
-                created_at=row.created_at,
-            )
-        )
-    return out
-
-
-@router.post("/{case_id}/comments", response_model=CaseCommentResponse, status_code=status.HTTP_201_CREATED)
-def add_case_comment(
-    case_id: str,
-    data: CaseCommentCreate,
-    request: Request,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    case = _get_case_or_404(db, case_id, user.cabinet_id)
-    row = CaseComment(
-        cabinet_id=user.cabinet_id,
-        case_id=case.id,
-        user_id=user.id,
-        body=data.body.strip(),
-    )
-    db.add(row)
-    case.updated_at = datetime.now(timezone.utc)
-    log_audit(db, "case.comment", user=user, request=request, details=case.reference)
-    preview = (data.body.strip()[:140] + "…") if len(data.body.strip()) > 140 else data.body.strip()
-    others = (
-        db.query(User)
-        .filter(
-            User.cabinet_id == user.cabinet_id,
-            User.id != user.id,
-            User.is_active.is_(True),
-            User.role != UserRole.ADMIN_WEBVOICE,
-        )
-        .all()
-    )
-    for member in others:
-        db.add(
-            CabinetNotification(
-                cabinet_id=user.cabinet_id,
-                user_id=member.id,
-                type="case.comment",
-                title=f"Note sur {case.reference}",
-                body=f"{user.full_name} : {preview}",
-                href=f"/cases/{case.id}?tab=activite",
-            )
-        )
-    db.commit()
-    db.refresh(row)
-    return CaseCommentResponse(
-        id=row.id,
-        case_id=row.case_id,
-        body=row.body,
-        author_name=user.full_name,
-        created_at=row.created_at,
-    )
-
-
-@router.delete("/{case_id}/comments/{comment_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_case_comment(
-    case_id: str,
-    comment_id: str,
-    request: Request,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _get_case_or_404(db, case_id, user.cabinet_id)
-    row = (
-        db.query(CaseComment)
-        .filter(
-            CaseComment.id == comment_id,
-            CaseComment.case_id == case_id,
-            CaseComment.cabinet_id == user.cabinet_id,
-        )
-        .first()
-    )
-    if not row:
-        raise HTTPException(status_code=404, detail="Commentaire introuvable")
-    if row.user_id != user.id and user.role not in (UserRole.ADMIN_CABINET, UserRole.ADMIN_WEBVOICE):
-        raise HTTPException(status_code=403, detail="Non autorisé")
-    log_audit(db, "case.comment_delete", user=user, request=request, details=case_id)
-    db.delete(row)
     db.commit()
 

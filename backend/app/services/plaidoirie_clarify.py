@@ -106,10 +106,18 @@ def prepare_masked_case_context(
         texts=[raw_docs, dictation_text or ""],
     )
     n_pieces = raw_docs.count("--- Pièce") if raw_docs else 0
-    if not parties:
-        return case, raw_docs, (dictation_text or "").strip(), {}, n_pieces
+    from app.services.pii_store import load_case_pii_mapping, save_case_pii_mapping
 
-    masked_list, mapping = mask_corpus(raw_docs, (dictation_text or "").strip(), parties=parties)
+    base_map = load_case_pii_mapping(case)
+    masked_list, mapping = mask_corpus(
+        raw_docs,
+        (dictation_text or "").strip(),
+        parties=parties,
+        structured=True,
+        base_mapping=base_map,
+    )
+    if mapping:
+        save_case_pii_mapping(db, case, mapping)
     return case, masked_list[0], masked_list[1], mapping, n_pieces
 
 

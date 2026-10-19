@@ -4203,14 +4203,26 @@ html.lexhub-focus .main .panel {
 @media (max-width: 640px) {
   .lex-modal {
     grid-template-columns: 1fr;
-    max-height: none;
+    /* Au-dessus de la bottom nav (~72px) + safe area */
+    max-height: calc(100dvh - 5.5rem - env(safe-area-inset-bottom, 0px));
+    margin-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+    width: calc(100% - 16px);
+    border-radius: 16px;
   }
   .lex-visual {
-    height: 180px;
-    order: -1;
+    display: none;
   }
   .lex-text {
-    padding: 28px 22px 24px;
+    padding: 20px 16px calc(16px + env(safe-area-inset-bottom, 0px));
+    max-height: inherit;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .lex-actions {
+    position: sticky;
+    bottom: 0;
+    padding-top: 8px;
+    background: linear-gradient(to top, #0a0e1c 70%, transparent);
   }
   .lex-ring {
     width: 160px;
@@ -4598,10 +4610,11 @@ html[data-theme="dark"] .action-toast{
 
   .lex-modal {
     grid-template-columns: 1fr !important;
-    width: 100% !important;
+    width: calc(100% - 16px) !important;
     max-width: 100% !important;
-    max-height: 92dvh !important;
-    border-radius: 16px 16px 0 0 !important;
+    max-height: calc(100dvh - 5.5rem - env(safe-area-inset-bottom, 0px)) !important;
+    margin-bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px)) !important;
+    border-radius: 16px !important;
   }
 
   .lex-visual {
@@ -4610,14 +4623,52 @@ html[data-theme="dark"] .action-toast{
 
   .lex-text {
     padding: 20px 16px 16px !important;
-    max-height: 92dvh;
-    overflow-y: auto;
+    max-height: inherit !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .lex-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    padding-top: 10px !important;
+    background: linear-gradient(to top, #0a0e1c 75%, rgba(10, 14, 28, 0)) !important;
   }
 
   .admin-report-modal {
     width: calc(100vw - 16px) !important;
     max-height: 90dvh !important;
     overflow: auto !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .blobs,
+  .blob,
+  .panel,
+  .sanad-glow,
+  .sanad-ring,
+  .dock-nav::before,
+  .topbar::before {
+    animation: none !important;
+  }
+  .card:hover,
+  .btn:hover {
+    transform: none !important;
+  }
+  .panel.show {
+    animation: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
 

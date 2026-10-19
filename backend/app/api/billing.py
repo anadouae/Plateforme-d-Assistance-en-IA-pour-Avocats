@@ -2,84 +2,21 @@
 
 import json
 from datetime import datetime, timezone
-from typing import Literal, Optional
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, log_audit, require_cabinet_billing_admin, require_roles
+from app.api.deps import get_current_user, log_audit, require_cabinet_billing_admin, require_password_set, require_roles
 from app.core.config import settings
-from app.core.rate_limit import check_rate_limit
 from app.core.database import get_db
-from app.models import CommercialLead, PaymentTransferRequest, SubscriptionPlan, User, UserRole
-from app.schemas import MessageResponse, PaymentTransferCreate, PaymentTransferResponse
+from app.models import SubscriptionPlan, User, UserRole
+from app.schemas import MessageResponse
 from app.services import billing as billing_svc
 from app.services.cle_de_barre import generate_cle_de_barre
 
 router = APIRouter(prefix="/api/billing", tags=["billing"])
-
-
-class CommercialLeadIn(BaseModel):
-    kind: Literal["enterprise_trial", "custom"]
-    full_name: str = Field(..., min_length=2, max_length=255)
-    email: EmailStr
-    phone: Optional[str] = Field(None, max_length=40)
-    cabinet_name: Optional[str] = Field(None, max_length=255)
-    city: Optional[str] = Field(None, max_length=120)
-    lawyers_count: Optional[int] = Field(None, ge=1, le=500)
-    message: Optional[str] = Field(None, max_length=4000)
-
-
-@router.post("/commercial-lead")
-def submit_commercial_lead(
-    data: CommercialLeadIn,
-    request: Request,
-    db: Session = Depends(get_db),
-):
-    """Qualification Entreprise / Sur mesure — pas d’essai automatique."""
-    check_rate_limit(request, key="billing.lead", limit=8, window_sec=3600)
-    kind = data.kind
-    lead = CommercialLead(
-        kind=kind,
-        full_name=data.full_name.strip(),
-        email=data.email.strip().lower(),
-        phone=(data.phone or "").strip() or None,
-        cabinet_name=(data.cabinet_name or "").strip() or None,
-        city=(data.city or "").strip() or None,
-        lawyers_count=data.lawyers_count,
-        message=(data.message or "").strip() or None,
-        status="new",
-    )
-    db.add(lead)
-    db.commit()
-    try:
-        from app.services.email import send_commercial_lead_email
-
-        send_commercial_lead_email(
-            kind=kind,
-            full_name=lead.full_name,
-            email=lead.email,
-            phone=lead.phone or "",
-            cabinet_name=lead.cabinet_name or "",
-            city=lead.city or "",
-            lawyers_count=lead.lawyers_count,
-            message=lead.message or "",
-        )
-    except Exception:
-        pass
-    log_audit(
-        db,
-        "billing.commercial_lead",
-        user=None,
-        request=request,
-        details=f"{kind}:{lead.email}",
-    )
-    db.commit()
-    return {
-        "ok": True,
-        "message": "Demande reçue. Un conseiller vous recontacte sous 24–48 h.",
-    }
 
 
 class PlanOut(BaseModel):
@@ -147,6 +84,7 @@ class AdminAssignPlanRequest(BaseModel):
 class CleDeBarreRequest(BaseModel):
     case_id: str
     extra_instructions: Optional[str] = Field(None, max_length=2000)
+    language: Optional[str] = Field(None, pattern="^(fr|ar|en)$")
 
 
 @router.get("/plans", response_model=list[PlanOut])
@@ -280,6 +218,7 @@ def checkout_credit_pack(
     data: CreditPackPurchaseRequest,
     request: Request,
     user: User = Depends(require_cabinet_billing_admin),
+    _pwd: User = Depends(require_password_set),
     db: Session = Depends(get_db),
 ):
     out = billing_svc.start_credit_pack_checkout(
@@ -303,6 +242,7 @@ def confirm_credit_pack_payment(
     data: CreditPackConfirmRequest,
     request: Request,
     user: User = Depends(require_cabinet_billing_admin),
+    _pwd: User = Depends(require_password_set),
     db: Session = Depends(get_db),
 ):
     from app.models import Cabinet
@@ -470,15 +410,11 @@ def select_plan_mock(
     data: SelectPlanRequest,
     request: Request,
     user: User = Depends(require_cabinet_billing_admin),
+    _pwd: User = Depends(require_password_set),
     db: Session = Depends(get_db),
 ):
-    """Choix de plan : Découverte immédiat ; plans payants = essai 30 j après carte."""
+    """Choix de plan : Découverte immédiat ; plans payants = essai plafonné après carte."""
     plan = billing_svc.get_plan_by_slug(db, data.plan_slug)
-    if plan and plan.slug == "enterprise":
-        raise HTTPException(
-            status_code=400,
-            detail="L’essai Entreprise se fait après une demande commerciale (formulaire). Solo et Cabinet restent en libre-service.",
-        )
     is_paid = bool(plan and (int(plan.price_mad_monthly or 0) > 0))
 
     if is_paid:
@@ -859,6 +795,7 @@ def api_cle_de_barre(
             cabinet_id=user.cabinet_id,
             case_id=data.case_id,
             extra_instructions=data.extra_instructions,
+            language=getattr(data, "language", None),
             skip_spend=True,
         )
         log_audit(
@@ -963,61 +900,6 @@ def admin_assign_plan(
     return MessageResponse(message=f"Plan {plan.name} assigné au cabinet {cab.name}")
 
 
-@admin_router.get("/commercial-leads")
-def admin_list_commercial_leads(
-    user: User = Depends(require_roles(UserRole.ADMIN_WEBVOICE)),
-    db: Session = Depends(get_db),
-):
-    rows = (
-        db.query(CommercialLead)
-        .order_by(CommercialLead.created_at.desc())
-        .limit(300)
-        .all()
-    )
-    return [
-        {
-            "id": r.id,
-            "kind": r.kind,
-            "full_name": r.full_name,
-            "email": r.email,
-            "phone": r.phone,
-            "cabinet_name": r.cabinet_name,
-            "city": r.city,
-            "lawyers_count": r.lawyers_count,
-            "message": r.message,
-            "status": r.status,
-            "created_at": r.created_at.isoformat() if r.created_at else None,
-        }
-        for r in rows
-    ]
-
-
-class CommercialLeadStatusIn(BaseModel):
-    status: Literal["new", "contacted", "qualified", "closed"]
-
-
-@admin_router.patch("/commercial-leads/{lead_id}")
-def admin_update_commercial_lead(
-    lead_id: str,
-    data: CommercialLeadStatusIn,
-    request: Request,
-    user: User = Depends(require_roles(UserRole.ADMIN_WEBVOICE)),
-    db: Session = Depends(get_db),
-):
-    lead = db.query(CommercialLead).filter(CommercialLead.id == lead_id).first()
-    if not lead:
-        raise HTTPException(status_code=404, detail="Demande introuvable")
-    lead.status = data.status
-    log_audit(
-        db,
-        "billing.commercial_lead.status",
-        user=user,
-        request=request,
-        details=f"{lead_id}:{data.status}",
-    )
-    db.commit()
-    return {"ok": True, "id": lead.id, "status": lead.status}
-
 # Appended by 031 — paiement Maroc (virement ICE + stubs CMI)
 
 def _bank_payload() -> dict:
@@ -1047,100 +929,6 @@ def _bank_payload() -> dict:
 @router.get("/payment-env")
 def payment_env(user: User = Depends(get_current_user)):
     return _bank_payload()
-
-
-@router.post("/transfer-request", response_model=PaymentTransferResponse)
-def create_transfer_request(
-    data: PaymentTransferCreate,
-    request: Request,
-    user: User = Depends(require_cabinet_billing_admin),
-    db: Session = Depends(get_db),
-):
-    plan = billing_svc.get_plan_by_slug(db, data.plan_slug)
-    if not plan:
-        raise HTTPException(status_code=404, detail="Plan introuvable")
-    amount = int(
-        plan.price_mad_yearly if data.billing_cycle == "yearly" else plan.price_mad_monthly
-    )
-    if amount <= 0:
-        raise HTTPException(status_code=400, detail="Ce plan ne nécessite pas de virement")
-    stamp = datetime.now(timezone.utc).strftime("%y%m%d")
-    ref = f"LH-{stamp}-{user.cabinet_id[:6].upper()}-{data.plan_slug[:8].upper()}"
-    row = PaymentTransferRequest(
-        cabinet_id=user.cabinet_id,
-        user_id=user.id,
-        plan_slug=data.plan_slug,
-        billing_cycle=data.billing_cycle,
-        amount_mad=amount,
-        reference=ref,
-        status="pending",
-        ice=settings.LEXHUB_COMPANY_ICE or None,
-        notes=data.notes,
-    )
-    db.add(row)
-    log_audit(db, "billing.transfer_request", user=user, request=request, details=ref)
-    db.commit()
-    db.refresh(row)
-    bank = _bank_payload()
-    rib = bank.get("bank_rib") or "(RIB à renseigner — LEXHUB_BANK_RIB)"
-    ice = bank.get("ice") or "(ICE à renseigner — LEXHUB_COMPANY_ICE)"
-    ben = bank.get("beneficiary") or "WEBVOICE SARL"
-    bname = bank.get("bank_name") or "banque LexHub"
-    instructions = (
-        f"1) Effectuez un virement de {amount} MAD vers {ben} ({bname}).\n"
-        f"2) RIB : {rib}\n"
-        f"3) ICE : {ice}\n"
-        f"4) Motif / référence OBLIGATOIRE : {ref}\n"
-        f"5) Envoyez le justificatif à facturation@lexhub.space — activation sous 24–48 h ouvrés."
-    )
-    return PaymentTransferResponse(
-        id=row.id,
-        reference=row.reference,
-        amount_mad=row.amount_mad,
-        plan_slug=row.plan_slug,
-        billing_cycle=row.billing_cycle,
-        status=row.status,
-        ice=row.ice,
-        bank_rib=bank.get("bank_rib"),
-        bank_name=bank.get("bank_name"),
-        beneficiary=bank.get("beneficiary"),
-        instructions=instructions,
-        created_at=row.created_at,
-    )
-
-
-@router.get("/transfer-requests", response_model=list[PaymentTransferResponse])
-def list_transfer_requests(
-    user: User = Depends(require_cabinet_billing_admin),
-    db: Session = Depends(get_db),
-):
-    rows = (
-        db.query(PaymentTransferRequest)
-        .filter(PaymentTransferRequest.cabinet_id == user.cabinet_id)
-        .order_by(PaymentTransferRequest.created_at.desc())
-        .limit(50)
-        .all()
-    )
-    bank = _bank_payload()
-    out: list[PaymentTransferResponse] = []
-    for row in rows:
-        out.append(
-            PaymentTransferResponse(
-                id=row.id,
-                reference=row.reference,
-                amount_mad=row.amount_mad,
-                plan_slug=row.plan_slug,
-                billing_cycle=row.billing_cycle,
-                status=row.status,
-                ice=row.ice or bank.get("ice"),
-                bank_rib=bank.get("bank_rib"),
-                bank_name=bank.get("bank_name"),
-                beneficiary=bank.get("beneficiary"),
-                instructions=f"Référence {row.reference} — {row.amount_mad} MAD",
-                created_at=row.created_at,
-            )
-        )
-    return out
 
 
 @router.post("/cmi/webhook")

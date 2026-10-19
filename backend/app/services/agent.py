@@ -407,6 +407,7 @@ def answer_from_document_rag(
     language: str = "fr",
     custom_prompt: str | None = None,
     llm_provider: str | None = None,
+    history: list[dict[str, str]] | None = None,
 ) -> AgentResult:
     from app.services.extraction import get_document_context_excerpt
     from app.services.language import get_disclaimer, msg_doc_not_found, normalize_locale
@@ -421,6 +422,7 @@ def answer_from_document_rag(
         text,
         language=locale,
         llm_provider=llm_provider,
+        history=history,
     )
     if llm_answer:
         excerpt = get_document_context_excerpt(text, question, max_len=500)
@@ -431,7 +433,7 @@ def answer_from_document_rag(
             confidence_score=88,
         )
 
-    hits = search_document_by_id(cabinet_id, case_id, document_id, question)
+    hits = search_document_by_id(cabinet_id, case_id, document_id, question) if case_id else []
     if hits:
         result = answer_from_hits(question, hits, "document")
         if result:
@@ -440,16 +442,29 @@ def answer_from_document_rag(
     if text:
         excerpt = get_document_context_excerpt(text, question, max_len=1200)
         if excerpt:
-            doc_prefix = {
-                "fr": f"D'après le document « {document_name} » :\n\n",
-                "ar": f"وفقاً للوثيقة « {document_name} » :\n\n",
-                "en": f"According to the document « {document_name} » :\n\n",
-            }[locale]
+            # Ne plus coller un mur OCR : message clair + extrait court structuré
+            snippets = [s.strip() for s in re.split(r"[.\n]+", excerpt) if len(s.strip()) > 40][:6]
+            if locale == "ar":
+                bullets = "\n".join(f"- {s[:220]}" for s in snippets) or f"- {excerpt[:400]}"
+                answer = (
+                    f"## إجابة مؤقتة\n"
+                    f"تعذر إكمال التحليل الذكي بالكامل. مقتطفات من « {document_name} » :\n\n"
+                    f"{bullets}\n\n"
+                    f"**أعد طرح السؤال** للحصول على إجابة منظمة."
+                )
+            else:
+                bullets = "\n".join(f"- {s[:220]}" for s in snippets) or f"- {excerpt[:400]}"
+                answer = (
+                    f"## Réponse provisoire\n"
+                    f"L’analyse IA n’a pas abouti complètement. Extraits de « {document_name} » :\n\n"
+                    f"{bullets}\n\n"
+                    f"**Renvoyez la question** pour une réponse structurée."
+                )
             return AgentResult(
-                answer=f"{doc_prefix}{excerpt}",
+                answer=answer,
                 source_type="document",
                 sources=[Citation(label=document_name, excerpt=excerpt[:300])],
-                confidence_score=65,
+                confidence_score=45,
             )
 
     return AgentResult(
@@ -628,6 +643,7 @@ def route_and_answer(
     excerpt: str | None = None,
     confidence_threshold: int = 60,
     language: str = "fr",
+    history: list[dict[str, str]] | None = None,
 ) -> AgentResult:
     from app.services.language import (
         detect_language,
@@ -665,15 +681,16 @@ def route_and_answer(
     year_filter = extract_year_filter(question)
     recent = is_recent_law_query(question)
 
-    if document_id and cabinet_id and case_id and document_name:
+    if document_id and cabinet_id and document_name:
         return answer_from_document_rag(
             question,
             cabinet_id,
-            case_id,
+            case_id or "",
             document_id,
             document_name,
             fallback_text=document_text or "",
             language=locale,
+            history=history,
         )
 
     if case_id and cabinet_id and not document_id:
@@ -888,55 +905,23 @@ def generate_synthesis(document_name: str, text: str, language: str = "ar") -> d
             "disclaimer": disclaimer,
         }
 
-    # Dernier recours : résumé extractif si le texte est lisible, sinon message d'échec
-    attention = []
+    # Dernier recours : message clair (NE PLUS coller le texte brut comme « synthèse »)
     cleaned_text = (text or "").strip()
-    if len(cleaned_text) >= 400:
-        paras = [p.strip() for p in re.split(r"\n{2,}", cleaned_text) if len(p.strip()) > 60]
-        if not paras:
-            paras = [cleaned_text[:900]]
-        body = "\n\n".join(paras[:5])[:2200]
-        if locale == "ar":
-            summary = (
-                "ملخص مستخرج من النص (دون اختلاق):\n\n"
-                + body
-                + "\n\nهذا ملخص آلي من المقاطع الأولى — راجعوا الوثيقة الأصلية."
-            )
-        else:
-            summary = (
-                "Résumé extrait du texte (aucune invention) :\n\n"
-                + body
-                + "\n\nCeci est un extrait automatique des premiers passages — relisez la pièce originale."
-            )
-        return {
-            "parties": extract_parties(cleaned_text),
-            "key_dates": extract_dates(cleaned_text),
-            "amounts": extract_amounts(cleaned_text),
-            "risk_clauses": [],
-            "attention_points": attention,
-            "summary": _clean_summary_md(summary),
-            "sources": [Citation(label=document_name, excerpt=preview[:300])],
-            "disclaimer": disclaimer,
-        }
-
-    _fallback = {
+    _fail = {
         "fr": (
-            "## Synthèse indisponible\n\n"
-            "Les modèles IA n'ont pas pu produire de synthèse pour cette pièce "
-            "(texte trop pauvre, OCR illisible, ou providers indisponibles).\n\n"
+            "## Synthèse IA indisponible\n\n"
+            "ChatGPT n'a pas pu produire la synthèse pour cette pièce.\n\n"
             "## Que faire\n"
-            "- Ré-extrayez le document puis relancez la synthèse.\n"
-            "- Vérifiez que le backend LLM (Mistral / Groq / Ollama) est joignable.\n"
-            "- Aucune information juridique n'a été inventée."
+            "1. Cliquez **Actualiser** pour relancer l'analyse IA.\n"
+            "2. Le texte brut reste dans l'aperçu à gauche.\n"
+            "3. Aucune information n'a été inventée.\n"
         ),
         "ar": (
-            "## تعذر التلخيص\n\n"
-            "تعذر على نماذج الذكاء الاصطناعي إعداد تلخيص لهذه القطعة "
-            "(نص ضعيف، OCR غير واضح، أو مزود غير متاح).\n\n"
+            "## تعذر التلخيص الذكي\n\n"
+            "تعذر على الذكاء الاصطناعي إعداد التلخيص.\n\n"
             "## ماذا تفعل\n"
-            "- أعد استخراج النص ثم أعد التلخيص.\n"
-            "- تحقق من اتصال نماذج LLM.\n"
-            "- لم تُختلق أي معلومة قانونية."
+            "1. اضغطوا **تحديث**.\n"
+            "2. النص المستخرج يبقى على اليسار.\n"
         ),
     }
     attention = []
@@ -945,20 +930,27 @@ def generate_synthesis(document_name: str, text: str, language: str = "ar") -> d
             {
                 "fr": "Texte arabe brouillé — ré-extrayez puis relancez la synthèse.",
                 "ar": "نص عربي مشوش — أعد الاستخراج ثم التلخيص.",
-                "en": "نص عربي مشوش — أعد الاستخراج ثم التلخيص.",
-            }.get(locale, "نص عربي مشوش — أعد الاستخراج ثم التلخيص.")
+            }.get(locale, "Texte arabe brouillé — ré-extrayez puis relancez la synthèse.")
         )
-
+    if len(cleaned_text) >= 80:
+        attention.append(
+            {
+                "fr": "Synthèse IA non générée — relancez Actualiser.",
+                "ar": "لم يُنشأ التلخيص الذكي — أعدوا تحديث.",
+            }.get(locale, "Synthèse IA non générée — relancez Actualiser.")
+        )
     return {
-        "parties": extract_parties(text),
-        "key_dates": extract_dates(text),
-        "amounts": extract_amounts(text),
+        "parties": extract_parties(cleaned_text) if cleaned_text else [],
+        "key_dates": extract_dates(cleaned_text) if cleaned_text else [],
+        "amounts": extract_amounts(cleaned_text) if cleaned_text else [],
         "risk_clauses": [],
         "attention_points": attention,
-        "summary": _fallback.get(locale, _fallback["ar"]),
-        "sources": [Citation(label=document_name, excerpt=preview[:300])],
+        "summary": _fail.get(locale, _fail["fr"]),
+        "sources": [Citation(label=document_name, excerpt=preview[:300])] if cleaned_text else [],
         "disclaimer": disclaimer,
     }
+
+
 
 
 def generate_case_analysis(
@@ -1027,7 +1019,7 @@ def generate_case_analysis(
         dates.extend(extract_dates(raw)[:8])
         amounts.extend(extract_amounts(raw)[:8])
         excerpt = raw[:400].replace("\n", " ")
-        chunks.append(f"[{name}]\n{raw[:2500]}")
+        chunks.append(f"[{name}]\n{raw[:6000]}")
         sources.append(Citation(label=name, excerpt=excerpt))
 
     def _uniq(items: list[str]) -> list[str]:
@@ -1042,33 +1034,37 @@ def generate_case_analysis(
         return out
 
     parties, dates, amounts = _uniq(parties), _uniq(dates), _uniq(amounts)
-    # Volume limité — Ollama CPU peut prendre des minutes sinon
-    all_text = "\n\n".join(chunks)[:4500]
+    # Plus de contexte pour ChatGPT (toutes les pièces)
+    all_text = "\n\n".join(chunks)[:22000]
 
-    # Résumé extractif immédiat (toujours disponible)
+    # Fallback clair si LLM échoue — pas un collage OCR
+    docs_list = "\n".join(f"{i}. **{n}**" for i, n in enumerate(key_docs, 1)) or "—"
+    parties_list = "\n".join(f"- {p}" for p in parties[:20]) or "- —"
+    dates_list = "\n".join(f"- {d}" for d in dates[:20]) or "- —"
+    amounts_list = "\n".join(f"- {a}" for a in amounts[:20]) or "- —"
     if locale == "ar":
         fallback_summary = (
             f"## تحليل الملف {case_reference}\n\n"
-            f"**الوثائق المستعملة:** {', '.join(key_docs) or 'لا توجد'}\n\n"
-            f"**الأطراف المكتشفة:** {', '.join(parties[:12]) or '—'}\n\n"
-            f"**التواريخ:** {', '.join(dates[:12]) or '—'}\n\n"
-            f"**المبالغ:** {', '.join(amounts[:12]) or '—'}\n\n"
-            f"### مقتطفات\n{(all_text[:1200] if all_text else 'لا يوجد نص مستخرج.')}\n\n"
+            f"تعذر إكمال التحليل الذكي بالكامل. بيانات مستخرجة:\n\n"
+            f"### القطع\n{docs_list}\n\n"
+            f"### الأطراف\n{parties_list}\n\n"
+            f"### التواريخ\n{dates_list}\n\n"
+            f"### المبالغ\n{amounts_list}\n\n"
             "### ما يُستحسن فعله\n"
-            "- مراجعة القطع الجاهزة في تبويب الوثائق\n"
-            "- التحقق من الآجال والمبالغ مع الموكل\n"
+            "1. اضغطوا **تحديث / إعادة التحليل**\n"
+            "2. راجعوا القطع في تبويب الوثائق\n"
         )
     else:
         fallback_summary = (
             f"## Analyse du dossier {case_reference}\n\n"
-            f"**Pièces utilisées :** {', '.join(key_docs) or 'aucune'}\n\n"
-            f"**Parties détectées :** {', '.join(parties[:12]) or '—'}\n\n"
-            f"**Dates :** {', '.join(dates[:12]) or '—'}\n\n"
-            f"**Montants :** {', '.join(amounts[:12]) or '—'}\n\n"
-            f"### Extraits\n{(all_text[:1200] if all_text else 'Aucun texte extractible.')}\n\n"
+            f"L’analyse IA n’a pas abouti complètement. Données extraites :\n\n"
+            f"### Pièces\n{docs_list}\n\n"
+            f"### Parties\n{parties_list}\n\n"
+            f"### Dates\n{dates_list}\n\n"
+            f"### Montants\n{amounts_list}\n\n"
             "### Suite utile\n"
-            "- Ouvrir les pièces prêtes dans l’onglet Documents\n"
-            "- Vérifier délais et montants avec le client\n"
+            "1. Cliquez **Lancer l'analyse** à nouveau\n"
+            "2. Vérifiez les pièces dans l’onglet Documents\n"
         )
 
     llm_text = None

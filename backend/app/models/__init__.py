@@ -42,7 +42,9 @@ class Cabinet(Base):
     )
     join_code_approved_count: Mapped[int] = mapped_column(Integer, default=0)
     referral_code: Mapped[str | None] = mapped_column(String(24), unique=True, nullable=True, index=True)
-    referred_by_cabinet_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    referred_by_cabinet_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("cabinets.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     status: Mapped[CabinetStatus] = mapped_column(
         Enum(CabinetStatus), default=CabinetStatus.PENDING
     )
@@ -52,42 +54,6 @@ class Cabinet(Base):
 
     users: Mapped[list["User"]] = relationship(back_populates="cabinet")
     cases: Mapped[list["Case"]] = relationship(back_populates="cabinet")
-    membership_requests: Mapped[list["MembershipRequest"]] = relationship(
-        back_populates="cabinet"
-    )
-
-
-class MembershipRequestStatus(str, enum.Enum):
-    PENDING = "pending"
-    APPROVED = "approved"
-    REJECTED = "rejected"
-
-
-class MembershipRequest(Base):
-    """Demande d'adhésion via code cabinet — aucun accès avant approbation."""
-
-    __tablename__ = "membership_requests"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    cabinet_id: Mapped[str] = mapped_column(String(36), ForeignKey("cabinets.id"), nullable=False)
-    full_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
-    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
-    status: Mapped[MembershipRequestStatus] = mapped_column(
-        Enum(
-            MembershipRequestStatus,
-            name="membershiprequeststatus",
-            values_callable=lambda enum_cls: [m.value for m in enum_cls],
-        ),
-        default=MembershipRequestStatus.PENDING,
-    )
-    requested_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
-    )
-    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    resolved_by: Mapped[str | None] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
-
-    cabinet: Mapped["Cabinet"] = relationship(back_populates="membership_requests")
 
 
 class User(Base):
@@ -95,7 +61,8 @@ class User(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
-    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
+    hashed_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    must_set_password: Mapped[bool] = mapped_column(Boolean, default=False)
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     full_name_ar: Mapped[str | None] = mapped_column(String(255), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
@@ -114,7 +81,10 @@ class User(Base):
     )
 
     cabinet: Mapped["Cabinet"] = relationship(back_populates="users")
-    cases: Mapped[list["Case"]] = relationship(back_populates="responsible")
+    cases: Mapped[list["Case"]] = relationship(
+        back_populates="responsible",
+        foreign_keys="Case.responsible_id",
+    )
 
 
 class CaseStatus(str, enum.Enum):
@@ -128,6 +98,7 @@ class Case(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     reference: Mapped[str] = mapped_column(String(20), unique=True, nullable=False, index=True)
+    title: Mapped[str | None] = mapped_column(String(255), nullable=True)
     client_name: Mapped[str] = mapped_column(String(255), nullable=False)
     case_type: Mapped[str] = mapped_column(String(100), nullable=False)
     status: Mapped[str] = mapped_column(String(50), default=CaseStatus.EN_COURS.value)
@@ -141,6 +112,7 @@ class Case(Base):
     client_quality: Mapped[str | None] = mapped_column(String(120), nullable=True)
     client_domicile: Mapped[str | None] = mapped_column(String(255), nullable=True)
     opposing_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    pii_mapping_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     opposing_role: Mapped[str | None] = mapped_column(String(40), nullable=True)
     opposing_quality: Mapped[str | None] = mapped_column(String(120), nullable=True)
     opposing_domicile: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -150,7 +122,9 @@ class Case(Base):
     chamber: Mapped[str | None] = mapped_column(String(120), nullable=True)
     greffe: Mapped[str | None] = mapped_column(String(120), nullable=True)
     procedure_status: Mapped[str | None] = mapped_column(String(40), nullable=True)
-    assistant_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    assistant_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     last_decision_type: Mapped[str | None] = mapped_column(String(80), nullable=True)
     last_decision_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     notification_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -168,17 +142,15 @@ class Case(Base):
     )
 
     cabinet: Mapped["Cabinet"] = relationship(back_populates="cases")
-    responsible: Mapped["User"] = relationship(back_populates="cases")
+    responsible: Mapped["User"] = relationship(
+        back_populates="cases",
+        foreign_keys=[responsible_id],
+    )
+    assistant: Mapped["User | None"] = relationship(
+        foreign_keys=[assistant_id],
+    )
     documents: Mapped[list["Document"]] = relationship(back_populates="case")
-    notes: Mapped[list["CaseNote"]] = relationship(back_populates="case")
-    tasks: Mapped[list["CaseTask"]] = relationship(back_populates="case")
     agenda_events: Mapped[list["AgendaEvent"]] = relationship(back_populates="case")
-
-
-class TaskStatus(str, enum.Enum):
-    TODO = "todo"
-    DOING = "doing"
-    DONE = "done"
 
 
 class AgendaEventType(str, enum.Enum):
@@ -190,55 +162,6 @@ class AgendaEventType(str, enum.Enum):
     EXPERTISE = "expertise"
     MEDIATION = "mediation"
     OTHER = "other"
-
-
-class CaseNote(Base):
-    """Notes internes de dossier."""
-
-    __tablename__ = "case_notes"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    cabinet_id: Mapped[str] = mapped_column(String(36), ForeignKey("cabinets.id"), nullable=False, index=True)
-    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
-    case_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("cases.id"), nullable=True, index=True)
-    title: Mapped[str] = mapped_column(String(255), nullable=False, default="Note")
-    body: Mapped[str] = mapped_column(Text, nullable=False, default="")
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
-    )
-
-    case: Mapped["Case | None"] = relationship(back_populates="notes")
-
-
-class CaseTask(Base):
-    """Tâches / planning léger liés au cabinet ou à un dossier."""
-
-    __tablename__ = "case_tasks"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    cabinet_id: Mapped[str] = mapped_column(String(36), ForeignKey("cabinets.id"), nullable=False, index=True)
-    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
-    case_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("cases.id"), nullable=True, index=True)
-    title: Mapped[str] = mapped_column(String(255), nullable=False)
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    status: Mapped[str] = mapped_column(String(20), default=TaskStatus.TODO.value, nullable=False)
-    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, index=True)
-    assignee_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
-    )
-
-    case: Mapped["Case | None"] = relationship(back_populates="tasks")
 
 
 class AgendaEvent(Base):
@@ -265,9 +188,6 @@ class AgendaEvent(Base):
         DateTime(timezone=True), nullable=True
     )
     reminder_1d_sent_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-    reminder_48h_sent_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(
@@ -314,29 +234,6 @@ class Document(Base):
     case: Mapped["Case"] = relationship(back_populates="documents")
 
 
-class CabinetPlaidoirieTemplate(Base):
-    """Modèles de plaidoirie personnalisés, réutilisables par cabinet."""
-
-    __tablename__ = "cabinet_plaidoirie_templates"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    cabinet_id: Mapped[str] = mapped_column(
-        String(36), ForeignKey("cabinets.id"), nullable=False, index=True
-    )
-    created_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    body: Mapped[str] = mapped_column(Text, nullable=False, default="")
-    base_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
-    )
-
-
 class PlaidoirieDraft(Base):
     """Trace des plaidoiries : brouillon (avocat) ou validée (visible assistant)."""
 
@@ -357,7 +254,9 @@ class PlaidoirieDraft(Base):
     output_mode: Mapped[str | None] = mapped_column(String(20), nullable=True)  # orale | ecrite
     citations_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     sources_json: Mapped[str | None] = mapped_column(Text, nullable=True)
-    validated_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    validated_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
     validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     read_by_json: Mapped[str | None] = mapped_column(Text, nullable=True)
     # draft = brouillon | validated = partagée assistant | finalized = exportée / fin rédigée
@@ -380,8 +279,12 @@ class AuditLog(Base):
     __tablename__ = "audit_logs"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
-    cabinet_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    user_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    cabinet_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("cabinets.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     action: Mapped[str] = mapped_column(String(100), nullable=False)
     ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
     details: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -665,11 +568,15 @@ class BillingCreditPackPurchase(Base):
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     payment_provider: Mapped[str | None] = mapped_column(String(64), nullable=True)
     card_last4: Mapped[str | None] = mapped_column(String(4), nullable=True)
-    invoice_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    invoice_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("billing_invoices.id", ondelete="SET NULL"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
-    created_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
 
 
 class SubscriptionEvent(Base):
@@ -685,7 +592,9 @@ class SubscriptionEvent(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
-    created_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_by: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
 
 
 class BillingInvoice(Base):
@@ -746,49 +655,17 @@ class PlaidoirieRevision(Base):
         nullable=False,
         index=True,
     )
-    cabinet_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
-    user_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    cabinet_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cabinets.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
     body_snapshot: Mapped[str] = mapped_column(Text, nullable=False)
     note: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
-
-
-class CaseComment(Base):
-    """Fil de discussion interne sur un dossier."""
-
-    __tablename__ = "case_comments"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    cabinet_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
-    case_id: Mapped[str] = mapped_column(String(36), ForeignKey("cases.id"), nullable=False, index=True)
-    user_id: Mapped[str] = mapped_column(String(36), nullable=False)
-    body: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
-    )
-
-
-class PaymentTransferRequest(Base):
-    """Demande de paiement par virement (ICE) — préparation CMI/PayZone."""
-
-    __tablename__ = "payment_transfer_requests"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    cabinet_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
-    user_id: Mapped[str] = mapped_column(String(36), nullable=False)
-    plan_slug: Mapped[str] = mapped_column(String(64), nullable=False)
-    billing_cycle: Mapped[str] = mapped_column(String(20), nullable=False)
-    amount_mad: Mapped[int] = mapped_column(Integer, nullable=False)
-    reference: Mapped[str] = mapped_column(String(64), nullable=False)
-    status: Mapped[str] = mapped_column(String(30), default="pending", nullable=False)
-    ice: Mapped[str | None] = mapped_column(String(40), nullable=True)
-    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
-    )
-    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class CabinetReferral(Base):
@@ -797,8 +674,16 @@ class CabinetReferral(Base):
     __tablename__ = "cabinet_referrals"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    referrer_cabinet_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
-    referee_cabinet_id: Mapped[str] = mapped_column(String(36), nullable=False, unique=True, index=True)
+    referrer_cabinet_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("cabinets.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    referee_cabinet_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("cabinets.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True,
+    )
     code_used: Mapped[str] = mapped_column(String(24), nullable=False)
     status: Mapped[str] = mapped_column(String(24), default="pending")  # pending|bonus_applied|rewarded
     referee_bonus_days: Mapped[int] = mapped_column(Integer, default=14)
@@ -808,23 +693,3 @@ class CabinetReferral(Base):
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
     qualified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-
-
-class CommercialLead(Base):
-    """Demandes Entreprise / Sur mesure — qualification humaine avant essai large."""
-
-    __tablename__ = "commercial_leads"
-
-    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    kind: Mapped[str] = mapped_column(String(32), nullable=False, index=True)  # enterprise_trial | custom
-    full_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    email: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
-    phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
-    cabinet_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    city: Mapped[str | None] = mapped_column(String(120), nullable=True)
-    lawyers_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    message: Mapped[str | None] = mapped_column(Text, nullable=True)
-    status: Mapped[str] = mapped_column(String(24), default="new", nullable=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
-    )

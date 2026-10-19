@@ -1,10 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { Download, FileText, Loader2, X } from "lucide-react";
 import { ApiError, api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { AiMarkdownResult } from "@/components/ai/ai-glow-panel";
+import {
+  formatExtractedPreview,
+  previewTextDir,
+} from "@/lib/format-extracted-preview";
 
 export type DocumentPreviewTarget = {
   id: string;
@@ -59,6 +64,12 @@ export function DocumentPreviewModal({
   const [error, setError] = useState("");
   const [textPreview, setTextPreview] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
+
+  const formatted = useMemo(
+    () => (textPreview?.trim() ? formatExtractedPreview(textPreview.slice(0, 120_000)) : ""),
+    [textPreview],
+  );
+  const textDir = useMemo(() => previewTextDir(textPreview || ""), [textPreview]);
 
   const cleanup = useCallback(() => {
     setBlobUrl((prev) => {
@@ -207,14 +218,14 @@ export function DocumentPreviewModal({
           </div>
         </div>
 
-        <div className="relative min-h-0 flex-1 bg-[#525659]">
+        <div className="relative min-h-0 flex-1 bg-gradient-to-b from-slate-100 to-slate-200/80">
           {loading ? (
-            <div className="flex h-full items-center justify-center gap-2 text-white/90">
+            <div className="flex h-full items-center justify-center gap-2 text-sanad-navy">
               <Loader2 className="h-6 w-6 animate-spin" />
               {ar ? "جاري التحميل…" : "Chargement…"}
             </div>
           ) : error && !showText ? (
-            <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-white/90">
+            <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-sanad-navy">
               <p className="text-sm">{error}</p>
               <Button type="button" variant="outline" onClick={() => void handleDownload()}>
                 {ar ? "تحميل الملف" : "Télécharger le fichier"}
@@ -228,15 +239,13 @@ export function DocumentPreviewModal({
               <img src={blobUrl} alt={doc.name} className="max-h-full max-w-full object-contain shadow-lg" />
             </div>
           ) : showText ? (
-            <div className="h-full overflow-y-auto bg-white p-6">
+            <div className="h-full overflow-y-auto p-4 sm:p-6">
               <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                {ar ? "معاينة النص" : "Aperçu du contenu"}
+                {ar ? "معاينة منسّقة" : "Aperçu structuré"}
               </p>
               {error ? <p className="mb-3 text-sm text-red-600">{error}</p> : null}
-              {textPreview?.trim() ? (
-                <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-slate-800" dir="auto">
-                  {textPreview.slice(0, 120_000)}
-                </pre>
+              {formatted ? (
+                <AiMarkdownResult text={formatted} dir={textDir} className="min-h-[12rem]" />
               ) : (
                 <p className="text-sm text-slate-600">
                   {ar
@@ -246,7 +255,7 @@ export function DocumentPreviewModal({
               )}
             </div>
           ) : (
-            <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-white/90">
+            <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center text-sanad-navy">
               <p className="text-sm">
                 {ar
                   ? "لا توجد معاينة لهذا النوع. استخدم التحميل."

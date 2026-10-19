@@ -9,7 +9,7 @@ import {
   RefreshCw,
   Users,
 } from "lucide-react";
-import { StructuredSynthesis } from "@/components/ai/structured-synthesis";
+import { MarkdownAnswer } from "@/components/ai/markdown-answer";
 import { Button } from "@/components/ui/button";
 import { locales, type Locale } from "@/lib/i18n/translations";
 import { api, ApiError, getClientLocale, type SynthesisResult } from "@/lib/api";
@@ -56,7 +56,7 @@ const LABELS: Record<
     executive: "Synthèse intelligente",
     structuredHint:
       "Parties, dates et montants s’affichent s’ils sont clairement détectés (contrats / dossiers).",
-    executiveHint: "Résumé structuré — sans Markdown, zones distinctes.",
+    executiveHint: "Résumé structuré — titres, listes numérotées, mots clés en gras.",
     sources: "Source documentaire",
     loading: "Analyse intelligente du document…",
     loadingHint: "Le modèle lit la pièce et rédige une synthèse de cabinet.",
@@ -77,7 +77,7 @@ const LABELS: Record<
     executive: "تلخيص ذكي",
     structuredHint:
       "تظهر الأطراف والتواريخ والمبالغ فقط إن وُجدت بوضوح (عقود / قضايا).",
-    executiveHint: "ملخص منظم — بدون نجوم، مناطق واضحة.",
+    executiveHint: "ملخص منظم — عناوين، قوائم مرقمة، كلمات مهمة بخط عريض.",
     sources: "مصدر الوثيقة",
     loading: "جاري التحليل الذكي للوثيقة…",
     loadingHint: "يقرأ النموذج القطعة ويُعد تلخيصاً للمكتب.",
@@ -349,7 +349,7 @@ export function SynthesisPanel({
               {labels.executive}
             </p>
             <p className="mb-3 text-xs text-slate-500">{labels.executiveHint}</p>
-            <StructuredSynthesis text={synthesis.summary} />
+            <MarkdownAnswer text={synthesis.summary || ""} />
           </div>
 
           {(synthesis.parties.length > 0 ||

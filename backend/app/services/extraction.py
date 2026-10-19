@@ -182,12 +182,14 @@ def repair_arabic_line(line: str) -> str:
     if not raw or arabic_char_ratio(raw) < 0.35:
         return line
     words = raw.split()
-    if len(words) < 3:
+    # Jamais inverser un pavé (DOCX sans \n, paragraphe long) — trop risqué
+    if len(words) < 3 or len(words) > 36:
         return line
     fwd = _line_reading_score(words)
     rev_words = list(reversed(words))
     rev = _line_reading_score(rev_words)
-    if rev > fwd:
+    # Exiger un gain net pour éviter d'inverser du Word déjà correct
+    if rev >= fwd + 4:
         return " ".join(rev_words)
     return line
 

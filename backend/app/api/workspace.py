@@ -1,4 +1,4 @@
-"""Notes, tâches et agenda cabinet — workspace léger type ClickUp juridique."""
+"""Agenda cabinet — workspace juridique."""
 
 from datetime import datetime, timedelta, timezone
 
@@ -8,18 +8,12 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, log_audit
 from app.core.database import get_db
-from app.models import AgendaEvent, ActivityArchive, AuditLog, Case, CaseNote, CaseTask, Document, PlaidoirieDraft, User
+from app.models import AgendaEvent, ActivityArchive, AuditLog, Case, Document, PlaidoirieDraft, User
 from app.schemas import (
     ActivityArchiveItem,
     AgendaEventCreate,
     AgendaEventResponse,
     AgendaEventUpdate,
-    CaseNoteCreate,
-    CaseNoteResponse,
-    CaseNoteUpdate,
-    CaseTaskCreate,
-    CaseTaskResponse,
-    CaseTaskUpdate,
     WorkspaceActivityItem,
     WorkspaceSearchHit,
     WorkspaceSummaryResponse,
@@ -49,41 +43,6 @@ def _ensure_case(db: Session, case_id: str | None, cabinet_id: str) -> None:
     )
     if not exists:
         raise HTTPException(status_code=404, detail="Dossier introuvable")
-
-
-def _note_resp(db: Session, note: CaseNote) -> CaseNoteResponse:
-    return CaseNoteResponse(
-        id=note.id,
-        title=note.title,
-        body=note.body,
-        case_id=note.case_id,
-        case_reference=_case_ref(db, note.case_id, note.cabinet_id),
-        created_at=note.created_at,
-        updated_at=note.updated_at,
-    )
-
-
-def _task_assignee_name(db: Session, assignee_id: str | None) -> str | None:
-    if not assignee_id:
-        return None
-    u = db.query(User).filter(User.id == assignee_id).first()
-    return u.full_name if u else None
-
-
-def _task_resp(db: Session, task: CaseTask) -> CaseTaskResponse:
-    return CaseTaskResponse(
-        id=task.id,
-        title=task.title,
-        description=task.description,
-        case_id=task.case_id,
-        case_reference=_case_ref(db, task.case_id, task.cabinet_id),
-        status=task.status,
-        due_at=task.due_at,
-        assignee_id=getattr(task, "assignee_id", None),
-        assignee_name=_task_assignee_name(db, getattr(task, "assignee_id", None)),
-        created_at=task.created_at,
-        updated_at=task.updated_at,
-    )
 
 
 def _event_resp(db: Session, event: AgendaEvent) -> AgendaEventResponse:
@@ -124,200 +83,9 @@ def workspace_summary(
         .limit(8)
         .all()
     )
-    tasks = (
-        db.query(CaseTask)
-        .filter(
-            CaseTask.cabinet_id == user.cabinet_id,
-            CaseTask.status != "done",
-        )
-        .order_by(CaseTask.due_at.asc().nullslast(), CaseTask.updated_at.desc())
-        .limit(8)
-        .all()
-    )
-    notes = (
-        db.query(CaseNote)
-        .filter(CaseNote.cabinet_id == user.cabinet_id)
-        .order_by(CaseNote.updated_at.desc())
-        .limit(5)
-        .all()
-    )
     return WorkspaceSummaryResponse(
         upcoming_events=[_event_resp(db, e) for e in events],
-        open_tasks=[_task_resp(db, t) for t in tasks],
-        recent_notes=[_note_resp(db, n) for n in notes],
     )
-
-
-# ─── Notes ───────────────────────────────────────────────────────────────────
-
-
-@router.get("/notes", response_model=list[CaseNoteResponse])
-def list_notes(
-    case_id: str | None = None,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    q = db.query(CaseNote).filter(CaseNote.cabinet_id == user.cabinet_id)
-    if case_id:
-        q = q.filter(CaseNote.case_id == case_id)
-    notes = q.order_by(CaseNote.updated_at.desc()).limit(100).all()
-    return [_note_resp(db, n) for n in notes]
-
-
-@router.post("/notes", response_model=CaseNoteResponse, status_code=status.HTTP_201_CREATED)
-def create_note(
-    data: CaseNoteCreate,
-    request: Request,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _ensure_case(db, data.case_id, user.cabinet_id)
-    note = CaseNote(
-        cabinet_id=user.cabinet_id,
-        user_id=user.id,
-        case_id=data.case_id,
-        title=data.title.strip(),
-        body=data.body or "",
-    )
-    db.add(note)
-    log_audit(db, "note.create", user=user, request=request, details=note.title)
-    db.commit()
-    db.refresh(note)
-    return _note_resp(db, note)
-
-
-@router.patch("/notes/{note_id}", response_model=CaseNoteResponse)
-def update_note(
-    note_id: str,
-    data: CaseNoteUpdate,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    note = (
-        db.query(CaseNote)
-        .filter(CaseNote.id == note_id, CaseNote.cabinet_id == user.cabinet_id)
-        .first()
-    )
-    if not note:
-        raise HTTPException(status_code=404, detail="Note introuvable")
-    if data.case_id is not None:
-        _ensure_case(db, data.case_id or None, user.cabinet_id)
-        note.case_id = data.case_id or None
-    if data.title is not None:
-        note.title = data.title.strip()
-    if data.body is not None:
-        note.body = data.body
-    db.commit()
-    db.refresh(note)
-    return _note_resp(db, note)
-
-
-@router.delete("/notes/{note_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_note(
-    note_id: str,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    note = (
-        db.query(CaseNote)
-        .filter(CaseNote.id == note_id, CaseNote.cabinet_id == user.cabinet_id)
-        .first()
-    )
-    if not note:
-        raise HTTPException(status_code=404, detail="Note introuvable")
-    db.delete(note)
-    db.commit()
-
-
-# ─── Tasks ───────────────────────────────────────────────────────────────────
-
-
-@router.get("/tasks", response_model=list[CaseTaskResponse])
-def list_tasks(
-    case_id: str | None = None,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    q = db.query(CaseTask).filter(CaseTask.cabinet_id == user.cabinet_id)
-    if case_id:
-        q = q.filter(CaseTask.case_id == case_id)
-    tasks = q.order_by(CaseTask.due_at.asc().nullslast(), CaseTask.updated_at.desc()).limit(100).all()
-    return [_task_resp(db, t) for t in tasks]
-
-
-@router.post("/tasks", response_model=CaseTaskResponse, status_code=status.HTTP_201_CREATED)
-def create_task(
-    data: CaseTaskCreate,
-    request: Request,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    _ensure_case(db, data.case_id, user.cabinet_id)
-    task = CaseTask(
-        cabinet_id=user.cabinet_id,
-        user_id=user.id,
-        case_id=data.case_id,
-        title=data.title.strip(),
-        description=data.description,
-        status=data.status,
-        due_at=data.due_at,
-        assignee_id=getattr(data, "assignee_id", None),
-    )
-    db.add(task)
-    log_audit(db, "task.create", user=user, request=request, details=task.title)
-    db.commit()
-    db.refresh(task)
-    return _task_resp(db, task)
-
-
-@router.patch("/tasks/{task_id}", response_model=CaseTaskResponse)
-def update_task(
-    task_id: str,
-    data: CaseTaskUpdate,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    task = (
-        db.query(CaseTask)
-        .filter(CaseTask.id == task_id, CaseTask.cabinet_id == user.cabinet_id)
-        .first()
-    )
-    if not task:
-        raise HTTPException(status_code=404, detail="Tâche introuvable")
-    if data.case_id is not None:
-        _ensure_case(db, data.case_id or None, user.cabinet_id)
-        task.case_id = data.case_id or None
-    if data.title is not None:
-        task.title = data.title.strip()
-    if data.description is not None:
-        task.description = data.description
-    if data.status is not None:
-        task.status = data.status
-    if data.due_at is not None:
-        task.due_at = data.due_at
-    if "assignee_id" in data.model_dump(exclude_unset=True):
-        task.assignee_id = data.assignee_id
-    task.updated_at = datetime.now(timezone.utc)
-    db.commit()
-    db.refresh(task)
-    return _task_resp(db, task)
-
-
-@router.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_task(
-    task_id: str,
-    user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    task = (
-        db.query(CaseTask)
-        .filter(CaseTask.id == task_id, CaseTask.cabinet_id == user.cabinet_id)
-        .first()
-    )
-    if not task:
-        raise HTTPException(status_code=404, detail="Tâche introuvable")
-    db.delete(task)
-    db.commit()
 
 
 # ─── Agenda ──────────────────────────────────────────────────────────────────
@@ -512,7 +280,7 @@ def global_search(
     cases = (
         db.query(Case)
         .filter(Case.cabinet_id == user.cabinet_id)
-        .filter((Case.reference.ilike(like)) | (Case.client_name.ilike(like)))
+        .filter((Case.reference.ilike(like)) | (Case.client_name.ilike(like)) | (Case.title.ilike(like)))
         .order_by(Case.updated_at.desc())
         .limit(8)
         .all()
@@ -523,7 +291,7 @@ def global_search(
                 kind="case",
                 id=c.id,
                 title=c.reference,
-                subtitle=c.client_name,
+                subtitle=(c.title or c.client_name or ""),
                 href=f"/cases/{c.id}",
             )
         )

@@ -605,333 +605,84 @@ def platform_activity_analysis(
             f"Crédits IA ce mois — plan le plus consommateur : {top_plan} ({top_c})."
         )
 
-    def tip(titre: str, en_clair: str, action: str) -> dict[str, str]:
-        return {"titre": titre, "en_clair": en_clair, "action": action}
-
-    from app.services.ops_coach import (
-        attach_targets_with_drafts,
-        sort_tips,
-        tip_card,
-    )
-
-    cab_by_id = {
-        c.id: c
-        for c in db.query(Cabinet).filter(client_cab_filter).all()
-    }
-
-    growth: list[dict] = []
-    cancel_subs = [s for s in subs if bool(getattr(s, "cancel_at_period_end", False))]
-    cancel_n = len(cancel_subs)
-    trial_subs = [
-        s for s in subs if getattr(s.status, "value", str(s.status)) == "trial"
-    ]
-    trials_ending_subs = []
-    for s in trial_subs:
-        ends = getattr(s, "trial_ends_at", None)
-        if ends is None:
-            continue
-        try:
-            delta = (ends - now).days
-        except TypeError:
-            continue
-        if 0 <= delta <= 7:
-            trials_ending_subs.append((s, delta))
-
-    past_subs = [
-        s for s in subs if getattr(s.status, "value", str(s.status)) == "past_due"
-    ]
-
-    if trial_n:
-        ids = [s.cabinet_id for s in trial_subs]
-        growth.append(
-            tip_card(
-                tip_id="trial_convert",
-                scenario="trial_convert",
-                priority="high",
-                action_type="email",
-                titre="Cabinet encore en essai gratuit",
-                en_clair=(
-                    f"{trial_n} cabinet teste LexHub gratis (plan essai). "
-                    "L’email sert à l’accompagner avant la fin de l’essai, "
-                    "pour qu’il passe éventuellement à un plan payant — sinon il part sans rien payer."
-                ),
-                action="Optionnel : envoyer un email d’accompagnement (pas obligatoire). Objectif = conversion essai → payant.",
-                why=[
-                    f"{trial_n} abonnement(s) en statut essai (= gratuit pour le moment)",
-                    "Sans relance, beaucoup d’essais se terminent sans abonnement",
-                    "Ce n’est pas une facture : c’est un rappel d’aide + proposition de plan",
-                ],
-                sequence=["J0 : email conversion", "J+3 : rappel si pas de réponse", "J-1 fin essai : appel"],
-                targets=attach_targets_with_drafts(db, scenario="trial_convert", cabinet_ids=ids),
-            )
-        )
-    if trials_ending_subs:
-        ids = [s.cabinet_id for s, _ in trials_ending_subs]
-        extra = {
-            s.cabinet_id: {"days_left": d} for s, d in trials_ending_subs
-        }
-        growth.append(
-            tip_card(
-                tip_id="trial_ending",
-                scenario="trial_ending",
-                priority="high",
-                action_type="email",
-                titre="Essai bientôt terminé",
-                en_clair=f"{len(trials_ending_subs)} essai se termine dans moins d’une semaine.",
-                action="Relancer immédiatement pour éviter la perte du cabinet.",
-                why=["Fin d’essai ≤ 7 jours", "Risque élevé de churn gratuit"],
-                sequence=["Aujourd’hui : email urgent", "Demain : suivi téléphonique"],
-                targets=attach_targets_with_drafts(
-                    db, scenario="trial_ending", cabinet_ids=ids, extra_by_cab=extra
-                ),
-            )
-        )
-    if past:
-        ids = [s.cabinet_id for s in past_subs]
-        growth.append(
-            tip_card(
-                tip_id="past_due",
-                scenario="past_due",
-                priority="high",
-                action_type="email",
-                titre="Paiement en retard",
-                en_clair=f"{past} cabinet n’a pas réglé son abonnement.",
-                action="Envoyer un rappel de règlement (email) et suivre le paiement.",
-                why=[f"{past} abonnement(s) impayé(s)", "Impact direct sur le revenu"],
-                sequence=["J0 : email rappel", "J+2 : second rappel", "J+5 : appel"],
-                targets=attach_targets_with_drafts(db, scenario="past_due", cabinet_ids=ids),
-                internal_href="/admin/plans",
-            )
-        )
-    if cancel_n:
-        ids = [s.cabinet_id for s in cancel_subs]
-        growth.append(
-            tip_card(
-                tip_id="cancel_retain",
-                scenario="cancel_retain",
-                priority="high",
-                action_type="email",
-                titre="Un cabinet veut partir",
-                en_clair=f"{cancel_n} cabinet a demandé l’arrêt en fin de période.",
-                action="Proposer un plan adapté ou un pack crédits avant le départ.",
-                why=["Résiliation programmée (cancel_at_period_end)", "Dernière chance de rétention"],
-                sequence=["J0 : email rétention", "J+2 : appel", "Offre plan / crédits"],
-                targets=attach_targets_with_drafts(db, scenario="cancel_retain", cabinet_ids=ids),
-            )
-        )
-
-    solo = plans_by_slug.get("solo")
-    higher = (
-        plans_by_slug.get("cabinet")
-        or plans_by_slug.get("team")
-        or plans_by_slug.get("cabinet_pro")
-        or plans_by_slug.get("pro")
-    )
-    higher_label = {
-        "pro": "Pro",
-        "cabinet": "Cabinet",
-        "team": "Équipe",
-        "cabinet_pro": "Cabinet Pro",
-    }
-    solo_subs = [
-        s
-        for s in subs
-        if s.plan_id in plan_by_id
-        and plan_by_id[s.plan_id].slug == "solo"
-        and getattr(s.status, "value", str(s.status)) in ("active", "trial")
-    ]
-    if solo and higher and solo_subs:
-        delta_price = int(higher.price_mad_monthly or 0) - int(solo.price_mad_monthly or 0)
-        hl = higher_label.get(higher.slug, higher.slug)
-        if delta_price > 0:
-            ids = [s.cabinet_id for s in solo_subs]
-            extra = {cid: {"plan_label": hl, "delta_mad": delta_price} for cid in ids}
-            growth.append(
-                tip_card(
-                    tip_id="upsell_solo",
-                    scenario="upsell_solo",
-                    priority="medium",
-                    action_type="email",
-                    titre="Passer du plan Solo au plan supérieur",
-                    en_clair=(
-                        f"{len(solo_subs)} cabinet sur Solo — "
-                        f"le plan {hl} rapporte +{delta_price} MAD/mois chacun."
-                    ),
-                    action=f"Proposer le plan {hl} par email (ou appel commercial).",
-                    why=[
-                        f"{len(solo_subs)} sur Solo",
-                        f"Upsell potentiel +{delta_price} MAD/mois / cabinet",
-                    ],
-                    sequence=["Email upsell", "Si intérêt : démo 15 min", "Assigner plan dans admin"],
-                    targets=attach_targets_with_drafts(
-                        db, scenario="upsell_solo", cabinet_ids=ids, extra_by_cab=extra
-                    ),
-                    internal_href="/admin/plans",
-                )
-            )
-
-    heavy_ids: list[str] = []
-    for s in solo_subs:
-        used = next(
-            (
-                int(getattr(r, "ai_credits_used", 0) or 0)
-                for r in usage_rows
-                if r.cabinet_id == s.cabinet_id
-            ),
-            0,
-        )
-        if used >= 20:
-            heavy_ids.append(s.cabinet_id)
-    if heavy_ids:
-        growth.append(
-            tip_card(
-                tip_id="heavy_usage",
-                scenario="heavy_usage",
-                priority="medium",
-                action_type="email",
-                titre="Beaucoup d’IA sur un petit plan",
-                en_clair=f"{len(heavy_ids)} cabinet Solo consomme déjà beaucoup de crédits IA.",
-                action="Proposer un plan plus grand ou des crédits à la demande.",
-                why=["Usage IA élevé sur Solo (≥ 20 crédits)", "Bon moment pour monétiser"],
-                sequence=["Email usage", "Offre pack crédits / plan"],
-                targets=attach_targets_with_drafts(db, scenario="heavy_usage", cabinet_ids=heavy_ids),
-            )
-        )
-
-    unpaid_active_ids = []
-    if cabinets_actifs and active_n < cabinets_actifs:
-        paid_ids = {
-            s.cabinet_id
-            for s in subs
-            if getattr(s.status, "value", str(s.status)) == "active"
-        }
-        for cid, cab in cab_by_id.items():
-            if cab.status == CabinetStatus.ACTIVE and cid not in paid_ids:
-                unpaid_active_ids.append(cid)
-        growth.append(
-            tip_card(
-                tip_id="activate_billing",
-                scenario="activate_billing",
-                priority="medium",
-                action_type="email",
-                titre="Cabinet actif qui ne paie pas encore",
-                en_clair=(
-                    f"{len(unpaid_active_ids)} cabinet(s) actif(s) sans abonnement payant "
-                    "(souvent encore en essai)."
-                ),
-                action="Aider à activer un plan payant dans LexHub.",
-                why=[
-                    f"{cabinets_actifs} cabinets actifs",
-                    f"{active_n} abonnements payants actifs",
-                ],
-                sequence=["Email activation", "Suivi dans /admin/cabinets"],
-                targets=attach_targets_with_drafts(
-                    db, scenario="activate_billing", cabinet_ids=unpaid_active_ids
-                ),
-                internal_href="/admin/cabinets",
-            )
-        )
-
-    if pleas == 0 and cabinets_actifs:
-        active_ids = [
-            cid for cid, cab in cab_by_id.items() if cab.status == CabinetStatus.ACTIVE
-        ]
-        growth.append(
-            tip_card(
-                tip_id="first_plea",
-                scenario="first_plea",
-                priority="medium",
-                action_type="email",
-                titre="Peu d’usage de la plaidoirie",
-                en_clair="Aucune plaidoirie comptabilisée ce mois-ci.",
-                action="Guider les cabinets pour lancer une première plaidoirie.",
-                why=["0 plaidoirie ce mois", "L’usage précède le renouvellement"],
-                sequence=["Email onboarding", "Tutoriel / démo"],
-                targets=attach_targets_with_drafts(db, scenario="first_plea", cabinet_ids=active_ids[:5]),
-            )
-        )
-    elif ai_credits == 0 and pleas > 0:
-        growth.append(
-            tip_card(
-                tip_id="credits_tracking",
-                scenario="credits_tracking",
-                priority="low",
-                action_type="ops",
-                titre="Plaidoiries faites, mais peu de crédits débités",
-                en_clair=(
-                    f"{pleas} plaidoirie(s) ce mois, mais 0 crédit IA sur les compteurs."
-                ),
-                action="Vérifier le tracking d’usage côté admin (pas un email client).",
-                why=[
-                    f"{pleas} plaidoiries comptées",
-                    "0 crédit IA — possible écart de tracking",
-                ],
-                sequence=["Vérifier compteurs UsageCounter", "Corriger si besoin", "Puis vendre packs"],
-                targets=[],
-                internal_href="/admin/plans",
-                cta_label="Ouvrir Plans & quotas",
-            )
-        )
-
-    if not growth:
-        growth.append(
-            tip_card(
-                tip_id="healthy",
-                scenario="healthy",
-                priority="low",
-                action_type="watch",
-                titre="Situation correcte pour l’instant",
-                en_clair="Pas d’alerte urgente sur les abonnements.",
-                action="Surveiller les essais et les plafonds Solo.",
-                why=["Aucun signal critique détecté"],
-                sequence=["Revue hebdo Ops Coach"],
-                targets=[],
-            )
-        )
-
     from app.services.email import email_configured as _email_ok
+    from app.models import SubscriptionEvent
 
-    growth = sort_tips(growth)
+    metrics_block = {
+        "cabinets_actifs": cabinets_actifs,
+        "cabinets_suspendus": cabinets_suspendus,
+        "utilisateurs": users,
+        "dossiers": cases,
+        "documents": docs,
+        "connexions_30j": logins_30d,
+        "plaidoiries_mois": pleas,
+        "credits_ia_mois": ai_credits,
+        "abonnements_par_statut": by_status,
+        "par_ville": par_ville,
+        "credits_par_plan": dict(credits_par_plan),
+        "plaidoiries_par_plan": dict(plaidoiries_par_plan),
+    }
+    summary_fr = (
+        f"LexHub (cabinets clients) : {cabinets_actifs} actif(s), {users} utilisateur(s). "
+        f"30 jours : {logins_30d} connexions. "
+        f"Mois en cours : {pleas} plaidoirie(s), {ai_credits} crédit(s) IA. "
+        f"Abonnements : {abo_fr}."
+    )
+
+    # Compteurs d’e-mails lifecycle déjà envoyés (30 j)
+    email_evs = (
+        db.query(SubscriptionEvent.event_type, func.count(SubscriptionEvent.id))
+        .filter(
+            SubscriptionEvent.created_at >= since,
+            SubscriptionEvent.event_type.like("email_%"),
+        )
+        .group_by(SubscriptionEvent.event_type)
+        .all()
+    )
+    emails_sent_30j = {str(k): int(n) for k, n in email_evs}
+    emails_total_30j = sum(emails_sent_30j.values())
+
+    lifecycle_emails = [
+        {"id": "welcome_trial", "label": "Bienvenue essai", "when": "J0", "case": "Inscription Solo/Cabinet + essai", "channel": "auto"},
+        {"id": "tip", "label": "Tip onboarding", "when": "J+1 / J+2", "case": "En essai / nouveau cabinet", "channel": "auto"},
+        {"id": "first_plea", "label": "Nudge 1ʳᵉ plaidoirie", "when": "J+3 (si 0 plaidoirie)", "case": "Essai sans usage clé", "channel": "auto"},
+        {"id": "trial_d7", "label": "Rappel essai", "when": "J-7, J-3, J-1", "case": "Fin d’essai proche", "channel": "auto"},
+        {"id": "trial_ended", "label": "Essai terminé", "when": "Jour de fin", "case": "Non converti → Découverte", "channel": "auto"},
+        {"id": "trial_converted", "label": "Conversion payante", "when": "À l’activation", "case": "Essai → abonnement", "channel": "auto"},
+        {"id": "payment_failed", "label": "Échec paiement", "when": "Immédiat", "case": "past_due", "channel": "auto"},
+        {"id": "past_due", "label": "Rappel impayé", "when": "J+2 / J+5", "case": "Toujours impayé", "channel": "auto"},
+        {"id": "invoice", "label": "Facture / reçu", "when": "Après paiement OK", "case": "Abonnement actif", "channel": "auto"},
+        {"id": "renewal", "label": "Renouvellement bientôt", "when": "J-7 / J-1", "case": "Abonnement actif", "channel": "auto"},
+        {"id": "quota", "label": "Alerte quota", "when": "~80 % usage", "case": "Plaidoiries / crédits", "channel": "auto"},
+        {"id": "winback", "label": "Win-back inactif", "when": "~14 j sans activité", "case": "Compte silencieux", "channel": "auto"},
+        {"id": "enterprise", "label": "Essai Entreprise", "when": "Self-serve (carte)", "case": "Plan Entreprise plafonné", "channel": "auto"},
+    ]
 
     report = {
         "generated_at": now.isoformat(),
         "period_days": 30,
         "aligned_with": "admin_metrics_cabinets_list",
-        "metrics": {
-            "cabinets_actifs": cabinets_actifs,
-            "cabinets_suspendus": cabinets_suspendus,
-            "utilisateurs": users,
-            "dossiers": cases,
-            "documents": docs,
-            "connexions_30j": logins_30d,
-            "plaidoiries_mois": pleas,
-            "credits_ia_mois": ai_credits,
-            "abonnements_par_statut": by_status,
-            "par_ville": par_ville,
-            "credits_par_plan": dict(credits_par_plan),
-            "plaidoiries_par_plan": dict(plaidoiries_par_plan),
-        },
+        "metrics": metrics_block,
         "recommendations": recommendations,
-        "growth_recommendations": growth,
+        "growth_recommendations": [],  # Ops Coach retiré (option A)
+        "lifecycle_emails": lifecycle_emails,
+        "emails_sent_30j": emails_sent_30j,
+        "emails_total_30j": emails_total_30j,
+        "summary_fr": summary_fr,
         "ops_coach": {
-            "version": "v2",
+            "version": "retired",
             "email_ready": _email_ok(),
-            "legend": {
-                "email": "Préparer / modifier / envoyer un email",
-                "ops": "Action technique interne (pas d’email client)",
-                "billing": "Facturation",
-                "call": "Contact téléphonique",
-                "watch": "Surveillance uniquement",
-            },
+            "method": "lifecycle_celery_auto",
+            "note": "E-mails lifecycle automatiques (Celery). Solo / Cabinet / Entreprise = essai self-serve plafonné.",
         },
-        "summary_fr": (
-            f"LexHub (cabinets clients) : {cabinets_actifs} actif(s), {users} utilisateur(s). "
-            f"30 jours : {logins_30d} connexions. "
-            f"Mois en cours : {pleas} plaidoirie(s), {ai_credits} crédit(s) IA. "
-            f"Abonnements : {abo_fr}."
-        ),
     }
-    log_audit(db, "admin.platform_analysis", user=user, request=request, details="Rapport d’activité généré")
+    log_audit(
+        db,
+        "admin.platform_analysis",
+        user=user,
+        request=request,
+        details=f"Rapport activité + lifecycle ({emails_total_30j} e-mails / 30 j)",
+    )
     db.commit()
     return report
 
@@ -943,39 +694,55 @@ def ops_coach_draft_email(
     user: User = Depends(require_roles(UserRole.ADMIN_WEBVOICE)),
     db: Session = Depends(get_db),
 ):
-    """Régénère un brouillon email pour un scénario + cabinet (modifiable ensuite)."""
-    from app.services.ops_coach import attach_targets_with_drafts, build_email_draft
+    """Régénère un brouillon email IA pour un scénario + cabinet (modifiable ensuite)."""
+    from app.services.ops_coach import build_email_draft, build_email_draft_ai, _contacts_for_cabinet
 
     scenario = str(body.get("scenario") or "").strip()
     cabinet_id = str(body.get("cabinet_id") or "").strip()
+    use_ai = body.get("use_ai", True) is not False
     if not scenario or not cabinet_id:
         raise HTTPException(status_code=400, detail="scenario et cabinet_id requis")
     cab = db.query(Cabinet).filter(Cabinet.id == cabinet_id, Cabinet.name != _PLATFORM_CABINET_NAME).first()
     if not cab:
         raise HTTPException(status_code=404, detail="Cabinet introuvable")
-    targets = attach_targets_with_drafts(
-        db,
-        scenario=scenario,
-        cabinet_ids=[cabinet_id],
-        extra_by_cab={cabinet_id: body.get("extra") or {}},
-    )
-    if not targets:
-        raise HTTPException(status_code=404, detail="Impossible de préparer la cible")
-    t = targets[0]
-    if not t.get("draft"):
-        # pas de contact → brouillon générique à compléter
-        t["draft"] = build_email_draft(
+    contacts = _contacts_for_cabinet(db, cabinet_id)
+    primary = contacts[0] if contacts else None
+    contact_name = (primary or {}).get("name") or "Maître"
+    tip_context = str(body.get("tip_context") or body.get("en_clair") or "").strip()
+    if use_ai:
+        draft = build_email_draft_ai(
             scenario=scenario,
             cabinet_name=cab.name,
-            contact_name="Maître",
+            contact_name=contact_name,
+            extra=body.get("extra") or {},
+            tip_context=tip_context,
+        )
+    else:
+        draft = build_email_draft(
+            scenario=scenario,
+            cabinet_name=cab.name,
+            contact_name=contact_name,
             extra=body.get("extra") or {},
         )
+    t = {
+        "cabinet_id": cab.id,
+        "cabinet_name": cab.name,
+        "city": cab.city or "",
+        "contacts": contacts,
+        "to_email": primary["email"] if primary else None,
+        "to_name": primary["name"] if primary else None,
+        "draft": draft,
+        "cc_emails": [c["email"] for c in contacts[1:2]],
+    }
     log_audit(
         db,
         "admin.ops_coach_draft",
         user=user,
         request=request,
-        details=f"Brouillon email ({scenario}) — cabinet « {cab.name} »",
+        details=(
+            f"Brouillon email {'IA' if use_ai else 'template'} ({scenario}) "
+            f"— cabinet « {cab.name} »"
+        ),
     )
     db.commit()
     return t

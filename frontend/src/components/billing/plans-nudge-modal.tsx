@@ -9,7 +9,7 @@ import { LexProductModal } from "@/components/billing/lex-product-modal";
 
 const SEEN_KEY = "lexhub_plans_nudge_seen";
 
-/** Popup connecté (admin) — plan Découverte → Solo / Cabinet. */
+/** Popup connecté (admin) — plan Découverte → Solo / Cabinet. Soft : 1× / session, délai long. */
 export function PlansNudgeModal() {
   const ar = useClientLocale() === "ar";
   const user = useAuthStore((s) => s.user);
@@ -31,9 +31,11 @@ export function PlansNudgeModal() {
         setEnt(e);
         const free = e.plan?.slug === "free" && e.status !== "trial";
         if (free) {
+          // Desktop ~45s, mobile ~70s — après un vrai usage, pas au login
+          const delay = window.matchMedia("(max-width: 768px)").matches ? 70_000 : 45_000;
           window.setTimeout(() => {
             if (!cancelled) setOpen(true);
-          }, 25000);
+          }, delay);
         }
       })
       .catch(() => undefined);
@@ -62,12 +64,12 @@ export function PlansNudgeModal() {
           ? [
               "ملف + إملاء + صياغة مع إخفاء الأسماء",
               "تصدير Word/PDF بترويسة المكتب",
-              "تجربة Solo أو Cabinet — 0 درهم اليوم، إلغاء قبل النهاية = بدون خصم",
+              "تجربة Solo أو Cabinet — 0 درهم اليوم",
             ]
           : [
               "Dossier + dictée + rédaction (noms masqués)",
               "Export Word/PDF à l’en-tête du cabinet",
-              "Essai Solo ou Cabinet — 0 MAD aujourd’hui, résiliation avant la fin = aucun débit",
+              "Essai Solo ou Cabinet — 0 MAD aujourd’hui",
             ]
       }
       primaryLabel={ar ? "اختيار خطة" : "Choisir un plan"}

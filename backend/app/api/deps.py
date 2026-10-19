@@ -41,6 +41,24 @@ def get_current_user(
     return user
 
 
+def get_current_user_optional(
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
+    db: Session = Depends(get_db),
+) -> User | None:
+    """Auth optionnelle (ex. logout + rappel e-mail)."""
+    if not credentials:
+        return None
+    payload = decode_token(credentials.credentials)
+    if not payload or payload.get("type") != "access":
+        return None
+    if not session_is_active(db, payload.get("sid")):
+        return None
+    user = db.query(User).filter(User.id == payload.get("sub")).first()
+    if not user or not user.is_active:
+        return None
+    return user
+
+
 def require_roles(*roles: UserRole):
     def checker(user: User = Depends(get_current_user)) -> User:
         if user.role not in roles:
@@ -73,6 +91,22 @@ def require_cabinet_billing_admin(user: User = Depends(get_current_user)) -> Use
                 "Seul le responsable du cabinet (qui a créé l'espace) peut payer "
                 "ou modifier l'abonnement. Demandez-lui d'ouvrir Paramètres → Abonnement."
             ),
+        )
+    return user
+
+
+def user_must_set_password(user: User) -> bool:
+    return bool(getattr(user, "must_set_password", False)) or not bool(
+        getattr(user, "hashed_password", None)
+    )
+
+
+def require_password_set(user: User = Depends(get_current_user)) -> User:
+    """Hard gate : plans, packs, équipe — après onboarding frictionless."""
+    if user_must_set_password(user) and not getattr(user, "google_id", None):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="PASSWORD_REQUIRED",
         )
     return user
 

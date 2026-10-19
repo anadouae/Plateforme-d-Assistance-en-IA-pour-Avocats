@@ -264,7 +264,16 @@ async def upload_document(
             ".ogg": "audio/ogg",
         }.get(ext, "audio/webm")
 
-    storage_path = save_file(content, user.cabinet_id, case_id, ext)
+    from app.services.object_storage import TransientStorageError
+
+    try:
+        storage_path = save_file(content, user.cabinet_id, case_id, ext)
+    except TransientStorageError as exc:
+        logger.exception("Upload stockage échoué: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Stockage fichiers temporairement indisponible. Réessayez dans un instant.",
+        ) from exc
 
     doc = Document(
         filename=Path(storage_path).name if not storage_path.startswith("minio://") else storage_path.split("/")[-1],
@@ -340,11 +349,14 @@ def get_document(
     doc = _get_document_for_user(db, doc_id, user)
     case = db.query(Case).filter(Case.id == doc.case_id).first()
     raw_text = doc.extracted_text or ""
-    fixed = safe_repair_arabic_text(raw_text)
-    if fixed and fixed != raw_text and len(fixed) > 50:
-        doc.extracted_text = fixed
-        db.commit()
-        raw_text = fixed
+    # Word / texte natif : jamais de réparation BIDI (sinon inversion + même pied de page
+    # en tête de tous les DOCX arabes). PDF/OCR seulement.
+    if raw_text and not is_native_office_document(doc.original_name, doc.mime_type):
+        fixed = safe_repair_arabic_text(raw_text)
+        if fixed and fixed != raw_text and len(fixed) > 50:
+            doc.extracted_text = fixed
+            db.commit()
+            raw_text = fixed
     # Texte intégral pour la lecture (pas un extrait tronqué à 2000 car.)
     preview = raw_text if raw_text else None
     return DocumentDetailResponse(
@@ -448,6 +460,7 @@ def download_document(
 @router.get("/{doc_id}/synthese", response_model=SynthesisResponse)
 def synthesize_document(
     doc_id: str,
+    request: Request,
     lang: str | None = None,
     user: User = Depends(require_not_assistant),
     db: Session = Depends(get_db),
@@ -533,6 +546,7 @@ def ask_document(
             excerpt=excerpt,
             confidence_threshold=settings.AI_CONFIDENCE_THRESHOLD,
             language=locale,
+            history=list(data.history or []) if getattr(data, "history", None) else None,
         )
     except Exception:
         finish_ai_action(db, user.cabinet_id, "ask", slot_token=slot, success=False)

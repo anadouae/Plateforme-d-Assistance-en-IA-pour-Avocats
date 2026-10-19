@@ -71,12 +71,12 @@ export default function ContactPageInner() {
           </h1>
           <p className="mt-2 text-sm text-slate-600">
             {ar
-              ? "خطة Entreprise — استمارة تأهيل قبل التفعيل. Solo و Cabinet يبقيان مباشرة."
-              : "Plan Entreprise — formulaire de qualification avant activation. Solo et Cabinet restent en libre-service."}
+              ? "سؤال عن الاشتراك أو الدعم؟ Solo و Cabinet و Entreprise متاحة مباشرة من صفحة الأسعار."
+              : "Question abonnement ou support ? Solo, Cabinet et Entreprise s’essaient directement depuis la page tarifs."}
           </p>
           <p className="mt-3">
-            <Link href="/commercial?intent=enterprise" className="text-sm font-semibold text-[#0A1228] underline">
-              {ar ? "استمارة Entreprise / حسب الطلب" : "Formulaire Entreprise / Sur mesure"}
+            <Link href="/tarifs" className="text-sm font-semibold text-[#0A1228] underline">
+              {ar ? "عرض الأسعار" : "Voir les tarifs"}
             </Link>
           </p>
         </div>

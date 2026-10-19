@@ -12,7 +12,7 @@ import { canManageTeam } from "@/lib/roles";
 import { TrialPitchModal } from "@/components/billing/trial-pitch-modal";
 import { AuthGateModal } from "@/components/billing/auth-gate-modal";
 import { AskAdminBillingModal } from "@/components/billing/ask-admin-billing";
-import { saveBillingIntent, checkoutHref, commercialHref, needsCommercialQualification } from "@/lib/billing-intent";
+import { saveBillingIntent, checkoutHref } from "@/lib/billing-intent";
 import { planCtaLabel, planCtaSub, planTrialBadge } from "@/lib/plan-cta";
 
 function planHighlights(plan: BillingPlan, ar: boolean): string[] {
@@ -67,10 +67,6 @@ export function LandingPricingCarousel() {
     cycle === "yearly" ? plan.price_mad_yearly : plan.price_mad_monthly;
 
   function choosePlan(plan: BillingPlan) {
-    if (needsCommercialQualification(plan.slug)) {
-      window.location.assign(commercialHref("enterprise"));
-      return;
-    }
     saveBillingIntent({ plan: plan.slug, cycle, intent: plan.slug === "free" ? "free" : "trial" });
     if (plan.slug === "free" && user) {
       window.location.assign("/dashboard");
@@ -240,23 +236,6 @@ export function LandingPricingCarousel() {
         >
           {ar ? "كل التفاصيل →" : "Voir tous les détails →"}
         </Link>
-        <p className="mt-3 text-xs text-slate-500">
-          {ar ? (
-            <>
-              مكاتب كبيرة جداً؟{" "}
-              <Link href="/commercial?intent=custom" className="font-semibold underline">
-                عرض حسب الطلب
-              </Link>
-            </>
-          ) : (
-            <>
-              Très gros cabinet ?{" "}
-              <Link href="/commercial?intent=custom" className="font-semibold underline">
-                Sur mesure — appelez-nous
-              </Link>
-            </>
-          )}
-        </p>
       </div>
 
       <TrialPitchModal

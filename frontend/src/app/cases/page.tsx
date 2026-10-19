@@ -18,6 +18,7 @@ import { filterDomainValues, normalizeCaseDomain } from "@/lib/case-domains";
 import { isAssistant } from "@/lib/roles";
 import { canDeleteCase } from "@/lib/ownership";
 import { useAuthStore } from "@/store/auth";
+import { caseDisplayTitle } from "@/lib/case-display";
 
 const PIN_TAG = "pinned";
 
@@ -119,6 +120,7 @@ export default function CasesPage() {
         (c) =>
           c.reference.toLowerCase().includes(q) ||
           c.client_name.toLowerCase().includes(q) ||
+          (c.title || "").toLowerCase().includes(q) ||
           c.case_type.toLowerCase().includes(q) ||
           caseDomainLabel(c.case_type, locale).toLowerCase().includes(q) ||
           caseStatusLabel(c.status, locale).toLowerCase().includes(q) ||
@@ -210,10 +212,7 @@ export default function CasesPage() {
       });
       return;
     }
-    const [docs, tasks] = await Promise.all([
-      api.getDocuments(c.id).catch(() => []),
-      api.getTasks(c.id).catch(() => []),
-    ]);
+    const docs = await api.getDocuments(c.id).catch(() => []);
     const docNames = docs.map((d) => d.original_name).filter(Boolean);
     const shown = docNames.slice(0, 4);
     const extraDocs = Math.max(0, docNames.length - shown.length);
@@ -228,6 +227,12 @@ export default function CasesPage() {
           <div className="sanad-confirm-preview__row">
             <span>
               {ar ? "الزبون" : "Client"} : <strong>{c.client_name || "—"}</strong>
+              {c.title ? (
+                <>
+                  <br />
+                  {ar ? "العنوان" : "Intitulé"} : <strong>{c.title}</strong>
+                </>
+              ) : null}
             </span>
           </div>
           <div className="sanad-confirm-preview__meta">
@@ -250,11 +255,6 @@ export default function CasesPage() {
               {ar ? "الوثائق" : "Documents"} :{" "}
               <strong>
                 {docNames.length}
-                {tasks.length
-                  ? ar
-                    ? ` · ${tasks.length} مهام`
-                    : ` · ${tasks.length} tâche${tasks.length > 1 ? "s" : ""}`
-                  : ""}
               </strong>
             </span>
           </div>
@@ -449,7 +449,12 @@ export default function CasesPage() {
                         {caseStatusLabel(c.status, locale)}
                       </span>
                     </div>
-                    <div className="dossier-client">{c.client_name}</div>
+                    <div className="dossier-client">{caseDisplayTitle(c)}</div>
+                    {c.title && c.client_name && c.title.trim() !== c.client_name.trim() ? (
+                      <div className="dossier-meta" style={{ marginTop: 2 }}>
+                        <span>{ar ? "الموكل" : "Client"} : {c.client_name}</span>
+                      </div>
+                    ) : null}
                     <div className="dossier-meta">
                       <span>{caseDomainLabel(c.case_type, locale)}</span>
                       <span>·</span>

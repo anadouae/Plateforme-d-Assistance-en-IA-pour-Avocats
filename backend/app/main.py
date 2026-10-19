@@ -5,6 +5,7 @@ import threading
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
@@ -187,6 +188,23 @@ app = FastAPI(
     # Évite les 307 /api/documents/ → /api/documents qui droppent parfois l'Authorization
     redirect_slashes=False,
 )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Jamais de « Internal Server Error » brut côté client avocat."""
+    from fastapi import HTTPException
+
+    if isinstance(exc, HTTPException):
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+    return JSONResponse(
+        status_code=503,
+        content={
+            "detail": "Service momentanément indisponible. Réessayez dans quelques secondes.",
+        },
+    )
+
 
 origins = [o.strip() for o in settings.CORS_ORIGINS.split(",")]
 app.add_middleware(

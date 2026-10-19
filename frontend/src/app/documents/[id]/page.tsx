@@ -10,6 +10,11 @@ import { DocumentStatusBadge } from "@/components/ai/document-status-badge";
 import { ProcessingSteps } from "@/components/ai/processing-steps";
 import { SynthesisPanel } from "@/components/ai/synthesis-panel";
 import { DocumentPreviewModal } from "@/components/documents/document-preview-modal";
+import { AiMarkdownResult } from "@/components/ai/ai-glow-panel";
+import {
+  formatExtractedPreview,
+  previewTextDir,
+} from "@/lib/format-extracted-preview";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { api, type DocumentDetail } from "@/lib/api";
@@ -21,13 +26,13 @@ import { useLocaleStore } from "@/store/locale";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 
 const EXTRACT_HINT: Record<Locale, string> = {
-  fr: "Texte brut extrait du document (Word natif ou lecture PDF). Ce n’est pas le résumé IA — la synthèse est à droite.",
-  ar: "النص الخام المستخرج من الوثيقة (Word أصلي أو قراءة PDF). هذا ليس ملخص الذكاء الاصطناعي — التلخيص على اليمين.",
+  fr: "Aperçu structuré du texte extrait (titres, listes, gras). Ce n’est pas le résumé IA — la synthèse intelligente est à droite.",
+  ar: "معاينة منسّقة للنص المستخرج (عناوين، قوائم، خط عريض). هذا ليس ملخص الذكاء الاصطناعي — التلخيص الذكي على اليمين.",
 };
 
 const TRANSCRIPT_HINT: Record<Locale, string> = {
-  fr: "Transcription audio du fichier archivé. Ce n’est pas le résumé IA — la synthèse structurée est à droite.",
-  ar: "تفريغ الملف الصوتي المؤرشف. هذا ليس ملخص الذكاء الاصطناعي — التلخيص المنظم على اليمين.",
+  fr: "Transcription structurée du fichier audio. Ce n’est pas le résumé IA — la synthèse est à droite.",
+  ar: "تفريغ منظم للملف الصوتي. هذا ليس ملخص الذكاء الاصطناعي — التلخيص على اليمين.",
 };
 
 const DOC_SUGGESTIONS: Record<Locale, string[]> = {
@@ -524,15 +529,14 @@ export default function DocumentViewerPage() {
                 <div className="space-y-2">
                   <p className="text-xs text-slate-500">
                     {locale === "ar"
-                      ? `النص الكامل · ${doc.extracted_text_preview.length.toLocaleString("ar-MA")} حرف — مرّروا للأسفل لقراءة كل الصفحات`
-                      : `Texte complet · ${doc.extracted_text_preview.length.toLocaleString("fr-FR")} caractères — faites défiler pour tout lire`}
+                      ? `النص · ${doc.extracted_text_preview.length.toLocaleString("ar-MA")} حرف — معاينة منسّقة`
+                      : `Texte · ${doc.extracted_text_preview.length.toLocaleString("fr-FR")} caractères — aperçu structuré`}
                   </p>
-                  <div
-                    dir="auto"
-                    className="max-h-[40rem] overflow-y-auto whitespace-pre-wrap rounded-lg border border-sanad-border bg-sanad-light/50 p-4 text-sm leading-relaxed text-slate-700"
-                  >
-                    {doc.extracted_text_preview}
-                  </div>
+                  <AiMarkdownResult
+                    text={formatExtractedPreview(doc.extracted_text_preview)}
+                    dir={previewTextDir(doc.extracted_text_preview)}
+                    className="max-h-[40rem] overflow-y-auto"
+                  />
                 </div>
               ) : (
                 <p className="text-sm text-slate-400">

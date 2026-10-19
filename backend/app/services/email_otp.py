@@ -13,6 +13,7 @@ from app.models import EmailOtp
 
 PURPOSE_REGISTER = "register"
 PURPOSE_MAGIC_LOGIN = "magic_login"
+PURPOSE_PASSWORDLESS_LOGIN = "passwordless_login"
 PURPOSE_PASSWORD_CHANGE = "password_change"
 PURPOSE_ACCOUNT_DELETE = "account_delete"
 PURPOSE_EMAIL_CHANGE = "email_change"

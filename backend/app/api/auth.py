@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_current_user, log_audit
+from app.api.deps import get_current_user, get_current_user_optional, log_audit
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import (
@@ -21,9 +21,11 @@ from app.schemas import (
     GoogleAuthRequest,
     LoginRequest,
     MessageResponse,
+    PasswordlessLoginRequest,
     RefreshTokenRequest,
     RegisterRequest,
     ResetPasswordRequest,
+    SetPasswordRequest,
     TokenResponse,
     TwoFactorEnableRequest,
     TwoFactorEnableResponse,
@@ -44,6 +46,7 @@ from app.services.email import (
     send_password_reset_email,
 )
 from app.services.email_otp import (
+    PURPOSE_PASSWORDLESS_LOGIN,
     PURPOSE_REGISTER,
     consume_otp,
     create_otp,
@@ -101,6 +104,14 @@ def _user_response(user: User, cabinet: Cabinet | None) -> UserResponse:
         totp_enabled=bool(user.totp_enabled),
         mfa_required=_mfa_required_for(user),
         has_seen_onboarding_tour=bool(getattr(user, "has_seen_onboarding_tour", False)),
+        must_set_password=(
+            (
+                bool(getattr(user, "must_set_password", False))
+                or not bool(getattr(user, "hashed_password", None))
+            )
+            and not bool(getattr(user, "google_id", None))
+        ),
+        auth_via_google=bool(getattr(user, "google_id", None)),
     )
 
 
@@ -273,8 +284,14 @@ def verify_register_otp(
     return MessageResponse(message="Email vérifié. Vous pouvez continuer l'inscription.")
 
 
-@router.post("/register", response_model=MessageResponse, status_code=status.HTTP_201_CREATED)
-async def register(data: RegisterRequest, request: Request, db: Session = Depends(get_db)):
+@router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+async def register(
+    data: RegisterRequest,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    """Inscription frictionless : OTP → session immédiate (mdp optionnel / plus tard)."""
     from app.core.rate_limit import check_rate_limit
     from app.services.hibp import is_password_breached
 
@@ -286,7 +303,9 @@ async def register(data: RegisterRequest, request: Request, db: Session = Depend
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Code email invalide ou expiré. Demandez un nouveau code.",
         )
-    if await is_password_breached(data.password):
+
+    pwd = (data.password or "").strip() or None
+    if pwd and await is_password_breached(pwd):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Ce mot de passe apparaît dans des fuites connues. Choisissez-en un autre.",
@@ -320,9 +339,11 @@ async def register(data: RegisterRequest, request: Request, db: Session = Depend
 
     assign_unique_join_code(db, cabinet, cabinet_name)
 
+    must_set = pwd is None
     user = User(
         email=data.email.lower(),
-        hashed_password=hash_password(data.password),
+        hashed_password=hash_password(pwd) if pwd else None,
+        must_set_password=must_set,
         full_name=manager_name,
         phone=data.phone,
         role=UserRole.ADMIN_CABINET,
@@ -350,6 +371,11 @@ async def register(data: RegisterRequest, request: Request, db: Session = Depend
             pass
 
     log_audit(db, "cabinet.register", user=user, request=request, details=cabinet.name)
+
+    mfa_setup = _mfa_required_for(user)
+    tokens = _issue_tokens(
+        db, user, cabinet, request, response, mfa_setup_required=mfa_setup
+    )
     db.commit()
 
     try:
@@ -363,12 +389,119 @@ async def register(data: RegisterRequest, request: Request, db: Session = Depend
     except Exception:
         pass
 
-    return MessageResponse(
-        message=(
-            "Inscription réussie. Votre cabinet est sur le plan Découverte (gratuit). "
-            "Complétez les informations du cabinet dans Paramètres après connexion."
+    return tokens
+
+
+@router.post("/set-password", response_model=UserResponse)
+async def set_password(
+    data: SetPasswordRequest,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Crée ou remplace le mot de passe (compte connecté)."""
+    from app.services.hibp import is_password_breached
+
+    if await is_password_breached(data.password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Ce mot de passe apparaît dans des fuites connues. Choisissez-en un autre.",
         )
+    user.hashed_password = hash_password(data.password)
+    user.must_set_password = False
+    log_audit(db, "auth.set_password", user=user, request=request)
+    db.commit()
+    cabinet = db.query(Cabinet).filter(Cabinet.id == user.cabinet_id).first()
+    return _user_response(user, cabinet)
+
+
+@router.post("/request-passwordless-otp", response_model=MessageResponse)
+def request_passwordless_otp(
+    data: EmailOnlyRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """OTP de reconnexion pour comptes sans mot de passe."""
+    from app.core.rate_limit import check_rate_limit
+
+    check_rate_limit(request, key="auth.passwordless_otp", limit=8, window_sec=60)
+    user = db.query(User).filter(User.email == data.email.lower()).first()
+    # Réponse neutre (anti-énumération)
+    if user and (
+        getattr(user, "must_set_password", False) or not user.hashed_password
+    ):
+        code = create_otp(
+            db, email=data.email, purpose=PURPOSE_PASSWORDLESS_LOGIN, minutes=15, digits=True
+        )
+        db.commit()
+        send_otp_email(data.email, code, "Connexion LexHub (code)")
+    return MessageResponse(
+        message="Si un compte sans mot de passe existe pour cet e-mail, un code a été envoyé."
     )
+
+
+@router.post("/login-passwordless", response_model=TokenResponse)
+async def login_passwordless(
+    data: PasswordlessLoginRequest,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    """Connexion par code e-mail (comptes frictionless / sans mdp)."""
+    from app.core.rate_limit import check_rate_limit, count_failures, record_failure
+    from app.services.turnstile import verify_turnstile
+
+    check_rate_limit(request, key="auth.login_passwordless", limit=12, window_sec=60)
+    if not data.code:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Code à 6 chiffres requis.",
+        )
+
+    failures = count_failures(request, key="auth.login_fail", window_sec=settings.LOGIN_RATE_WINDOW_SEC)
+    if failures >= settings.CAPTCHA_AFTER_FAILURES and settings.TURNSTILE_SECRET_KEY:
+        ok = await verify_turnstile(
+            data.captcha_token,
+            request.client.host if request.client else None,
+        )
+        if not ok:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="CAPTCHA_REQUIRED",
+            )
+
+    if not consume_otp(
+        db, email=data.email, purpose=PURPOSE_PASSWORDLESS_LOGIN, code=data.code
+    ):
+        record_failure(request, key="auth.login_fail", window_sec=settings.LOGIN_RATE_WINDOW_SEC)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Code invalide ou expiré.",
+        )
+
+    user = db.query(User).filter(User.email == data.email.lower()).first()
+    if not user or not user.is_active or not user.is_verified:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Identifiants incorrects",
+        )
+
+    cabinet = db.query(Cabinet).filter(Cabinet.id == user.cabinet_id).first()
+    if cabinet and cabinet.status in (CabinetStatus.SUSPENDED, CabinetStatus.PENDING):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Cabinet indisponible. Contactez le support.",
+        )
+
+    user.failed_login_attempts = 0
+    user.locked_until = None
+    log_audit(db, "auth.login_passwordless", user=user, request=request)
+    mfa_setup = _mfa_required_for(user)
+    tokens = _issue_tokens(
+        db, user, cabinet, request, response, mfa_setup_required=mfa_setup
+    )
+    db.commit()
+    return tokens
 
 
 @router.post("/forgot-password", response_model=MessageResponse)
@@ -378,6 +511,23 @@ def forgot_password(data: ForgotPasswordRequest, request: Request, db: Session =
     check_rate_limit(request, key="auth.forgot", limit=8, window_sec=60)
     user = db.query(User).filter(User.email == data.email.lower()).first()
     if user:
+        # Compte sans mdp : renvoyer vers le parcours OTP plutôt qu'un reset classique
+        if getattr(user, "must_set_password", False) or not user.hashed_password:
+            code = create_otp(
+                db,
+                email=data.email,
+                purpose=PURPOSE_PASSWORDLESS_LOGIN,
+                minutes=15,
+                digits=True,
+            )
+            db.commit()
+            send_otp_email(data.email, code, "Créer votre mot de passe LexHub")
+            return MessageResponse(
+                message=(
+                    "Ce compte n’a pas encore de mot de passe. "
+                    "Un code vous a été envoyé : connectez-vous avec le code, puis créez un mot de passe."
+                )
+            )
         raw = create_token(db, user, TokenType.RESET_PASSWORD, reset_password_hours())
         log_audit(db, "auth.forgot_password", user=user, request=request)
         db.commit()
@@ -388,7 +538,7 @@ def forgot_password(data: ForgotPasswordRequest, request: Request, db: Session =
             )
 
     return MessageResponse(
-        message="Si un compte existe avec cette adresse, un email sera envoyé."
+        message="Si un compte existe pour cet e-mail, un message a été envoyé."
     )
 
 
@@ -414,6 +564,7 @@ async def reset_password(
         )
 
     user.hashed_password = hash_password(data.new_password)
+    user.must_set_password = False
     user.failed_login_attempts = 0
     user.locked_until = None
     revoke_all_user_sessions(db, user.id)
@@ -486,7 +637,22 @@ def logout(
     response: Response,
     data: RefreshTokenRequest = Body(default_factory=RefreshTokenRequest),
     db: Session = Depends(get_db),
+    user: User | None = Depends(get_current_user_optional),
 ):
+    # Soft reminder e-mail si déconnexion sans mot de passe (max 1 / 24 h) — pas pour Google
+    if (
+        user
+        and not getattr(user, "google_id", None)
+        and (getattr(user, "must_set_password", False) or not user.hashed_password)
+    ):
+        try:
+            from app.services.retention_lifecycle import maybe_send_logout_password_reminder
+
+            maybe_send_logout_password_reminder(db, user)
+            db.commit()
+        except Exception:
+            pass
+
     raw = (
         data.refresh_token
         or request.cookies.get(settings.REFRESH_COOKIE_NAME)
@@ -497,6 +663,21 @@ def logout(
         db.commit()
     _clear_refresh_cookie(response)
     return MessageResponse(message="Déconnecté.")
+
+
+@router.post("/logout-all", response_model=MessageResponse)
+def logout_all_devices(
+    response: Response,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Révoque toutes les sessions (tous les appareils) — access token courant invalidé au prochain refresh."""
+    revoke_all_user_sessions(db, user.id)
+    db.commit()
+    _clear_refresh_cookie(response)
+    log_audit(db, "auth.logout_all", user=user)
+    db.commit()
+    return MessageResponse(message="Déconnecté de tous les appareils.")
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -532,14 +713,6 @@ async def login(
                 detail="CAPTCHA_REQUIRED",
             )
 
-    from app.services.join_code import find_pending_join_block
-
-    if find_pending_join_block(db, data.email, data.password):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="JOIN_PENDING",
-        )
-
     user = db.query(User).filter(User.email == data.email.lower()).first()
 
     if not user:
@@ -551,6 +724,13 @@ async def login(
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Compte temporairement bloqué. Réessayez plus tard.",
+        )
+
+    # Compte frictionless : pas de mot de passe → parcours OTP
+    if getattr(user, "must_set_password", False) or not user.hashed_password:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="PASSWORDLESS_ACCOUNT",
         )
 
     if not verify_password(data.password, user.hashed_password):
@@ -630,16 +810,45 @@ async def google_login(
 
     user = db.query(User).filter(User.email == info["email"]).first()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Aucun compte associé à cet email Google. Inscrivez votre cabinet d'abord.",
+        # Inscription Google frictionless : crée cabinet + compte (identité Google prouvée)
+        email = info["email"].lower()
+        email_local = email.split("@")[0].replace(".", " ").replace("_", " ").strip()
+        full_name = (info.get("full_name") or email_local.title() or "Administrateur").strip()
+        cabinet = Cabinet(
+            name=f"Cabinet — {email_local or 'LexHub'}",
+            city=_CABINET_PLACEHOLDER,
+            address=_CABINET_PLACEHOLDER,
+            barreau=_CABINET_PLACEHOLDER,
+            status=CabinetStatus.ACTIVE,
         )
+        db.add(cabinet)
+        db.flush()
+        from app.services.join_code import assign_unique_join_code
 
-    if not user.is_active or not user.is_verified:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Compte inactif ou non vérifié.",
+        assign_unique_join_code(db, cabinet, cabinet.name)
+        user = User(
+            email=email,
+            hashed_password=None,
+            must_set_password=False,  # Google prouve l'identité ; mdp LexHub optionnel
+            full_name=full_name,
+            role=UserRole.ADMIN_CABINET,
+            is_active=True,
+            is_verified=True,
+            google_id=info["google_id"],
+            cabinet_id=cabinet.id,
         )
+        db.add(user)
+        db.flush()
+        from app.services.billing import start_free_for_cabinet
+
+        start_free_for_cabinet(db, cabinet.id)
+        log_audit(db, "cabinet.register_google", user=user, request=request, details=cabinet.name)
+    else:
+        if not user.is_active or not user.is_verified:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Compte inactif ou non vérifié.",
+            )
 
     cabinet = db.query(Cabinet).filter(Cabinet.id == user.cabinet_id).first()
     if cabinet and cabinet.status in (CabinetStatus.SUSPENDED, CabinetStatus.PENDING):
@@ -657,6 +866,9 @@ async def google_login(
         raise
 
     user.google_id = info["google_id"]
+    # Google suffit pour la reconnexion ; on ne force plus le mdp LexHub
+    if getattr(user, "must_set_password", False) and not user.hashed_password:
+        user.must_set_password = False
     log_audit(db, "auth.google_login", user=user, request=request)
     mfa_setup = _mfa_required_for(user)
     tokens = _issue_tokens(

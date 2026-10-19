@@ -2,6 +2,7 @@
 
 export type CoachKey =
   | "client"
+  | "description"
   | "domain"
   | "degree"
   | "city"
@@ -34,6 +35,18 @@ export const CASE_FIELD_COACH: Record<CoachKey, { fr: CoachCopy; ar: CoachCopy }
       title: "اسم الموكل",
       why: "الشخص أو الشركة التي تنوبون عنها. يستعمله الذكاء للترويسة حتى لا تُعكس الأطراف.",
       example: "فاطمة العلمي — أو « شركة أطلس للنسيج ش.م.م » إن كانت شركة.",
+    },
+  },
+  description: {
+    fr: {
+      title: "Description du dossier",
+      why: "Résumé libre des faits, demandes et échéances. Utile pour l’équipe et pour cadrer l’analyse IA — modifiable ensuite sur la fiche.",
+      example: "Licenciement sans entretien préalable ; audience fond 07/10/2026 ; demandes : nullité + rappels.",
+    },
+    ar: {
+      title: "وصف الملف",
+      why: "ملخص حر للوقائع والطلبات والمواعيد. يفيد الفريق وتحليل الذكاء — قابل للتعديل لاحقاً في البطاقة.",
+      example: "فصل دون استماع مسبق؛ جلسة الموضوع 07/10/2026؛ الطلبات: بطلان + متأخرات.",
     },
   },
   domain: {

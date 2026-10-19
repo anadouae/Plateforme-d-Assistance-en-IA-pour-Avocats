@@ -55,6 +55,7 @@ export function NewCaseModal({
   const clientRef = useRef<HTMLInputElement>(null);
   const customRef = useRef<HTMLInputElement>(null);
 
+  const [caseTitle, setCaseTitle] = useState("");
   const [clientName, setClientName] = useState("");
   const [caseType, setCaseType] = useState("Civil");
   const [addingCustom, setAddingCustom] = useState(false);
@@ -76,9 +77,11 @@ export function NewCaseModal({
   const [greffe, setGreffe] = useState("");
   const [judgeName, setJudgeName] = useState("");
   const [procedureStatus, setProcedureStatus] = useState("instruction");
+  const [description, setDescription] = useState("");
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<{
+    title?: string;
     client?: string;
     type?: string;
     degree?: string;
@@ -112,6 +115,7 @@ export function NewCaseModal({
 
   useEffect(() => {
     if (!open) return;
+    setCaseTitle("");
     setClientName("");
     setCaseType("Civil");
     setAddingCustom(false);
@@ -132,6 +136,7 @@ export function NewCaseModal({
     setGreffe("");
     setJudgeName("");
     setProcedureStatus("instruction");
+    setDescription("");
     setErrors({});
     setLoading(false);
     setResponsibleId(user?.id || "");
@@ -194,6 +199,9 @@ export function NewCaseModal({
 
   async function handleCreate() {
     const next: typeof errors = {};
+    if (!caseTitle.trim() || caseTitle.trim().length < 2) {
+      next.title = ar ? "عنوان الملف مطلوب" : "L’intitulé du dossier est obligatoire";
+    }
     if (!clientName.trim() || clientName.trim().length < 2) {
       next.client = ar ? "اسم الموكل مطلوب" : "Le client est obligatoire";
     }
@@ -214,13 +222,14 @@ export function NewCaseModal({
       next.tribunal = ar ? "المحكمة المختصة مطلوبة" : "Le tribunal compétent est obligatoire";
     }
     setErrors(next);
-    if (next.client || next.type || next.degree || next.role || next.city || next.tribunal) return;
+    if (next.title || next.client || next.type || next.degree || next.role || next.city || next.tribunal) return;
 
     setLoading(true);
     const minWait = new Promise((r) => setTimeout(r, 700));
     try {
       const [created] = await Promise.all([
         api.createCase({
+          title: caseTitle.trim(),
           client_name: clientName.trim(),
           case_type: resolvedType,
           status,
@@ -241,6 +250,7 @@ export function NewCaseModal({
           greffe: greffe.trim() || undefined,
           judge_name: judgeName.trim() || undefined,
           procedure_status: procedureStatus || undefined,
+          description: description.trim() || undefined,
         }),
         minWait,
       ]);
@@ -334,12 +344,33 @@ export function NewCaseModal({
           </h3>
           <p className="modal-sub">
             {ar
-              ? "هوية قانونية للملف (ق.م.م م. 32). المرجع يُولَّد تلقائياً. انقروا حقلاً لفهم ماذا تكتبون."
-              : "Identité juridique du dossier (art. 32 CPC). Référence automatique. Cliquez un champ : une aide s’affiche."}
+              ? "أعطوا ملفاً عنواناً واضحاً + هوية الموكل. المرجع يُولَّد تلقائياً."
+              : "Donnez un intitulé clair au dossier + identité du client. Référence automatique."}
           </p>
           <FieldCoach field={coachField} uiFr={!ar} />
 
           <div className="form-grid" dir={ar ? "rtl" : "ltr"}>
+            <div className="form-field full">
+              <label>{ar ? "عنوان الملف" : "Intitulé du dossier"}</label>
+              <input
+                value={caseTitle}
+                onChange={(e) => {
+                  setCaseTitle(e.target.value);
+                  setErrors((err) => ({ ...err, title: undefined }));
+                }}
+                onFocus={() => setCoachField("client")}
+                placeholder={
+                  ar
+                    ? "مثال: بناني ضد العلمي — كراء محل تجاري"
+                    : "Ex. Bennani c/ Alami — loyers locaux commerciaux"
+                }
+                maxLength={255}
+              />
+              {errors.title && (
+                <span style={{ color: "#b91c1c", fontSize: 12 }}>{errors.title}</span>
+              )}
+            </div>
+
             <div className="form-field full">
               <label>{ar ? "الموكل" : "Client"}</label>
               <input
@@ -352,6 +383,37 @@ export function NewCaseModal({
               {errors.client && (
                 <span style={{ color: "#b91c1c", fontSize: 12 }}>{errors.client}</span>
               )}
+            </div>
+
+            <div className="form-field full">
+              <label>{ar ? "وصف الملف (اختياري)" : "Description du dossier (optionnel)"}</label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                onFocus={() => setCoachField("description")}
+                rows={4}
+                maxLength={4000}
+                placeholder={
+                  ar
+                    ? "ملخص الوقائع، الطلبات، المواعيد… يمكن إكماله لاحقاً."
+                    : "Résumé des faits, demandes, échéances… modifiable ensuite sur la fiche."
+                }
+                style={{
+                  width: "100%",
+                  resize: "vertical",
+                  minHeight: 88,
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: "1px solid rgba(14,21,38,0.12)",
+                  font: "inherit",
+                  lineHeight: 1.45,
+                }}
+              />
+              <span className="ref-hint">
+                {ar
+                  ? "يظهر في ملخص الملف ويساعد التحليل والهيئة."
+                  : "Visible sur la fiche dossier — utile pour l’équipe et l’analyse IA."}
+              </span>
             </div>
 
             <div className="form-field full">
